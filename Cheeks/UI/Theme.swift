@@ -44,7 +44,7 @@ struct PadButton<Label: View>: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(lit ? color.opacity(pressed ? 1 : 0.85) : Theme.raised.opacity(pressed ? 1.6 : 1))
+            .fill(lit ? color.opacity(pressed ? 1 : 0.85) : (pressed ? color.opacity(0.35) : Theme.raised))
             .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(lit ? color : color.opacity(0.35), lineWidth: 1))
             .overlay(label().foregroundStyle(lit ? Color.black : color).padding(2))
             .scaleEffect(pressed ? 0.96 : 1)
