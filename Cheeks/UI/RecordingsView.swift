@@ -32,15 +32,17 @@ struct RecordingsView: View {
             .onAppear(perform: reload)
             .onChange(of: dj.savingRecordings) { _, _ in reload() }
             .onDisappear { player?.stop() }
-            .alert("Rename recording", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            // `presenting:` hands the file to the buttons, so it can't be cleared before they run.
+            .alert("Rename recording", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),
+                   presenting: renaming) { url in
                 TextField("Name", text: $newName)
-                Button("Rename") { rename() }
+                Button("Rename") { rename(url) }
                 Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog("Delete this recording and its tracklist?",
                                 isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                                titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { delete() }
+                                titleVisibility: .visible, presenting: deleting) { url in
+                Button("Delete", role: .destructive) { delete(url) }
             }
         }
         .preferredColorScheme(.dark)
@@ -49,11 +51,16 @@ struct RecordingsView: View {
     private func row(_ url: URL) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
-                Button { togglePlay(url) } label: {
-                    Image(systemName: playing == url ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                // Previews play straight to the main output, so they're off while a deck is playing.
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    let isPlaying = playing == url && player?.isPlaying == true
+                    Button { togglePlay(url) } label: {
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 28))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(decksPlaying && !isPlaying)
                 }
-                .buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(url.deletingPathExtension().lastPathComponent).font(.headline)
                     Text(details(url)).font(.caption).foregroundStyle(.secondary)
@@ -68,6 +75,7 @@ struct RecordingsView: View {
                 ShareLink(items: [url] + existingCompanions(url)) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .buttonStyle(.borderless)
                 Menu {
                     Button("Rename", systemImage: "pencil") {
                         newName = url.deletingPathExtension().lastPathComponent
@@ -77,6 +85,7 @@ struct RecordingsView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .buttonStyle(.borderless)
             }
             if expanded == url, let text = tracklist(url) {
                 Text(text)
@@ -89,6 +98,8 @@ struct RecordingsView: View {
         }
         .padding(.vertical, 4)
     }
+
+    private var decksPlaying: Bool { dj.decks.contains { $0.isPlaying } }
 
     private func reload() {
         recordings = Recordings.list()
@@ -125,8 +136,7 @@ struct RecordingsView: View {
         if player?.play() == true { playing = url } else { playing = nil }
     }
 
-    private func rename() {
-        guard let url = renaming else { return }
+    private func rename(_ url: URL) {
         renaming = nil
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
@@ -151,8 +161,7 @@ struct RecordingsView: View {
         reload()
     }
 
-    private func delete() {
-        guard let url = deleting else { return }
+    private func delete(_ url: URL) {
         deleting = nil
         if playing == url { player?.stop(); playing = nil }
         try? FileManager.default.removeItem(at: url)

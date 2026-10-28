@@ -28,14 +28,32 @@ enum Recordings {
 
     /// A recording in progress is "<name>.recording.caf" with its tracklist in "<name>.recording.json".
     static let inProgressSuffix = ".recording.caf"
-    static let audioExtensions: Set<String> = ["m4a", "wav"]
+    /// A capture that couldn't be converted is kept as "<name> (raw).caf" so it can still be shared.
+    static let rawSuffix = " (raw).caf"
+    /// Conversion writes "<name>.converting.<ext>" and renames it only once complete.
+    static let convertingMarker = ".converting."
+    static let audioExtensions: Set<String> = ["m4a", "wav", "caf"]
     /// 24-bit stereo at 44.1 kHz.
     static let bytesPerMinute: Double = 44_100 * 2 * 3 * 60
 
+    /// "Mix 2026-10-28 22.30.05", with " 2", " 3"… if that name is already used — so a quick
+    /// stop-and-restart can never overwrite the recording that's still being saved.
     static func newBaseName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        return "Mix \(formatter.string(from: Date()))"
+        let stem = "Mix \(formatter.string(from: Date()))"
+        var name = stem
+        var n = 2
+        while isTaken(name) {
+            name = "\(stem) \(n)"
+            n += 1
+        }
+        return name
+    }
+
+    private static func isTaken(_ base: String) -> Bool {
+        let endings = [inProgressSuffix, rawSuffix, ".m4a", ".wav", "\(convertingMarker)m4a", "\(convertingMarker)wav"]
+        return endings.contains { FileManager.default.fileExists(atPath: directory.appending(path: base + $0).path) }
     }
 
     static func pcmSettings(sampleRate: Double, channels: AVAudioChannelCount) -> [String: Any] {
@@ -49,7 +67,11 @@ enum Recordings {
         let items = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
         return items
-            .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
+            .filter { url in
+                let name = url.lastPathComponent
+                return audioExtensions.contains(url.pathExtension.lowercased())
+                    && !name.hasSuffix(inProgressSuffix) && !name.contains(convertingMarker)
+            }
             .sorted { creationDate($0) > creationDate($1) }
     }
 
@@ -84,6 +106,8 @@ final class MixRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
     private var failed = false
+    private var framesWritten: AVAudioFramePosition = 0
+    private var sampleRate = AudioConfig.sampleRate
 
     func start(url: URL, format: AVAudioFormat) throws {
         let newFile = try AVAudioFile(forWriting: url,
@@ -92,6 +116,8 @@ final class MixRecorder: @unchecked Sendable {
         lock.withLock {
             file = newFile
             failed = false
+            framesWritten = 0
+            sampleRate = format.sampleRate
         }
     }
 
@@ -100,6 +126,7 @@ final class MixRecorder: @unchecked Sendable {
             guard let file else { return }
             do {
                 try file.write(from: buffer)
+                framesWritten += AVAudioFramePosition(buffer.frameLength)
             } catch {
                 // Usually the disk is full. Close what we have so it can still be saved.
                 failed = true
@@ -109,6 +136,10 @@ final class MixRecorder: @unchecked Sendable {
     }
 
     var didFail: Bool { lock.withLock { failed } }
+
+    /// Length of audio actually captured. Tracklist times use this rather than the wall clock,
+    /// so they stay right if the engine was interrupted (e.g. by a phone call) mid-recording.
+    var recordedSeconds: Double { lock.withLock { Double(framesWritten) / sampleRate } }
 
     /// Closes the file (AVAudioFile finalises its header when released).
     func stop() {
@@ -162,8 +193,11 @@ enum Setlist {
     static func cueSheet(_ entries: [SetlistEntry], title: String, audioFileName: String) -> String {
         func clean(_ s: String) -> String { s.replacingOccurrences(of: "\"", with: "'") }
         var lines = ["TITLE \"\(clean(title))\"", "PERFORMER \"Cheeks\"", "FILE \"\(clean(audioFileName))\" WAVE"]
+        var previous = -75
         for (i, e) in entries.enumerated() {
-            let frames = Int(max(0, e.offset) * 75) // CUE frames are 1/75 s
+            // CUE frames are 1/75 s; indexes must increase, so tracks that started together are 1 s apart.
+            let frames = max(Int(max(0, e.offset) * 75), previous + 75)
+            previous = frames
             lines.append(String(format: "  TRACK %02d AUDIO", i + 1))
             lines.append("    TITLE \"\(clean(e.title))\"")
             if !e.artist.isEmpty { lines.append("    PERFORMER \"\(clean(e.artist))\"") }
@@ -174,45 +208,83 @@ enum Setlist {
 }
 
 enum RecordingFinalizer {
-    enum FinalizeError: Error { case unreadable }
+    enum FinalizeError: Error {
+        /// Nothing was captured; the empty file was removed.
+        case empty
+        /// Couldn't read or convert; the capture was kept as "<name> (raw).caf".
+        case keptRaw
+    }
 
-    /// Converts an in-progress CAF to the chosen format, writes its tracklist files, and removes
-    /// the CAF and sidecar once everything is safely written. Runs off the main thread.
-    static func finalize(_ caf: URL, format: RecordingFormat) throws -> URL {
-        let reader: AVAudioFile
-        if let file = try? AVAudioFile(forReading: caf) {
-            reader = file
-        } else {
+    /// Converts a capture to the chosen format, writes its tracklist files, and only then removes
+    /// the capture. `recovered` marks a file left behind by a crash or kill. Runs off the main thread.
+    static func finalize(_ caf: URL, format: RecordingFormat, recovered: Bool) throws -> URL {
+        // A file left by a crash can carry a stale data size (often 0) and still open, reading as
+        // empty or short. Repair first so the whole capture is read.
+        if recovered { repairCAF(caf) }
+        var opened = try? AVAudioFile(forReading: caf)
+        if opened == nil {
             repairCAF(caf)
-            guard let file = try? AVAudioFile(forReading: caf) else { throw FinalizeError.unreadable }
-            reader = file
+            opened = try? AVAudioFile(forReading: caf)
         }
-
         let base = caf.lastPathComponent.replacingOccurrences(of: Recordings.inProgressSuffix, with: "")
-        let output = Recordings.directory.appending(path: "\(base).\(format.fileExtension)")
-        let processing = reader.processingFormat
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: processing, frameCapacity: 65_536) else { throw FinalizeError.unreadable }
-        do {
-            let writer = try AVAudioFile(forWriting: output,
-                                         settings: format.settings(sampleRate: processing.sampleRate, channels: processing.channelCount),
-                                         commonFormat: processing.commonFormat, interleaved: processing.isInterleaved)
-            while reader.framePosition < reader.length {
-                try reader.read(into: buffer)
-                if buffer.frameLength == 0 { break }
-                try writer.write(from: buffer)
+        guard let reader = opened, reader.length > 0 else {
+            if fileSize(caf) < 64 * 1024 { // header only: stopped before any audio arrived
+                try? FileManager.default.removeItem(at: caf)
+                try? FileManager.default.removeItem(at: Setlist.sidecarURL(forRecording: caf))
+                throw FinalizeError.empty
             }
-        } // writer is released (and its file finalised) here
-
-        let entries = Setlist.load(forRecording: caf)
-        if !entries.isEmpty {
-            let companions = Recordings.companionFiles(for: output)
-            try? Setlist.text(entries, title: base).write(to: companions[0], atomically: true, encoding: .utf8)
-            try? Setlist.cueSheet(entries, title: base, audioFileName: output.lastPathComponent)
-                .write(to: companions[1], atomically: true, encoding: .utf8)
+            keepRaw(caf, base: base)
+            throw FinalizeError.keptRaw
         }
+
+        let output = Recordings.directory.appending(path: "\(base).\(format.fileExtension)")
+        let temp = Recordings.directory.appending(path: "\(base)\(Recordings.convertingMarker)\(format.fileExtension)")
+        let processing = reader.processingFormat
+        do {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: processing, frameCapacity: 65_536) else { throw FinalizeError.keptRaw }
+            do {
+                let writer = try AVAudioFile(forWriting: temp,
+                                             settings: format.settings(sampleRate: processing.sampleRate, channels: processing.channelCount),
+                                             commonFormat: processing.commonFormat, interleaved: processing.isInterleaved)
+                while reader.framePosition < reader.length {
+                    try reader.read(into: buffer)
+                    if buffer.frameLength == 0 { break }
+                    try writer.write(from: buffer)
+                }
+            } // writer is released (and its file finalised) here
+            try FileManager.default.moveItem(at: temp, to: output)
+        } catch {
+            // Usually out of space. Keep the full-quality capture rather than a partial file.
+            try? FileManager.default.removeItem(at: temp)
+            keepRaw(caf, base: base)
+            throw FinalizeError.keptRaw
+        }
+
+        writeTracklist(from: caf, next: output, title: base)
         try? FileManager.default.removeItem(at: caf)
         try? FileManager.default.removeItem(at: Setlist.sidecarURL(forRecording: caf))
         return output
+    }
+
+    /// Renames the capture to "<name> (raw).caf" (listed in Recordings, shareable) with its tracklist.
+    private static func keepRaw(_ caf: URL, base: String) {
+        let raw = Recordings.directory.appending(path: base + Recordings.rawSuffix)
+        guard (try? FileManager.default.moveItem(at: caf, to: raw)) != nil else { return }
+        writeTracklist(from: caf, next: raw, title: base)
+        try? FileManager.default.removeItem(at: Setlist.sidecarURL(forRecording: caf))
+    }
+
+    private static func writeTracklist(from caf: URL, next audio: URL, title: String) {
+        let entries = Setlist.load(forRecording: caf)
+        guard !entries.isEmpty else { return }
+        let companions = Recordings.companionFiles(for: audio)
+        try? Setlist.text(entries, title: title).write(to: companions[0], atomically: true, encoding: .utf8)
+        try? Setlist.cueSheet(entries, title: title, audioFileName: audio.lastPathComponent)
+            .write(to: companions[1], atomically: true, encoding: .utf8)
+    }
+
+    private static func fileSize(_ url: URL) -> Int {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
     }
 
     /// If the app died before the CAF was closed, its data chunk may carry a stale size.
@@ -220,7 +292,8 @@ enum RecordingFinalizer {
     static func repairCAF(_ url: URL) {
         guard let handle = try? FileHandle(forUpdating: url) else { return }
         defer { try? handle.close() }
-        guard let header = try? handle.read(upToCount: 8), header.prefix(4) == Data("caff".utf8) else { return }
+        guard let fileEnd = try? handle.seekToEnd(), (try? handle.seek(toOffset: 0)) != nil,
+              let header = try? handle.read(upToCount: 8), header.prefix(4) == Data("caff".utf8) else { return }
         var offset: UInt64 = 8
         while let chunk = try? handle.read(upToCount: 12), chunk.count == 12 {
             let type = String(decoding: chunk.prefix(4), as: UTF8.self)
@@ -230,7 +303,11 @@ enum RecordingFinalizer {
                 try? handle.write(contentsOf: Data(repeating: 0xFF, count: 8))
                 return
             }
-            offset += 12 + size
+            // A corrupt size must not overflow or run past the file (that would crash every launch).
+            let (afterHeader, overflowA) = offset.addingReportingOverflow(12)
+            let (next, overflowB) = afterHeader.addingReportingOverflow(size)
+            guard !overflowA, !overflowB, next <= fileEnd else { return }
+            offset = next
             guard (try? handle.seek(toOffset: offset)) != nil else { return }
         }
     }

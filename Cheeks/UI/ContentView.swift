@@ -118,7 +118,8 @@ struct TopBar: View {
             }
             .buttonStyle(.plain)
             .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
-                Button("Stop and save", role: .destructive) { dj.toggleRecording() }
+                // It may have stopped by itself (storage full) while this was open; don't start a new one.
+                Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
                 Button("Keep recording", role: .cancel) {}
             }
 
@@ -130,7 +131,7 @@ struct TopBar: View {
         }
         .frame(height: 30)
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
-        .task(id: dj.statusMessage) {
+        .task(id: dj.statusMessage) { [dj] in
             guard dj.statusMessage != nil else { return }
             try? await Task.sleep(for: .seconds(6))
             if !Task.isCancelled { dj.statusMessage = nil }

@@ -70,7 +70,9 @@ final class DJEngine {
 
     // On-air detection for the tracklist and History playlists
     @ObservationIgnored private var onAirSince: [Date?] = [nil, nil]
+    /// Last track per deck added to History, and to the current recording's tracklist.
     @ObservationIgnored private var loggedTrack: [UUID?] = [nil, nil]
+    @ObservationIgnored private var setlistTrack: [UUID?] = [nil, nil]
     private static let onAirSeconds: TimeInterval = 10
 
     @ObservationIgnored private var timer: Timer?
@@ -98,7 +100,7 @@ final class DJEngine {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         // Recordings interrupted by a crash or the app being killed get saved now.
-        for caf in Recordings.unfinished() { finalize(caf) }
+        for caf in Recordings.unfinished() { finalize(caf, recovered: true) }
     }
 
     // MARK: Graph
@@ -320,11 +322,16 @@ final class DJEngine {
             }
             let since = onAirSince[i] ?? now
             onAirSince[i] = since
-            guard loggedTrack[i] != track.id, now.timeIntervalSince(since) >= Self.onAirSeconds else { continue }
-            loggedTrack[i] = track.id
-            library?.logPlay(track.id)
-            if isRecording, let start = recordingStarted {
-                appendToSetlist(deck, at: since.timeIntervalSince(start))
+            let audibleFor = now.timeIntervalSince(since)
+            guard audibleFor >= Self.onAirSeconds else { continue }
+            if loggedTrack[i] != track.id {
+                loggedTrack[i] = track.id
+                library?.logPlay(track.id)
+            }
+            if isRecording && setlistTrack[i] != track.id {
+                setlistTrack[i] = track.id
+                // Position in the captured audio when the track became audible.
+                appendToSetlist(deck, at: recorder.recordedSeconds - audibleFor)
             }
         }
     }
@@ -333,6 +340,7 @@ final class DJEngine {
         guard let track = deck.track, let caf = recordingURL else { return }
         setlist.append(SetlistEntry(offset: max(0, offset), title: track.title, artist: track.artist,
                                     bpm: deck.bpm > 0 ? deck.effectiveBPM : nil, key: track.key))
+        setlist.sort { $0.offset < $1.offset }
         Setlist.save(setlist, forRecording: caf) // kept on disk so a crash doesn't lose the tracklist
     }
 
@@ -359,10 +367,9 @@ final class DJEngine {
         recordingStarted = Date()
         isRecording = true
         setlist = []
-        // Tracks already playing out start the tracklist at 0:00.
-        for deck in decks where deck.track != nil && loggedTrack[deck.index] == deck.track?.id && onAirSince[deck.index] != nil {
-            appendToSetlist(deck, at: 0)
-        }
+        // Tracks already on air start the tracklist at 0:00; the rest are added as they come in.
+        setlistTrack = [nil, nil]
+        trackOnAir()
         if let minutesLeft, minutesLeft < 120 {
             statusMessage = "Free space for about \(Int(minutesLeft)) min of recording."
         }
@@ -374,22 +381,26 @@ final class DJEngine {
         recordingStarted = nil
         guard let caf = recordingURL else { return }
         recordingURL = nil
-        finalize(caf)
+        finalize(caf, recovered: false)
     }
 
     /// Converts the raw capture to the chosen format in the background and writes the tracklist.
-    private func finalize(_ caf: URL) {
+    private func finalize(_ caf: URL, recovered: Bool) {
         savingRecordings += 1
         let format = recordingFormat
         Task.detached(priority: .userInitiated) {
-            let saved = try? RecordingFinalizer.finalize(caf, format: format)
+            let message: String
+            do {
+                let saved = try RecordingFinalizer.finalize(caf, format: format, recovered: recovered)
+                message = (recovered ? "Recovered " : "Saved ") + saved.deletingPathExtension().lastPathComponent
+            } catch RecordingFinalizer.FinalizeError.empty {
+                message = "The recording was empty, so nothing was saved."
+            } catch {
+                message = "Couldn't convert a recording; the full-quality raw file is in Recordings."
+            }
             await MainActor.run {
                 self.savingRecordings -= 1
-                if let saved {
-                    self.statusMessage = "Saved \(saved.deletingPathExtension().lastPathComponent)"
-                } else {
-                    self.statusMessage = "Couldn't convert a recording; the raw .caf is kept in Recordings."
-                }
+                self.statusMessage = message
             }
         }
     }
