@@ -61,6 +61,22 @@ Real stem separation needs a machine-learning model. Apple doesn't provide one.
 
 Separation runs in the background when you first touch a stem pad, then swaps in without interrupting playback.
 
+## Tests
+
+`CheeksTests/` checks the engine offline using synthetic tracks:
+- BPM, beat-grid and key detection
+- loop wrap, slip return and scratch tracking in the realtime renderer
+- stem muting
+- sync (including half time)
+- quantized loops and hot cues, beat jump and grid editing
+- stems summing back to the original
+
+Run them with ⌘U in Xcode, or:
+
+```sh
+xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)'
+```
+
 ## Code map
 
 | Folder | What's there |

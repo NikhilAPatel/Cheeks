@@ -102,6 +102,18 @@ final class DeckRenderer {
         playhead = slipPlayhead
     }
 
+    /// Renders `frames` frames outside of an audio engine (used by tests).
+    func renderOffline(frames: Int) -> (left: [Float], right: [Float]) {
+        var left = [Float](repeating: 0, count: frames)
+        var right = [Float](repeating: 0, count: frames)
+        left.withUnsafeMutableBufferPointer { l in
+            right.withUnsafeMutableBufferPointer { r in
+                render(l.baseAddress!, r.baseAddress!, frames)
+            }
+        }
+        return (left, right)
+    }
+
     private func makeNode() -> AVAudioSourceNode {
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
         return AVAudioSourceNode(format: format) { [unowned self] _, _, frameCount, bufferList in

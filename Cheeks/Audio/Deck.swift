@@ -191,9 +191,10 @@ final class Deck {
     }
 
     func updateTrack(_ change: (inout Track) -> Void) {
-        guard let id = track?.id else { return }
-        library?.update(id, change)
-        track = library?.track(id)
+        guard var current = track else { return }
+        change(&current)
+        track = current
+        library?.update(current.id, change)
     }
 
     // MARK: Transport

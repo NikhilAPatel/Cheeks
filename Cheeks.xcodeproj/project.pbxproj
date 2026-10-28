@@ -6,7 +6,18 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		CE0000000000000000000033 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE0000000000000000000009 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE0000000000000000000006;
+			remoteInfo = Cheeks;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		CE0000000000000000000030 /* CheeksTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CheeksTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE0000000000000000000001 /* Cheeks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cheeks.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE0000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -17,10 +28,22 @@
 			path = Cheeks;
 			sourceTree = "<group>";
 		};
+		CE0000000000000000000031 /* CheeksTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CheeksTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		CE0000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE0000000000000000000035 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -34,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				CE0000000000000000000002 /* Cheeks */,
+				CE0000000000000000000031 /* CheeksTests */,
 				CE0000000000000000000010 /* Config */,
 				CE0000000000000000000005 /* Products */,
 			);
@@ -43,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				CE0000000000000000000001 /* Cheeks.app */,
+				CE0000000000000000000030 /* CheeksTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,6 +105,29 @@
 			productReference = CE0000000000000000000001 /* Cheeks.app */;
 			productType = "com.apple.product-type.application";
 		};
+		CE0000000000000000000032 /* CheeksTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE0000000000000000000038 /* Build configuration list for PBXNativeTarget "CheeksTests" */;
+			buildPhases = (
+				CE0000000000000000000036 /* Sources */,
+				CE0000000000000000000035 /* Frameworks */,
+				CE0000000000000000000037 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE0000000000000000000034 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CE0000000000000000000031 /* CheeksTests */,
+			);
+			name = CheeksTests;
+			packageProductDependencies = (
+			);
+			productName = CheeksTests;
+			productReference = CE0000000000000000000030 /* CheeksTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -92,6 +140,10 @@
 				TargetAttributes = {
 					CE0000000000000000000006 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					CE0000000000000000000032 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = CE0000000000000000000006;
 					};
 				};
 			};
@@ -110,12 +162,20 @@
 			projectRoot = "";
 			targets = (
 				CE0000000000000000000006 /* Cheeks */,
+				CE0000000000000000000032 /* CheeksTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		CE0000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE0000000000000000000037 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -132,7 +192,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE0000000000000000000036 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CE0000000000000000000034 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE0000000000000000000006 /* Cheeks */;
+			targetProxy = CE0000000000000000000033 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		CE0000000000000000000022 /* Debug */ = {
@@ -236,6 +311,42 @@
 			};
 			name = Release;
 		};
+		CE0000000000000000000039 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nikhilpatel.cheeks.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Cheeks.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Cheeks";
+			};
+			name = Debug;
+		};
+		CE000000000000000000003A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nikhilpatel.cheeks.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Cheeks.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Cheeks";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -253,6 +364,15 @@
 			buildConfigurations = (
 				CE0000000000000000000022 /* Debug */,
 				CE0000000000000000000023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE0000000000000000000038 /* Build configuration list for PBXNativeTarget "CheeksTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE0000000000000000000039 /* Debug */,
+				CE000000000000000000003A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
