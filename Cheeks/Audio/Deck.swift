@@ -145,7 +145,8 @@ final class Deck {
                 if needsAnalysis || waveform == nil {
                     let result = TrackAnalyzer.analyze(audio)
                     try? result.waveform.encoded().write(to: LibraryFiles.waveformURL(id), options: .atomic)
-                    analysis = result
+                    // A track with an existing grid (analysed or from rekordbox) only needs its waveform.
+                    analysis = needsAnalysis ? result : nil
                     waveform = result.waveform
                 }
                 await MainActor.run { [waveform, analysis] in

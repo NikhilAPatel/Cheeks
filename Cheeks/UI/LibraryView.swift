@@ -9,10 +9,13 @@ struct LibraryView: View {
     @State private var search = ""
     @State private var sort: SortKey = .dateAdded
     @State private var importing = false
+    @State private var importKind: ImportKind = .audio
+    @State private var importMessage: String?
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
 
     enum Source: Hashable { case all, playlist(UUID) }
+    enum ImportKind { case audio, rekordbox }
 
     enum SortKey: String, CaseIterable, Identifiable {
         case dateAdded = "Date added", title = "Title", artist = "Artist", bpm = "BPM", key = "Key"
@@ -68,9 +71,15 @@ struct LibraryView: View {
         }
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result {
+        .fileImporter(isPresented: $importing,
+                      allowedContentTypes: importKind == .audio ? [.audio] : [.xml],
+                      allowsMultipleSelection: importKind == .audio) { result in
+            guard case .success(let urls) = result else { return }
+            switch importKind {
+            case .audio:
                 for url in urls { library.importFile(at: url) }
+            case .rekordbox:
+                if let url = urls.first { importRekordbox(url) }
             }
         }
         .alert("New playlist", isPresented: $showNewPlaylist) {
@@ -82,6 +91,18 @@ struct LibraryView: View {
             }
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
         }
+    }
+
+    private func importRekordbox(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url), let collection = RekordboxCollection.parse(data) else {
+            importMessage = "That file isn't a rekordbox collection XML."
+            return
+        }
+        let result = library.applyRekordbox(collection)
+        importMessage = "Matched \(result.matched) of \(result.total) rekordbox tracks and added \(result.playlists) playlists. "
+            + "Tracks are matched by file name, so import the audio files first."
     }
 
     private var playlistID: UUID? {
@@ -155,13 +176,28 @@ struct LibraryView: View {
                 .frame(maxWidth: 160)
             }
 
-            Button { importing = true } label: {
+            Menu {
+                Button("Music files…", systemImage: "music.note") {
+                    importKind = .audio
+                    importing = true
+                }
+                Button("rekordbox library (XML)…", systemImage: "doc.text") {
+                    importKind = .rekordbox
+                    importing = true
+                }
+            } label: {
                 Label("Import", systemImage: "square.and.arrow.down").font(.system(size: 12, weight: .bold))
             }
+            .menuStyle(.button)
             .buttonStyle(.borderedProminent)
             .tint(Theme.deckColors[0])
         }
         .padding(8)
+        .alert("rekordbox import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importMessage ?? "")
+        }
     }
 
     private var columnHeader: some View {

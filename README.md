@@ -36,6 +36,16 @@ A standalone DJ app for iPhone, designed for a large landscape screen (an unfold
 - Keys that mix harmonically with the playing track are shown in green.
 - Load buttons are disabled for a deck that is playing, so you can't replace a track mid-set by mistake.
 - Import from the Files app, or drop files into the app's folder through Files / Finder (Documents is shared).
+- rekordbox library import, in two steps:
+  1. Import your audio files first.
+  2. In rekordbox, choose File → Export Collection in xml format, then pick that file under Import → rekordbox library.
+
+  Tracks are matched by file name. For each match, Cheeks brings over:
+  - beat grid and BPM
+  - key
+  - hot cues A–H
+  - memory cue
+  - playlists
 
 ## Getting it onto your phone
 
@@ -93,4 +103,4 @@ Signal chain per deck: `source → varispeed → time-pitch → EQ/filter → ec
 
 ## Not done yet
 
-Routing cue to outputs 3/4 of a multichannel USB audio interface, MIDI/controller support, rekordbox XML import, saved loops, a sampler, and streaming services.
+Routing cue to outputs 3/4 of a multichannel USB audio interface, MIDI/controller support, saved loops, a sampler, and streaming services.

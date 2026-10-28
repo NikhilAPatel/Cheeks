@@ -6,6 +6,8 @@ struct Track: Identifiable, Codable, Hashable {
     var artist: String
     /// File name inside `Library.musicDirectory`.
     var fileName: String
+    /// Name of the file when it was imported; used to match rekordbox XML entries.
+    var originalFileName: String?
     var duration: Double = 0
     var bpm: Double?
     /// Time of the first beat of the beat grid, in seconds.

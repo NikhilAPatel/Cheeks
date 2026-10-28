@@ -78,7 +78,7 @@ final class Library {
             return
         }
         let title = source.deletingPathExtension().lastPathComponent
-        tracks.append(Track(id: id, title: title, artist: "", fileName: fileName))
+        tracks.append(Track(id: id, title: title, artist: "", fileName: fileName, originalFileName: source.lastPathComponent))
         save()
         Task { await loadMetadata(id) }
         enqueueAnalysis(id)
@@ -138,10 +138,12 @@ final class Library {
             }
             await MainActor.run {
                 if let result {
+                    // Don't overwrite a grid/key that arrived from rekordbox while this was running.
                     self.update(id) { t in
+                        guard t.bpm == nil else { return }
                         t.bpm = result.bpm
                         t.firstBeat = result.firstBeat
-                        t.key = result.key
+                        if t.key == nil { t.key = result.key }
                     }
                 }
                 self.analyzing = nil
