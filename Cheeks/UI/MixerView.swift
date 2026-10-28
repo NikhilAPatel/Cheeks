@@ -7,7 +7,7 @@ struct MixerView: View {
     var body: some View {
         @Bindable var dj = dj
         GeometryReader { geo in
-            let knob = min(40, max(26, geo.size.height / 13))
+            let knob = min(40, max(24, geo.size.height / 15))
             VStack(spacing: 6) {
                 HStack(alignment: .top, spacing: 4) {
                     ChannelStrip(deck: dj.decks[0], knobSize: knob)
@@ -18,6 +18,11 @@ struct MixerView: View {
                     }
                     .frame(width: 34)
                     ChannelStrip(deck: dj.decks[1], knobSize: knob)
+                }
+                HStack(spacing: 8) {
+                    ToggleChip(title: "SPLIT", isOn: dj.splitCue, color: .orange) { dj.splitCue.toggle() }
+                    Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE·MST", color: .orange, size: 24)
+                    Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "PHONES", color: .orange, size: 24)
                 }
                 BeatFXPanel()
                 Crossfader(value: $dj.crossfader)
@@ -42,6 +47,14 @@ struct ChannelStrip: View {
             Knob(value: $deck.eqMid, label: "MID", color: color, size: knobSize)
             Knob(value: $deck.eqLow, label: "LOW", color: color, size: knobSize)
             Knob(value: $deck.filter, label: "FILTER", color: .yellow, size: knobSize)
+            Button { deck.headphoneCue.toggle() } label: {
+                Image(systemName: "headphones")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 38, height: 22)
+                    .foregroundStyle(deck.headphoneCue ? Color.black : Color.orange)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(deck.headphoneCue ? Color.orange : Theme.raised))
+            }
+            .buttonStyle(.plain)
             HStack(spacing: 4) {
                 LevelMeter(level: deck.level).frame(width: 6)
                 VerticalFader(value: $deck.fader, color: color)

@@ -24,12 +24,14 @@ A standalone DJ app for iPhone, designed for a large landscape screen (an unfold
 - Trim, 3-band EQ (turning a band fully left kills it), and a one-knob LPF/HPF filter per channel.
 - Channel faders, level meters, master volume, and a crossfader with smooth or scratch curves.
 - Beat FX: ECHO and REVERB (beat-synced), ROLL and BRAKE, applied to channel 1, 2 or both.
+- Headphone cue with SPLIT mode: master in the left ear, cued channels in the right, for use with a cheap headphone splitter cable. Each channel has a pre-fader 🎧 cue button. There are also CUE·MST blend and PHONES level knobs.
 - REC records the master output to `Documents/Recordings/*.m4a`.
 
 **Waveforms and library**
 - rekordbox-style 3-band colour waveform (low blue, mid amber, high white) with beat grid, bar markers, cues and loop region. Drag it to scratch; pinch to zoom.
 - Overview waveform per deck. Tap or drag it to needle-search.
 - Automatic analysis of BPM, beat grid, key (Camelot) and waveform on import.
+- Tap a deck's BPM to fix the grid: ×2 / ÷2, ±0.1 BPM, shift the grid by 10 ms, or set the downbeat at the playhead. You can also save the cue point as the track's memory cue.
 - Library with playlists, search, and sorting by date / title / artist / BPM / key.
 - Keys that mix harmonically with the playing track are shown in green.
 - Load buttons are disabled for a deck that is playing, so you can't replace a track mid-set by mistake.
@@ -75,4 +77,4 @@ Signal chain per deck: `source → varispeed → time-pitch → EQ/filter → ec
 
 ## Not done yet
 
-Headphone cueing (split cue), MIDI/controller support, rekordbox XML import, editing the beat grid, saved loops, recording a sampler, and streaming services.
+Routing cue to outputs 3/4 of a multichannel USB audio interface, MIDI/controller support, rekordbox XML import, saved loops, a sampler, and streaming services.

@@ -31,6 +31,8 @@ final class Deck {
     let delay = AVAudioUnitDelay()
     let reverb = AVAudioUnitReverb()
     let channel = AVAudioMixerNode()
+    /// Pre-fader send to the headphone (cue) bus.
+    let cueSend = AVAudioMixerNode()
 
     @ObservationIgnored weak var library: Library?
     /// Called when anything affecting channel volume or tempo-synced FX changes.
@@ -72,6 +74,7 @@ final class Deck {
     var eqLow: Float = 0 { didSet { applyEQ() } }
     var filter: Float = 0 { didSet { applyFilter() } }
     var fader: Float = 0.85 { didSet { onMixChange?() } }
+    var headphoneCue = false { didSet { onMixChange?() } }
     var level: Float = 0
 
     init(index: Int) {

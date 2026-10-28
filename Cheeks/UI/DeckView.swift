@@ -75,14 +75,29 @@ struct DeckHeader: View {
                     Text(Camelot.musicalName(key)).font(.system(size: 10)).foregroundStyle(Theme.dim)
                 }
             }
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "--.--")
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    .foregroundStyle(deck.syncOn ? Theme.sync : .white)
-                Text(String(format: "%+.2f%%", deck.tempoRatioPercent))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Theme.dim)
+            // Tap the BPM to fix the beat grid.
+            Menu {
+                Section("Beat grid") {
+                    Button("Double BPM (×2)") { deck.scaleBPM(2) }
+                    Button("Halve BPM (÷2)") { deck.scaleBPM(0.5) }
+                    Button("BPM +0.1") { deck.nudgeBPM(by: 0.1) }
+                    Button("BPM −0.1") { deck.nudgeBPM(by: -0.1) }
+                    Button("Grid earlier 10 ms") { deck.shiftGrid(milliseconds: -10) }
+                    Button("Grid later 10 ms") { deck.shiftGrid(milliseconds: 10) }
+                    Button("Set downbeat here") { deck.setDownbeatHere() }
+                }
+                Button("Save cue as memory cue") { deck.saveMemoryCue() }
+            } label: {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "--.--")
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .foregroundStyle(deck.syncOn ? Theme.sync : .white)
+                    Text(String(format: "%+.2f%%", deck.tempoRatioPercent))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.dim)
+                }
             }
+            .disabled(!deck.isLoaded)
         }
     }
 }

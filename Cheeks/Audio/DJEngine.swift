@@ -22,10 +22,23 @@ enum CrossfaderCurve: String, CaseIterable, Identifiable {
 final class DJEngine {
     let engine = AVAudioEngine()
     let decks: [Deck]
+    /// The audience mix (both channels after faders/crossfader). Recorded and metered here.
+    private let program = AVAudioMixerNode()
+    /// Mono copy of the program for the left ear in split-cue mode.
+    private let monoMaster = AVAudioMixerNode()
+    /// Headphone bus: pre-fader cue sends plus some program, mono, right ear in split-cue mode.
+    private let cueBus = AVAudioMixerNode()
 
     var crossfader: Float = 0 { didSet { updateVolumes() } }
     var crossfaderCurve: CrossfaderCurve = .smooth { didSet { updateVolumes() } }
-    var masterVolume: Float = 0.9 { didSet { engine.mainMixerNode.outputVolume = masterVolume } }
+    var masterVolume: Float = 0.9 { didSet { updateVolumes() } }
+
+    // Headphones
+    /// Split cue: master (mono) in the left ear, cue (mono) in the right — for a headphone splitter cable.
+    var splitCue = false { didSet { updateVolumes() } }
+    /// 0 = cue only, 0.5 = both, 1 = master only (in the cue ear).
+    var headphoneMix: Float = 0.25 { didSet { updateVolumes() } }
+    var headphoneVolume: Float = 0.8 { didSet { updateVolumes() } }
     var masterLevel: Float = 0
     var engineError: String?
 
@@ -72,19 +85,41 @@ final class DJEngine {
 
     // MARK: Graph
 
+    /// deck chain → channel fader → program ─┬─────────────→ main (normal)
+    ///            ↘ cue send ──→ cue bus ←────┤               main L (split)
+    ///                               └─ mono → main R (split)  └→ mono master ─┘
     private func buildGraph() {
-        let format = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2)!
+        let stereo = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2)!
+        let mono = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 1)!
+        let main = engine.mainMixerNode
+        [program, monoMaster, cueBus].forEach(engine.attach)
+
         for deck in decks {
-            let chain: [AVAudioNode] = [deck.renderer.node, deck.varispeed, deck.timePitch, deck.eq, deck.delay, deck.reverb, deck.channel]
-            chain.forEach(engine.attach)
+            let chain: [AVAudioNode] = [deck.renderer.node, deck.varispeed, deck.timePitch, deck.eq, deck.delay, deck.reverb]
+            (chain + [deck.channel, deck.cueSend]).forEach(engine.attach)
             for (from, to) in zip(chain, chain.dropFirst()) {
-                engine.connect(from, to: to, format: format)
+                engine.connect(from, to: to, format: stereo)
             }
-            engine.connect(deck.channel, to: engine.mainMixerNode, format: format)
+            // Fan out after FX: one path to the channel fader, one pre-fader to the cue bus.
+            engine.connect(deck.reverb, to: [AVAudioConnectionPoint(node: deck.channel, bus: 0),
+                                             AVAudioConnectionPoint(node: deck.cueSend, bus: 0)],
+                           fromBus: 0, format: stereo)
+            engine.connect(deck.channel, to: program, fromBus: 0, toBus: deck.index, format: stereo)
+            engine.connect(deck.cueSend, to: cueBus, fromBus: 0, toBus: deck.index, format: stereo)
             Self.installTap(on: deck.channel, recorder: nil) { [weak deck] level in deck?.level = level }
         }
-        engine.mainMixerNode.outputVolume = masterVolume
-        Self.installTap(on: engine.mainMixerNode, recorder: recorder) { [weak self] level in self?.masterLevel = level }
+
+        engine.connect(program, to: [AVAudioConnectionPoint(node: main, bus: 0),
+                                     AVAudioConnectionPoint(node: monoMaster, bus: 0),
+                                     AVAudioConnectionPoint(node: cueBus, bus: 2)],
+                       fromBus: 0, format: stereo)
+        engine.connect(monoMaster, to: main, fromBus: 0, toBus: 1, format: mono)
+        engine.connect(cueBus, to: main, fromBus: 0, toBus: 2, format: mono)
+        monoMaster.pan = -1
+        cueBus.pan = 1
+        main.outputVolume = 1
+
+        Self.installTap(on: program, recorder: recorder) { [weak self] level in self?.masterLevel = level }
         updateVolumes()
     }
 
@@ -164,11 +199,20 @@ final class DJEngine {
 
     func updateVolumes() {
         let (a, b) = crossfaderGains()
+        // Mix knob: centre plays both at full level, each end fades the other out.
+        let cueLevel = min(1, 2 * (1 - headphoneMix))
+        let programInCue = min(1, 2 * headphoneMix)
         for deck in decks {
             let xf = deck.index == 0 ? a : b
             let trim = pow(10, deck.trim * 12 / 20)
             deck.channel.outputVolume = deck.fader * deck.fader * xf * trim
+            deck.cueSend.outputVolume = deck.headphoneCue ? cueLevel * trim : 0
         }
+        let main = engine.mainMixerNode
+        program.destination(forMixer: main, bus: 0)?.volume = splitCue ? 0 : masterVolume
+        program.destination(forMixer: cueBus, bus: 2)?.volume = programInCue
+        monoMaster.outputVolume = splitCue ? masterVolume : 0
+        cueBus.outputVolume = splitCue ? headphoneVolume : 0
     }
 
     // MARK: Beat FX
@@ -253,7 +297,7 @@ final class DJEngine {
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
         let stamp = formatter.string(from: Date())
         let url = dir.appending(path: "Mix \(stamp).m4a")
-        let format = engine.mainMixerNode.outputFormat(forBus: 0)
+        let format = program.outputFormat(forBus: 0)
         if recorder.start(url: url, format: format) {
             isRecording = true
             recordingStarted = Date()

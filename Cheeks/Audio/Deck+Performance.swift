@@ -240,6 +240,40 @@ extension Deck {
         }
     }
 
+    // MARK: Beat grid editing
+
+    private var barSeconds: Double { bpm > 0 ? 4 * 60 / bpm : 0 }
+
+    /// Fixes half/double-time detection (multiplier 2 or 0.5).
+    func scaleBPM(_ multiplier: Double) {
+        guard let current = track?.bpm else { return }
+        updateTrack { $0.bpm = current * multiplier }
+    }
+
+    func nudgeBPM(by delta: Double) {
+        guard let current = track?.bpm else { return }
+        updateTrack { $0.bpm = max(40, ((current + delta) * 100).rounded() / 100) }
+    }
+
+    /// Slides the whole grid earlier/later.
+    func shiftGrid(milliseconds: Double) {
+        guard barSeconds > 0, let first = track?.firstBeat else { return }
+        let bar = barSeconds
+        var moved = (first + milliseconds / 1000).truncatingRemainder(dividingBy: bar)
+        if moved < 0 { moved += bar }
+        updateTrack { $0.firstBeat = moved }
+    }
+
+    /// Makes the nearest beat to the playhead the first beat of a bar.
+    func setDownbeatHere() {
+        guard barSeconds > 0 else { return }
+        let bar = barSeconds
+        let here = snap(renderer.playhead) / sampleRate
+        var first = here.truncatingRemainder(dividingBy: bar)
+        if first < 0 { first += bar }
+        updateTrack { $0.firstBeat = first }
+    }
+
     // MARK: EQ / filter
 
     func applyEQ() {
