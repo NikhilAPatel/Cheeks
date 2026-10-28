@@ -84,6 +84,8 @@ enum AudioDecoder {
                     try file.read(into: inBuffer, frameCount: inCapacity)
                 } catch {
                     reachedEnd = true
+                    inputStatus.pointee = .endOfStream
+                    return nil
                 }
                 if inBuffer.frameLength == 0 {
                     reachedEnd = true

@@ -145,7 +145,7 @@ final class Deck {
                     analysis = result
                     waveform = result.waveform
                 }
-                await MainActor.run {
+                await MainActor.run { [waveform, analysis] in
                     self.finishLoading(id: id, pcm: pcm, waveform: waveform, analysis: analysis)
                 }
             } catch {

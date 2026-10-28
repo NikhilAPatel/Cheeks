@@ -49,32 +49,38 @@ struct FrequencySplitSeparator: StemSeparator {
     func separate(_ audio: DecodedAudio) throws -> [PCM16Stereo] {
         let sr = audio.sampleRate
         let n = audio.frames
+        let stems = (0..<4).map { _ in PCM16Stereo(frames: n) }
+        let vocals = stems[Stem.vocals.rawValue].data
+        let melody = stems[Stem.melody.rawValue].data
+        let bass = stems[Stem.bass.rawValue].data
+        let drums = stems[Stem.drums.rawValue].data
 
-        let bassL = Biquad.cascade(.lowpass(140, sampleRate: sr), audio.left)
-        let bassR = Biquad.cascade(.lowpass(140, sampleRate: sr), audio.right)
-        let hatsL = Biquad.cascade(.highpass(6000, sampleRate: sr), audio.left)
-        let hatsR = Biquad.cascade(.highpass(6000, sampleRate: sr), audio.right)
+        // 4th-order filters as two cascaded biquads each, run in a single streaming pass
+        // so no full-length intermediate copies are needed.
+        let lp = Biquad.lowpass(140, sampleRate: sr), hp = Biquad.highpass(6000, sampleRate: sr)
+        var bassL = (lp, lp), bassR = (lp, lp), hatsL = (hp, hp), hatsR = (hp, hp)
+        let vHP = Biquad.highpass(250, sampleRate: sr), vLP = Biquad.lowpass(5000, sampleRate: sr)
+        var voice = (vHP, vHP, vLP, vLP)
 
-        // Vocals: centre (mid) channel of what remains, band-limited to 250 Hz – 5 kHz.
-        var mid = [Float](repeating: 0, count: n)
-        for i in 0..<n {
-            mid[i] = ((audio.left[i] - bassL[i] - hatsL[i]) + (audio.right[i] - bassR[i] - hatsR[i])) * 0.5
+        audio.left.withUnsafeBufferPointer { left in
+            audio.right.withUnsafeBufferPointer { right in
+                for i in 0..<n {
+                    let l = left[i], r = right[i]
+                    let bl = bassL.1.process(bassL.0.process(l)), br = bassR.1.process(bassR.0.process(r))
+                    let hl = hatsL.1.process(hatsL.0.process(l)), hr = hatsR.1.process(hatsR.0.process(r))
+                    // Vocals: centre (mid) channel of what remains, band-limited to 250 Hz – 5 kHz.
+                    let mid = ((l - bl - hl) + (r - br - hr)) * 0.5
+                    let v = voice.3.process(voice.2.process(voice.1.process(voice.0.process(mid))))
+                    let j = i * 2
+                    bass[j] = PCM16Stereo.toInt16(bl); bass[j + 1] = PCM16Stereo.toInt16(br)
+                    drums[j] = PCM16Stereo.toInt16(hl); drums[j + 1] = PCM16Stereo.toInt16(hr)
+                    vocals[j] = PCM16Stereo.toInt16(v); vocals[j + 1] = vocals[j]
+                    melody[j] = PCM16Stereo.toInt16(l - bl - hl - v)
+                    melody[j + 1] = PCM16Stereo.toInt16(r - br - hr - v)
+                }
+            }
         }
-        let vocals = Biquad.cascade(.lowpass(5000, sampleRate: sr), Biquad.cascade(.highpass(250, sampleRate: sr), mid))
-
-        var melodyL = [Float](repeating: 0, count: n)
-        var melodyR = [Float](repeating: 0, count: n)
-        for i in 0..<n {
-            melodyL[i] = audio.left[i] - bassL[i] - hatsL[i] - vocals[i]
-            melodyR[i] = audio.right[i] - bassR[i] - hatsR[i] - vocals[i]
-        }
-
-        return [
-            PCM16Stereo(left: vocals, right: vocals),
-            PCM16Stereo(left: melodyL, right: melodyR),
-            PCM16Stereo(left: bassL, right: bassR),
-            PCM16Stereo(left: hatsL, right: hatsR),
-        ]
+        return stems
     }
 }
 
@@ -103,8 +109,7 @@ struct CoreMLStemSeparator: StemSeparator {
         let n = audio.frames
         // Demucs order → our Stem order (vocals, melody, bass, drums)
         let demucsIndex = [3, 2, 1, 0]
-        var outL = Array(repeating: [Float](repeating: 0, count: n), count: 4)
-        var outR = Array(repeating: [Float](repeating: 0, count: n), count: 4)
+        let outputs = (0..<4).map { _ in PCM16Stereo(frames: n) }
 
         var start = 0
         while start < n {
@@ -125,13 +130,14 @@ struct CoreMLStemSeparator: StemSeparator {
             let ptr = stems.dataPointer.assumingMemoryBound(to: Float.self)
             for stem in 0..<4 {
                 let base = demucsIndex[stem] * s[1]
+                let out = outputs[stem].data
                 for i in 0..<length {
-                    outL[stem][start + i] = ptr[base + i * s[3]]
-                    outR[stem][start + i] = ptr[base + s[2] + i * s[3]]
+                    out[(start + i) * 2] = PCM16Stereo.toInt16(ptr[base + i * s[3]])
+                    out[(start + i) * 2 + 1] = PCM16Stereo.toInt16(ptr[base + s[2] + i * s[3]])
                 }
             }
             start += length
         }
-        return (0..<4).map { PCM16Stereo(left: outL[$0], right: outR[$0]) }
+        return outputs
     }
 }

@@ -58,13 +58,16 @@ final class DJEngine {
                 self?.applyFX()
             }
         }
-        buildGraph()
         configureSession()
+        buildGraph()
         start()
         observeSession()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+        // .common mode keeps sync and transport state updating while a list is being scrolled.
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     // MARK: Graph
@@ -88,7 +91,7 @@ final class DJEngine {
     /// Level meter tap (and, for the master bus, the recorder). Nonisolated so the tap
     /// closure is not tied to the main actor; it runs on an AVAudioEngine thread.
     nonisolated private static func installTap(on node: AVAudioNode, recorder: Recorder?, update: @escaping @MainActor (Float) -> Void) {
-        node.installTap(onBus: 0, bufferSize: 2048, format: node.outputFormat(forBus: 0)) { buffer, _ in
+        node.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in
             recorder?.write(buffer)
             let level = peak(buffer)
             Task { @MainActor in update(level) }
