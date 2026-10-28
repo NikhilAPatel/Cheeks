@@ -26,6 +26,8 @@ struct CheeksApp: App {
             if phase == .active {
                 library.importInbox() // pick up files added through the Files app
                 dj.start()
+            } else if phase == .background {
+                library.saveNow()
             }
         }
     }

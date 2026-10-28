@@ -9,6 +9,7 @@ final class Library {
     var playlists: [Playlist] = []
     private(set) var analyzing: UUID?
     private var analysisQueue: [UUID] = []
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "caf", "alac"]
 
@@ -29,13 +30,32 @@ final class Library {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: Self.databaseURL),
-              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
-        tracks = snapshot.tracks
-        playlists = snapshot.playlists
+        guard let data = try? Data(contentsOf: Self.databaseURL) else { return }
+        do {
+            let snapshot = try JSONDecoder().decode(Snapshot.self, from: data)
+            tracks = snapshot.tracks
+            playlists = snapshot.playlists
+        } catch {
+            // Never silently overwrite a library we couldn't read: keep a copy to recover from.
+            let backup = URL.applicationSupportDirectory.appending(path: "library-unreadable-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.copyItem(at: Self.databaseURL, to: backup)
+        }
     }
 
+    /// Saves shortly after the last change, so bursts (importing a folder, editing cues) write once.
     func save() {
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.saveNow()
+        }
+    }
+
+    /// Writes immediately — call when the app goes to the background.
+    func saveNow() {
+        pendingSave?.cancel()
+        pendingSave = nil
         guard let data = try? JSONEncoder().encode(Snapshot(tracks: tracks, playlists: playlists)) else { return }
         try? data.write(to: Self.databaseURL, options: .atomic)
     }
@@ -65,6 +85,11 @@ final class Library {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
+        if isAlreadyImported(source) {
+            if move { try? FileManager.default.removeItem(at: source) } // don't re-process it every launch
+            return
+        }
+
         let id = UUID()
         let fileName = "\(id.uuidString).\(source.pathExtension.lowercased())"
         let destination = LibraryFiles.musicDirectory.appending(path: fileName)
@@ -82,6 +107,17 @@ final class Library {
         save()
         Task { await loadMetadata(id) }
         enqueueAnalysis(id)
+    }
+
+    /// Same original name and byte size as a track we already have.
+    private func isAlreadyImported(_ source: URL) -> Bool {
+        let name = source.lastPathComponent
+        guard let size = Self.fileSize(source) else { return false }
+        return tracks.contains { $0.originalFileName == name && Self.fileSize(url(for: $0)) == size }
+    }
+
+    private static func fileSize(_ url: URL) -> Int? {
+        try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
     }
 
     private func loadMetadata(_ id: UUID) async {

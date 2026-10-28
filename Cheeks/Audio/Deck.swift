@@ -42,6 +42,8 @@ final class Deck {
     var track: Track?
     var waveform: WaveformData?
     private(set) var isLoading = false
+    /// Bumped on every load so a slow, superseded load can't replace a newer one.
+    @ObservationIgnored private var loadGeneration = 0
     private(set) var loadError: String?
 
     // Transport
@@ -133,6 +135,8 @@ final class Deck {
         pause()
         isLoading = true
         loadError = nil
+        loadGeneration += 1
+        let generation = loadGeneration
         let url = library.url(for: newTrack)
         let id = newTrack.id
         let needsAnalysis = !newTrack.isAnalyzed
@@ -150,10 +154,12 @@ final class Deck {
                     waveform = result.waveform
                 }
                 await MainActor.run { [waveform, analysis] in
+                    guard self.loadGeneration == generation else { return }
                     self.finishLoading(id: id, pcm: pcm, waveform: waveform, analysis: analysis)
                 }
             } catch {
                 await MainActor.run {
+                    guard self.loadGeneration == generation else { return }
                     self.isLoading = false
                     self.loadError = "Couldn't open this file"
                 }
