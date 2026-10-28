@@ -11,8 +11,12 @@ final class DeckRenderer {
     let sampleRate: Double
 
     // Sources: one full mix, or four stems (see `Stem`).
+    /// Strong references keep the buffers alive; the render thread only sees the raw slots below.
     private var sources: [PCM16Stereo] = []
-    private var sourcePointers: [UnsafeMutablePointer<Int16>] = []
+    private let sourceSlots: UnsafeMutablePointer<UnsafeMutablePointer<Int16>?>
+    private var sourceCount = 0
+    /// Gain that undoes the stems' storage headroom (read on the audio thread, so precomputed).
+    private let stemScale: Float = 1 / PCM16Stereo.stemHeadroom / 32768
     private(set) var frameCount = 0
     private let lock: UnsafeMutablePointer<os_unfair_lock>
 
@@ -58,12 +62,15 @@ final class DeckRenderer {
         stemGains.initialize(repeating: 1, count: 4)
         currentGains = .allocate(capacity: 4)
         currentGains.initialize(repeating: 1, count: 4)
+        sourceSlots = .allocate(capacity: 4)
+        sourceSlots.initialize(repeating: nil, count: 4)
     }
 
     deinit {
         lock.deallocate()
         stemGains.deallocate()
         currentGains.deallocate()
+        sourceSlots.deallocate()
     }
 
     var hasStems: Bool { sources.count == 4 }
@@ -75,7 +82,8 @@ final class DeckRenderer {
     func setSources(_ newSources: [PCM16Stereo]) {
         os_unfair_lock_lock(lock)
         sources = newSources
-        sourcePointers = newSources.map(\.data)
+        for i in 0..<4 { sourceSlots[i] = i < newSources.count ? newSources[i].data : nil }
+        sourceCount = min(newSources.count, 4)
         frameCount = newSources.first?.frames ?? 0
         if playhead > Double(frameCount) { playhead = 0 }
         os_unfair_lock_unlock(lock)
@@ -119,7 +127,8 @@ final class DeckRenderer {
 
     private func makeNode() -> AVAudioSourceNode {
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
-        return AVAudioSourceNode(format: format) { [unowned self] _, _, frameCount, bufferList in
+        // unowned(unsafe): no reference counting on the audio thread; the renderer lives as long as its deck.
+        return AVAudioSourceNode(format: format) { [unowned(unsafe) self] _, _, frameCount, bufferList in
             let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
             guard buffers.count >= 2,
                   let left = buffers[0].mData?.assumingMemoryBound(to: Float.self),
@@ -138,16 +147,15 @@ final class DeckRenderer {
         defer { os_unfair_lock_unlock(lock) }
 
         let count = frameCount
-        let sourceCount = sources.count
+        let sourceCount = self.sourceCount
         guard count > 1, sourceCount > 0 else {
             outL.update(repeating: 0, count: n)
             outR.update(repeating: 0, count: n)
             return
         }
-        let pointers = sourcePointers
         let lastFrame = Double(count - 1)
         let usesStems = sourceCount == 4
-        let scale: Float = (usesStems ? 1 / PCM16Stereo.stemHeadroom : 1) / 32768
+        let scale: Float = usesStems ? stemScale : 1 / 32768
 
         for i in 0..<n {
             // 1. Work out how fast the playhead moves this sample.
@@ -192,7 +200,7 @@ final class DeckRenderer {
                         gain = currentGains[s]
                         if gain < 0.0001 { continue }
                     }
-                    let p = pointers[s]
+                    let p = sourceSlots[s].unsafelyUnwrapped
                     let a0 = Float(p[i0 * 2]), a1 = Float(p[i0 * 2 + 2])
                     let b0 = Float(p[i0 * 2 + 1]), b1 = Float(p[i0 * 2 + 3])
                     l += gain * (a0 + (a1 - a0) * frac)

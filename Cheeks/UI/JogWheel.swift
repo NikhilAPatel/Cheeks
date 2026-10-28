@@ -15,7 +15,7 @@ struct JogWheel: View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            TimelineView(.animation) { _ in
+            TimelineView(.animation(minimumInterval: 1.0 / 60)) { _ in
                 platter(size: size)
             }
             .frame(width: size, height: size)

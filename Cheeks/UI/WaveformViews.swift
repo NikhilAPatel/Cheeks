@@ -10,7 +10,8 @@ struct ScrollingWaveform: View {
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation) { _ in
+            // 60 fps is plenty for a scrolling waveform and halves the work on 120 Hz screens.
+            TimelineView(.animation(minimumInterval: 1.0 / 60)) { _ in
                 Canvas { context, size in
                     draw(&context, size: size)
                 }
