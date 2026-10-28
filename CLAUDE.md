@@ -37,4 +37,5 @@ The project was written without a compiler, in a Linux container, so the first b
   - Files decode straight into interleaved Int16 (`PCM16Stereo`). Analysis and stem separation stream over that buffer, so never materialise full-length Float copies.
   - Stems are stored at `stemHeadroom` (×0.5).
 - **Signal chain:** renderer → varispeed → timePitch → EQ/filter → delay → reverb → (channel fader → program bus) + (pre-fader cue send → cue bus).
+  - varispeed and timePitch are never bypassed, so every deck has the same latency and sync stays phase-accurate.
 - **Swift language mode is 5:** keep it that way unless asked.

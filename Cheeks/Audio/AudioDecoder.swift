@@ -55,7 +55,7 @@ final class PCM16Stereo {
         if frames + count > capacity {
             let newCapacity = max(capacity * 3 / 2, frames + count)
             let grown = UnsafeMutablePointer<Int16>.allocate(capacity: newCapacity * 2)
-            grown.update(from: data, count: frames * 2)
+            grown.initialize(from: data, count: frames * 2)
             data.deallocate()
             data = grown
             capacity = newCapacity

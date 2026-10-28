@@ -202,12 +202,14 @@ extension Deck {
 
     func toggleStem(_ stem: Stem) {
         prepareStems()
+        guard stemStatus != .tooLong else { return }
         stemsOn[stem.rawValue].toggle()
     }
 
     /// Solo a stem; soloing the already-soloed stem brings all back.
     func soloStem(_ stem: Stem) {
         prepareStems()
+        guard stemStatus != .tooLong else { return }
         let alreadySolo = stemsOn.indices.allSatisfy { stemsOn[$0] == ($0 == stem.rawValue) }
         stemsOn = alreadySolo ? [true, true, true, true] : Stem.allCases.map { $0 == stem }
     }
@@ -219,26 +221,31 @@ extension Deck {
     /// Splits the loaded track into stems in the background, then swaps them in seamlessly.
     func prepareStems() {
         // Separates the audio already loaded on the deck, so there's no second decode.
-        guard let track, stemStatus == .unavailable, let mix = renderer.mixSource else { return }
+        guard let track, !isLoading, stemStatus == .unavailable, let mix = renderer.mixSource else { return }
         guard mix.duration <= AudioConfig.maxStemSeconds else {
             stemStatus = .tooLong
             return
         }
         stemStatus = .separating
         let id = track.id
+        // Results from a separation started before another track was loaded are dropped.
+        let generation = loadGeneration
         Task.detached(priority: .userInitiated) {
             do {
                 let separator = StemSeparation.makeSeparator()
                 let label = separator.isMachineLearning ? "AI" : "≈EQ"
                 let stems = try separator.separate(mix)
                 await MainActor.run {
-                    guard self.track?.id == id else { return }
+                    guard self.loadGeneration == generation, self.track?.id == id else { return }
                     self.renderer.setSources(stems)
                     self.applyStemGains()
                     self.stemStatus = .ready(label)
                 }
             } catch {
-                await MainActor.run { self.stemStatus = .unavailable }
+                await MainActor.run {
+                    guard self.loadGeneration == generation else { return }
+                    self.stemStatus = .unavailable
+                }
             }
         }
     }

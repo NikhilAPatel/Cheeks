@@ -45,7 +45,7 @@ final class Deck {
     var waveform: WaveformData?
     private(set) var isLoading = false
     /// Bumped on every load so a slow, superseded load can't replace a newer one.
-    @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private(set) var loadGeneration = 0
     private(set) var loadError: String?
 
     // Transport
@@ -155,7 +155,11 @@ final class Deck {
                     waveform = result.waveform
                 }
                 await MainActor.run { [waveform, analysis] in
-                    guard self.loadGeneration == generation else { return }
+                    guard self.loadGeneration == generation else {
+                        // Superseded by a newer load, but keep the analysis work.
+                        if let analysis { self.saveAnalysis(analysis, for: id) }
+                        return
+                    }
                     self.finishLoading(id: id, pcm: pcm, waveform: waveform, analysis: analysis)
                 }
             } catch {
@@ -168,14 +172,18 @@ final class Deck {
         }
     }
 
-    private func finishLoading(id: UUID, pcm: PCM16Stereo, waveform: WaveformData?, analysis: AnalysisResult?) {
-        if let analysis {
-            library?.update(id) { t in
-                t.bpm = analysis.bpm
-                t.firstBeat = analysis.firstBeat
-                t.key = analysis.key
-            }
+    /// Stores fresh analysis unless the track gained a grid meanwhile (e.g. from rekordbox).
+    private func saveAnalysis(_ analysis: AnalysisResult, for id: UUID) {
+        library?.update(id) { t in
+            guard t.bpm == nil else { return }
+            t.bpm = analysis.bpm
+            t.firstBeat = analysis.firstBeat
+            if t.key == nil { t.key = analysis.key }
         }
+    }
+
+    private func finishLoading(id: UUID, pcm: PCM16Stereo, waveform: WaveformData?, analysis: AnalysisResult?) {
+        if let analysis { saveAnalysis(analysis, for: id) }
         library?.update(id) { $0.playCount += 1 }
 
         renderer.isPlaying = false
@@ -277,8 +285,9 @@ final class Deck {
             timePitch.rate = 1
         }
         timePitch.pitch = Float(keyShift * 100)
-        varispeed.bypass = varispeed.rate == 1
-        timePitch.bypass = timePitch.rate == 1 && keyShift == 0
+        // Never bypass these: the time-pitch stage adds latency, so bypassing it on a deck at 0%
+        // would make that deck play earlier than a synced deck at +2% and the kicks would flam.
+        // Keeping both stages always on gives both decks identical latency.
         onMixChange?()
     }
 
