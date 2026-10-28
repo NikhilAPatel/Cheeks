@@ -25,7 +25,12 @@ A standalone DJ app for iPhone, designed for a large landscape screen (an unfold
 - Channel faders, level meters, master volume, and a crossfader with smooth or scratch curves.
 - Beat FX: ECHO and REVERB (beat-synced), ROLL and BRAKE, applied to channel 1, 2 or both.
 - Headphone cue with SPLIT mode: master in the left ear, cued channels in the right, for use with a cheap headphone splitter cable. Each channel has a pre-fader 🎧 cue button. There are also CUE·MST blend and PHONES level knobs.
-- REC records the master output to `Documents/Recordings/*.m4a`.
+- **Session recording.** REC records the master mix.
+  - **Crash-safe:** it captures to a 24-bit file that can be recovered if the app is killed mid-set, then converts to AAC or WAV (your choice, in settings) when you stop. Interrupted recordings are recovered on the next launch.
+  - **Tracklist:** every track audible for 10+ seconds is logged with its timestamp and BPM/key. It's saved next to the mix as a `.txt` and a `.cue` sheet (chapter markers).
+  - **Recordings screen:** play, view the tracklist, share, rename and delete.
+  - **Safety:** stopping asks for confirmation, recording warns when storage is low and stops cleanly if storage fills.
+- **History:** a "History <date>" playlist logs what you played each day, recording or not.
 
 **Waveforms and library**
 - rekordbox-style 3-band colour waveform (low blue, mid amber, high white) with beat grid, bar markers, cues and loop region. Drag it to scratch; pinch to zoom.

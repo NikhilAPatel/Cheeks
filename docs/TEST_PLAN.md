@@ -61,7 +61,13 @@ Tick each item. Anything that fails: note what you did, what you heard or saw, a
 - [ ] The filter sweeps low-pass to the left and high-pass to the right, silent at centre.
 - [ ] Crossfader: SMOOTH has no volume dip at centre; SCRATCH cuts in sharply at the edges.
 - [ ] ECHO is in time at 1/2 and 1 beat. REVERB tails. ROLL and BRAKE work on the selected channel.
-- [ ] REC: a mix file appears in Files → On My iPhone → Cheeks → Recordings and plays back correctly.
+- [ ] REC for 10+ minutes across 3+ tracks, then stop. "Saving mix…" appears, then the mix, `.txt` and `.cue` show up in Recordings (and in Files → Cheeks → Recordings).
+- [ ] The tracklist times match when each track came in (±10 s). A track only previewed in the headphones (fader down) is *not* listed.
+- [ ] The recording plays back in the Recordings screen with no gaps or clicks. Share sends the audio and the tracklists.
+- [ ] Switch the format to WAV and record again; the file is lossless WAV.
+- [ ] Tapping REC while recording asks before stopping.
+- [ ] Crash test: start recording, play 2 minutes, force-quit the app, relaunch. The recording is recovered with its tracklist.
+- [ ] "History <today>" lists the tracks that were played out.
 
 ### Headphones (split cable)
 - [ ] With SPLIT on, the left ear has the master in mono and the right ear has the cued channels.

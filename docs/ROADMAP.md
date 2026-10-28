@@ -146,7 +146,7 @@ Follow `docs/TEST_PLAN.md`: compile, fix errors, get the unit tests green, run a
   - large pads view for finger drumming
 - **Onboarding (S):** a first-run import walkthrough and splitter-cable guidance.
 - **Accessibility (S):** VoiceOver labels on all controls, Dynamic Type in the browser, and haptics on beat-jump and loop set.
-- **Recording (S):** a recordings browser with share, rename and delete; optionally embed the setlist as chapter markers.
+- **Recording (S):** embed chapter markers in the m4a itself (CUE sheets already exist), and add a 'publish' preset with normalisation.
 
 ---
 

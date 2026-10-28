@@ -56,7 +56,22 @@ final class DJEngine {
     // Recording
     private(set) var isRecording = false
     private(set) var recordingStarted: Date?
-    private let recorder = Recorder()
+    /// Tracks that were audible for 10+ seconds during the current recording.
+    private(set) var setlist: [SetlistEntry] = []
+    private(set) var savingRecordings = 0
+    var recordingFormat: RecordingFormat = RecordingFormat(rawValue: UserDefaults.standard.string(forKey: "recordingFormat") ?? "") ?? .aac {
+        didSet { UserDefaults.standard.set(recordingFormat.rawValue, forKey: "recordingFormat") }
+    }
+    /// Short message for the top bar (saved, low storage, errors).
+    var statusMessage: String?
+    private let recorder = MixRecorder()
+    @ObservationIgnored private var recordingURL: URL?
+    @ObservationIgnored private weak var library: Library?
+
+    // On-air detection for the tracklist and History playlists
+    @ObservationIgnored private var onAirSince: [Date?] = [nil, nil]
+    @ObservationIgnored private var loggedTrack: [UUID?] = [nil, nil]
+    private static let onAirSeconds: TimeInterval = 10
 
     @ObservationIgnored private var timer: Timer?
 
@@ -64,6 +79,7 @@ final class DJEngine {
 
     init(library: Library) {
         decks = [Deck(index: 0), Deck(index: 1)]
+        self.library = library
         for deck in decks {
             deck.library = library
             deck.onMixChange = { [weak self] in
@@ -81,6 +97,8 @@ final class DJEngine {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        // Recordings interrupted by a crash or the app being killed get saved now.
+        for caf in Recordings.unfinished() { finalize(caf) }
     }
 
     // MARK: Graph
@@ -128,7 +146,7 @@ final class DJEngine {
 
     /// Level meter tap (and, for the master bus, the recorder). Nonisolated so the tap
     /// closure is not tied to the main actor; it runs on an AVAudioEngine thread.
-    nonisolated private static func installTap(on node: AVAudioNode, recorder: Recorder?, update: @escaping @MainActor (Float) -> Void) {
+    nonisolated private static func installTap(on node: AVAudioNode, recorder: MixRecorder?, update: @escaping @MainActor (Float) -> Void) {
         node.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in
             recorder?.write(buffer)
             let level = peak(buffer)
@@ -283,61 +301,100 @@ final class DJEngine {
         if fxOn && fxType == .brake && !fxDecks.contains(where: { $0.renderer.braking }) {
             fxOn = false
         }
+        trackOnAir()
+        if isRecording && recorder.didFail {
+            stopRecording()
+            statusMessage = "Recording stopped: storage is full. Everything up to now was saved."
+        }
+    }
+
+    /// A track counts as played once it has been audible on the master for 10 seconds,
+    /// like rekordbox's history. It goes into today's History playlist and the recording's tracklist.
+    private func trackOnAir() {
+        let now = Date()
+        for deck in decks {
+            let i = deck.index
+            guard let track = deck.track, deck.isPlaying, deck.channel.outputVolume > 0.05 else {
+                onAirSince[i] = nil
+                continue
+            }
+            let since = onAirSince[i] ?? now
+            onAirSince[i] = since
+            guard loggedTrack[i] != track.id, now.timeIntervalSince(since) >= Self.onAirSeconds else { continue }
+            loggedTrack[i] = track.id
+            library?.logPlay(track.id)
+            if isRecording, let start = recordingStarted {
+                appendToSetlist(deck, at: since.timeIntervalSince(start))
+            }
+        }
+    }
+
+    private func appendToSetlist(_ deck: Deck, at offset: TimeInterval) {
+        guard let track = deck.track, let caf = recordingURL else { return }
+        setlist.append(SetlistEntry(offset: max(0, offset), title: track.title, artist: track.artist,
+                                    bpm: deck.bpm > 0 ? deck.effectiveBPM : nil, key: track.key))
+        Setlist.save(setlist, forRecording: caf) // kept on disk so a crash doesn't lose the tracklist
     }
 
     // MARK: Recording
 
     func toggleRecording() {
-        if isRecording {
-            recorder.stop()
-            isRecording = false
-            recordingStarted = nil
+        isRecording ? stopRecording() : startRecording()
+    }
+
+    private func startRecording() {
+        let minutesLeft = Recordings.minutesOfStorageLeft()
+        if let minutesLeft, minutesLeft < 10 {
+            statusMessage = "Not enough free space to record."
             return
         }
-        let dir = URL.documentsDirectory.appending(path: "Recordings", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        let stamp = formatter.string(from: Date())
-        let url = dir.appending(path: "Mix \(stamp).m4a")
-        let format = program.outputFormat(forBus: 0)
-        if recorder.start(url: url, format: format) {
-            isRecording = true
-            recordingStarted = Date()
-        } else {
-            engineError = "Couldn't start recording"
+        let url = Recordings.directory.appending(path: Recordings.newBaseName() + Recordings.inProgressSuffix)
+        do {
+            try recorder.start(url: url, format: program.outputFormat(forBus: 0))
+        } catch {
+            statusMessage = "Couldn't start recording."
+            return
+        }
+        recordingURL = url
+        recordingStarted = Date()
+        isRecording = true
+        setlist = []
+        // Tracks already playing out start the tracklist at 0:00.
+        for deck in decks where deck.track != nil && loggedTrack[deck.index] == deck.track?.id && onAirSince[deck.index] != nil {
+            appendToSetlist(deck, at: 0)
+        }
+        if let minutesLeft, minutesLeft < 120 {
+            statusMessage = "Free space for about \(Int(minutesLeft)) min of recording."
+        }
+    }
+
+    private func stopRecording() {
+        recorder.stop()
+        isRecording = false
+        recordingStarted = nil
+        guard let caf = recordingURL else { return }
+        recordingURL = nil
+        finalize(caf)
+    }
+
+    /// Converts the raw capture to the chosen format in the background and writes the tracklist.
+    private func finalize(_ caf: URL) {
+        savingRecordings += 1
+        let format = recordingFormat
+        Task.detached(priority: .userInitiated) {
+            let saved = try? RecordingFinalizer.finalize(caf, format: format)
+            await MainActor.run {
+                self.savingRecordings -= 1
+                if let saved {
+                    self.statusMessage = "Saved \(saved.deletingPathExtension().lastPathComponent)"
+                } else {
+                    self.statusMessage = "Couldn't convert a recording; the raw .caf is kept in Recordings."
+                }
+            }
         }
     }
 }
 
 extension Deck {
     var tempoRatioPercent: Double { (tempoRatio - 1) * 100 }
-}
-
-/// Writes the master output to an AAC file from the tap thread.
-final class Recorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var file: AVAudioFile?
-
-    func start(url: URL, format: AVAudioFormat) -> Bool {
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVEncoderBitRateKey: 256_000,
-        ]
-        guard let newFile = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false) else {
-            return false
-        }
-        lock.withLock { file = newFile }
-        return true
-    }
-
-    func write(_ buffer: AVAudioPCMBuffer) {
-        lock.withLock { try? file?.write(from: buffer) }
-    }
-
-    func stop() {
-        lock.withLock { file = nil }
-    }
 }

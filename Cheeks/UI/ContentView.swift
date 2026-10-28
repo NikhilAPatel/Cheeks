@@ -53,6 +53,8 @@ struct WaveformStrip: View {
 struct TopBar: View {
     @Environment(DJEngine.self) private var dj
     @Binding var showLibrary: Bool
+    @State private var showRecordings = false
+    @State private var confirmStopRecording = false
 
     var body: some View {
         @Bindable var dj = dj
@@ -70,6 +72,12 @@ struct TopBar: View {
 
             if let error = dj.engineError {
                 Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
+            } else if let message = dj.statusMessage {
+                Text(message).font(.caption2).foregroundStyle(Theme.dim).lineLimit(1)
+            }
+            if dj.savingRecordings > 0 {
+                ProgressView().controlSize(.mini)
+                Text("Saving mix…").font(.caption2).foregroundStyle(Theme.dim)
             }
             Spacer()
 
@@ -77,15 +85,29 @@ struct TopBar: View {
                 Picker("Crossfader curve", selection: $dj.crossfaderCurve) {
                     ForEach(CrossfaderCurve.allCases) { Text($0.rawValue.capitalized).tag($0) }
                 }
+                Picker("Recording format", selection: $dj.recordingFormat) {
+                    ForEach(RecordingFormat.allCases) { Text($0.rawValue).tag($0) }
+                }
             } label: {
                 Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
             }
 
-            Button { dj.toggleRecording() } label: {
+            Button { showRecordings = true } label: {
+                Image(systemName: "waveform.badge.mic").font(.system(size: 14, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+
+            // Stopping asks first, so a stray tap can't end a set's recording.
+            Button {
+                if dj.isRecording { confirmStopRecording = true } else { dj.toggleRecording() }
+            } label: {
                 HStack(spacing: 5) {
                     Circle().fill(dj.isRecording ? Color.red : Color.red.opacity(0.4)).frame(width: 9, height: 9)
                     if let started = dj.recordingStarted {
                         Text(started, style: .timer).font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        if !dj.setlist.isEmpty {
+                            Text("· \(dj.setlist.count) tracks").font(.system(size: 10)).foregroundStyle(Theme.dim)
+                        }
                     } else {
                         Text("REC").font(.system(size: 11, weight: .bold))
                     }
@@ -95,6 +117,10 @@ struct TopBar: View {
                 .background(Capsule().fill(Theme.raised))
             }
             .buttonStyle(.plain)
+            .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
+                Button("Stop and save", role: .destructive) { dj.toggleRecording() }
+                Button("Keep recording", role: .cancel) {}
+            }
 
             TimelineView(.everyMinute) { context in
                 Text(context.date, style: .time)
@@ -103,5 +129,11 @@ struct TopBar: View {
             }
         }
         .frame(height: 30)
+        .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
+        .task(id: dj.statusMessage) {
+            guard dj.statusMessage != nil else { return }
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled { dj.statusMessage = nil }
+        }
     }
 }

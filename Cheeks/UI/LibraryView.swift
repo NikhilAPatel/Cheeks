@@ -123,7 +123,8 @@ struct LibraryView: View {
             }
             Section {
                 ForEach(library.playlists) { playlist in
-                    sidebarRow(playlist.name, icon: "list.bullet", count: playlist.trackIDs.count, tag: .playlist(playlist.id))
+                    sidebarRow(playlist.name, icon: library.isHistory(playlist) ? "clock.arrow.circlepath" : "list.bullet",
+                               count: playlist.trackIDs.count, tag: .playlist(playlist.id))
                         .contextMenu {
                             Button("Delete Playlist", role: .destructive) {
                                 if source == .playlist(playlist.id) { source = .all }
