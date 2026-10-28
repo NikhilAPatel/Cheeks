@@ -101,6 +101,11 @@ xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=
 
 Signal chain per deck: `source → varispeed → time-pitch → EQ/filter → echo → reverb → channel fader → master`. Internal audio runs at 44.1 kHz.
 
-## Not done yet
+## What's next
 
-Routing cue to outputs 3/4 of a multichannel USB audio interface, MIDI/controller support, saved loops, a sampler, and streaming services.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the plan:
+- real AI stems
+- more FX, saved loops, a sampler and 4 decks
+- better analysis
+
+[docs/TEST_PLAN.md](docs/TEST_PLAN.md) covers first build and on-device testing. Hardware controllers and streaming are out of scope.
