@@ -41,59 +41,77 @@ struct AnalysisResult {
 }
 
 enum TrackAnalyzer {
-    static func analyze(_ audio: DecodedAudio) -> AnalysisResult {
-        let mono = zip(audio.left, audio.right).map { ($0 + $1) * 0.5 }
-        let waveform = makeWaveform(mono: mono, sampleRate: audio.sampleRate)
-        let (bpm, firstBeat) = detectTempo(mono: mono, sampleRate: audio.sampleRate)
-        let key = KeyDetector.detect(mono: mono, sampleRate: audio.sampleRate)
-        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, key: key, waveform: waveform)
-    }
+    static let tempoHop = 512
+    static let keyDecimation = 4
 
-    static func makeWaveform(mono: [Float], sampleRate: Double) -> WaveformData {
-        let lowBand = Biquad.cascade(.lowpass(200, sampleRate: sampleRate), mono)
-        let highBand = Biquad.cascade(.highpass(2500, sampleRate: sampleRate), mono)
-        let binSize = max(1, Int(sampleRate / WaveformData.binsPerSecond))
-        let bins = mono.count / binSize
+    /// One streaming pass over the track collects the 3-band waveform, onset energies and a
+    /// decimated signal for key detection, so analysis never holds a full-length Float copy.
+    static func analyze(_ pcm: PCM16Stereo) -> AnalysisResult {
+        let sr = AudioConfig.sampleRate
+        let n = pcm.frames
+        let binSize = max(1, Int(sr / WaveformData.binsPerSecond))
+        let bins = n / binSize
+        let hops = n / tempoHop
+        let keyCount = n / keyDecimation
+
         var low = [Float](repeating: 0, count: bins)
         var mid = [Float](repeating: 0, count: bins)
         var high = [Float](repeating: 0, count: bins)
-        for b in 0..<bins {
-            var pl: Float = 0, pm: Float = 0, ph: Float = 0
-            let start = b * binSize
-            for i in start..<(start + binSize) {
-                let l = lowBand[i], h = highBand[i]
-                pl = max(pl, abs(l))
-                ph = max(ph, abs(h))
-                pm = max(pm, abs(mono[i] - l - h))
+        var energyFull = [Float](repeating: 0, count: hops)
+        var energyLow = [Float](repeating: 0, count: hops)
+        var keySignal = [Float](repeating: 0, count: keyCount)
+
+        // 4th-order filters are two cascaded biquads.
+        let wl = Biquad.lowpass(200, sampleRate: sr), wh = Biquad.highpass(2500, sampleRate: sr)
+        let tl = Biquad.lowpass(150, sampleRate: sr)
+        var waveLow = (wl, wl), waveHigh = (wh, wh), tempoLow = (tl, tl)
+        var keyLow = Biquad.lowpass(2500, sampleRate: sr)
+
+        for i in 0..<n {
+            let m = (pcm.left(i) + pcm.right(i)) * 0.5
+            let b = i / binSize
+            if b < bins {
+                let l = waveLow.1.process(waveLow.0.process(m))
+                let h = waveHigh.1.process(waveHigh.0.process(m))
+                low[b] = max(low[b], abs(l))
+                high[b] = max(high[b], abs(h))
+                mid[b] = max(mid[b], abs(m - l - h))
             }
-            low[b] = pl; mid[b] = pm; high[b] = ph
+            let f = i / tempoHop
+            if f < hops {
+                let t = tempoLow.1.process(tempoLow.0.process(m))
+                energyFull[f] += m * m
+                energyLow[f] += t * t
+            }
+            if i < keyCount * keyDecimation {
+                let y = keyLow.process(m)
+                if i % keyDecimation == 0 { keySignal[i / keyDecimation] = y }
+            }
         }
+
         let peak = max(low.max() ?? 0, mid.max() ?? 0, high.max() ?? 0, 0.0001)
         func quantize(_ values: [Float]) -> [UInt8] {
             values.map { UInt8(min(255, ($0 / peak) * 255)) }
         }
-        return WaveformData(low: quantize(low), mid: quantize(mid), high: quantize(high))
+        let waveform = WaveformData(low: quantize(low), mid: quantize(mid), high: quantize(high))
+        let (bpm, firstBeat) = detectTempo(energyFull: energyFull, energyLow: energyLow, sampleRate: sr)
+        let key = KeyDetector.detect(signal: keySignal, rate: sr / Double(keyDecimation))
+        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, key: key, waveform: waveform)
     }
 
     /// Onset-envelope tempo detection: autocorrelation picks the period,
     /// then a comb search over the whole track refines BPM and finds the grid phase.
-    static func detectTempo(mono: [Float], sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
-        let hop = 512
-        let fps = sampleRate / Double(hop)
-        let lowBand = Biquad.cascade(.lowpass(150, sampleRate: sampleRate), mono)
-        let frames = mono.count / hop
+    /// `energyFull`/`energyLow` are per-hop (512 frames) energies of the mono mix and its <150 Hz band.
+    static func detectTempo(energyFull: [Float], energyLow: [Float], sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
+        let fps = sampleRate / Double(tempoHop)
+        let frames = energyFull.count
         guard frames > 64 else { return (120, 0) }
 
         // Onset strength: positive change in log energy, weighting the kick region.
         var onset = [Float](repeating: 0, count: frames)
         var prevFull: Float = 0, prevLow: Float = 0
         for f in 0..<frames {
-            var eFull: Float = 0, eLow: Float = 0
-            for i in (f * hop)..<(f * hop + hop) {
-                eFull += mono[i] * mono[i]
-                eLow += lowBand[i] * lowBand[i]
-            }
-            let lf = log(1 + 100 * eFull), ll = log(1 + 100 * eLow)
+            let lf = log(1 + 100 * energyFull[f]), ll = log(1 + 100 * energyLow[f])
             onset[f] = max(0, lf - prevFull) + 1.5 * max(0, ll - prevLow)
             prevFull = lf; prevLow = ll
         }

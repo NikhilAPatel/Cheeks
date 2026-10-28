@@ -1,6 +1,6 @@
 import Foundation
 
-/// RBJ-cookbook biquad filter (transposed direct form II), used for offline analysis and stem splitting.
+/// RBJ-cookbook biquad filter (transposed direct form II), used for streaming analysis and stem splitting.
 struct Biquad {
     private var b0: Float, b1: Float, b2: Float, a1: Float, a2: Float
     private var z1: Float = 0, z2: Float = 0
@@ -27,19 +27,5 @@ struct Biquad {
         z1 = b1 * x - a1 * y + z2
         z2 = b2 * x - a2 * y
         return y
-    }
-
-    /// Filters a whole signal in place.
-    mutating func process(_ signal: inout [Float]) {
-        for i in signal.indices { signal[i] = process(signal[i]) }
-    }
-
-    /// Applies `filter` twice in series (4th order) to a copy of `signal`.
-    static func cascade(_ filter: Biquad, _ signal: [Float]) -> [Float] {
-        var out = signal
-        var first = filter, second = filter
-        first.process(&out)
-        second.process(&out)
-        return out
     }
 }

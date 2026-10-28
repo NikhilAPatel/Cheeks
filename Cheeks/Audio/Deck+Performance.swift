@@ -218,16 +218,19 @@ extension Deck {
 
     /// Splits the loaded track into stems in the background, then swaps them in seamlessly.
     func prepareStems() {
-        guard let track, let library, stemStatus == .unavailable else { return }
+        // Separates the audio already loaded on the deck, so there's no second decode.
+        guard let track, stemStatus == .unavailable, let mix = renderer.mixSource else { return }
+        guard mix.duration <= AudioConfig.maxStemSeconds else {
+            stemStatus = .tooLong
+            return
+        }
         stemStatus = .separating
-        let url = library.url(for: track)
         let id = track.id
         Task.detached(priority: .userInitiated) {
             do {
-                let audio = try AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)
                 let separator = StemSeparation.makeSeparator()
                 let label = separator.isMachineLearning ? "AI" : "≈EQ"
-                let stems = try separator.separate(audio)
+                let stems = try separator.separate(mix)
                 await MainActor.run {
                     guard self.track?.id == id else { return }
                     self.renderer.setSources(stems)

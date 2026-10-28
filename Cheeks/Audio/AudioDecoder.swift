@@ -3,26 +3,23 @@ import AVFoundation
 enum AudioConfig {
     /// Everything internal runs at 44.1 kHz; AVAudioEngine converts to the hardware rate at the output.
     static let sampleRate: Double = 44_100
-}
-
-/// Whole-track stereo audio as Float32, used for analysis and stem separation.
-struct DecodedAudio {
-    var left: [Float]
-    var right: [Float]
-    var sampleRate: Double
-    var frames: Int { left.count }
+    /// Longest track that can be split into stems (four extra copies of the audio in memory).
+    static let maxStemSeconds: Double = 20 * 60
 }
 
 /// Interleaved 16-bit stereo PCM kept in memory for the realtime renderer.
 /// 16-bit halves memory use, which matters once a track is split into four stems.
+/// Tracks are decoded straight into this format so a full-length Float copy never exists.
 final class PCM16Stereo {
-    let frames: Int
-    let data: UnsafeMutablePointer<Int16>
+    private(set) var frames: Int
+    private(set) var data: UnsafeMutablePointer<Int16>
+    private var capacity: Int
 
     init(frames: Int) {
         self.frames = frames
-        data = .allocate(capacity: max(frames, 1) * 2)
-        data.initialize(repeating: 0, count: max(frames, 1) * 2)
+        capacity = max(frames, 1)
+        data = .allocate(capacity: capacity * 2)
+        data.initialize(repeating: 0, count: capacity * 2)
     }
 
     convenience init(left: [Float], right: [Float]) {
@@ -46,13 +43,43 @@ final class PCM16Stereo {
     @inline(__always) static func toInt16(_ x: Float) -> Int16 {
         Int16(max(-1, min(1, x)) * 32767)
     }
+
+    @inline(__always) func left(_ i: Int) -> Float { Float(data[i * 2]) / 32767 }
+    @inline(__always) func right(_ i: Int) -> Float { Float(data[i * 2 + 1]) / 32767 }
+
+    var duration: Double { Double(frames) / AudioConfig.sampleRate }
+
+    // MARK: Building (decoder only, before the buffer is handed to a renderer)
+
+    fileprivate func append(left l: UnsafePointer<Float>, right r: UnsafePointer<Float>, count: Int) {
+        if frames + count > capacity {
+            let newCapacity = max(capacity * 3 / 2, frames + count)
+            let grown = UnsafeMutablePointer<Int16>.allocate(capacity: newCapacity * 2)
+            grown.update(from: data, count: frames * 2)
+            data.deallocate()
+            data = grown
+            capacity = newCapacity
+        }
+        for i in 0..<count {
+            data[(frames + i) * 2] = Self.toInt16(l[i])
+            data[(frames + i) * 2 + 1] = Self.toInt16(r[i])
+        }
+        frames += count
+    }
+
+    fileprivate func resetForAppending(capacity expected: Int) {
+        data.deallocate()
+        capacity = max(expected, 1)
+        data = .allocate(capacity: capacity * 2)
+        frames = 0
+    }
 }
 
 enum AudioDecoder {
     enum DecodeError: Error { case unsupportedFormat }
 
-    /// Decodes any format AVFoundation reads (mp3, aac, wav, aiff, flac, alac) to stereo at `sampleRate`.
-    static func decode(url: URL, sampleRate: Double) throws -> DecodedAudio {
+    /// Decodes any format AVFoundation reads (mp3, aac, wav, aiff, flac, alac) to 16-bit stereo at `sampleRate`.
+    static func decode(url: URL, sampleRate: Double) throws -> PCM16Stereo {
         let file = try AVAudioFile(forReading: url)
         let inFormat = file.processingFormat
         let channels: AVAudioChannelCount = inFormat.channelCount >= 2 ? 2 : 1
@@ -69,11 +96,8 @@ enum AudioDecoder {
             throw DecodeError.unsupportedFormat
         }
 
-        let expected = Int(Double(file.length) * ratio) + 4096
-        var left: [Float] = []
-        var right: [Float] = []
-        left.reserveCapacity(expected)
-        right.reserveCapacity(expected)
+        let pcm = PCM16Stereo(frames: 0)
+        pcm.resetForAppending(capacity: Int(Double(file.length) * ratio) + 4096)
 
         var reachedEnd = false
         while true {
@@ -103,11 +127,10 @@ enum AudioDecoder {
 
             let n = Int(outBuffer.frameLength)
             if n > 0, let channelData = outBuffer.floatChannelData {
-                left.append(contentsOf: UnsafeBufferPointer(start: channelData[0], count: n))
-                right.append(contentsOf: UnsafeBufferPointer(start: channelData[channels == 2 ? 1 : 0], count: n))
+                pcm.append(left: channelData[0], right: channelData[channels == 2 ? 1 : 0], count: n)
             }
             if status == .endOfStream || status == .error || (n == 0 && reachedEnd) { break }
         }
-        return DecodedAudio(left: left, right: right, sampleRate: sampleRate)
+        return pcm
     }
 }

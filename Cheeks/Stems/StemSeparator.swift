@@ -29,7 +29,7 @@ protocol StemSeparator {
     var name: String { get }
     /// True when the result is a real source separation rather than a frequency approximation.
     var isMachineLearning: Bool { get }
-    func separate(_ audio: DecodedAudio) throws -> [PCM16Stereo]
+    func separate(_ source: PCM16Stereo) throws -> [PCM16Stereo]
 }
 
 enum StemSeparation {
@@ -46,9 +46,9 @@ struct FrequencySplitSeparator: StemSeparator {
     let name = "Frequency split"
     let isMachineLearning = false
 
-    func separate(_ audio: DecodedAudio) throws -> [PCM16Stereo] {
-        let sr = audio.sampleRate
-        let n = audio.frames
+    func separate(_ source: PCM16Stereo) throws -> [PCM16Stereo] {
+        let sr = AudioConfig.sampleRate
+        let n = source.frames
         let stems = (0..<4).map { _ in PCM16Stereo(frames: n) }
         let vocals = stems[Stem.vocals.rawValue].data
         let melody = stems[Stem.melody.rawValue].data
@@ -62,24 +62,20 @@ struct FrequencySplitSeparator: StemSeparator {
         let vHP = Biquad.highpass(250, sampleRate: sr), vLP = Biquad.lowpass(5000, sampleRate: sr)
         var voice = (vHP, vHP, vLP, vLP)
 
-        audio.left.withUnsafeBufferPointer { left in
-            audio.right.withUnsafeBufferPointer { right in
-                for i in 0..<n {
-                    let l = left[i], r = right[i]
-                    let bl = bassL.1.process(bassL.0.process(l)), br = bassR.1.process(bassR.0.process(r))
-                    let hl = hatsL.1.process(hatsL.0.process(l)), hr = hatsR.1.process(hatsR.0.process(r))
-                    // Vocals: centre (mid) channel of what remains, band-limited to 250 Hz – 5 kHz.
-                    let mid = ((l - bl - hl) + (r - br - hr)) * 0.5
-                    let v = voice.3.process(voice.2.process(voice.1.process(voice.0.process(mid))))
-                    let j = i * 2
-                    let g = PCM16Stereo.stemHeadroom
-                    bass[j] = PCM16Stereo.toInt16(bl * g); bass[j + 1] = PCM16Stereo.toInt16(br * g)
-                    drums[j] = PCM16Stereo.toInt16(hl * g); drums[j + 1] = PCM16Stereo.toInt16(hr * g)
-                    vocals[j] = PCM16Stereo.toInt16(v * g); vocals[j + 1] = vocals[j]
-                    melody[j] = PCM16Stereo.toInt16((l - bl - hl - v) * g)
-                    melody[j + 1] = PCM16Stereo.toInt16((r - br - hr - v) * g)
-                }
-            }
+        for i in 0..<n {
+            let l = source.left(i), r = source.right(i)
+            let bl = bassL.1.process(bassL.0.process(l)), br = bassR.1.process(bassR.0.process(r))
+            let hl = hatsL.1.process(hatsL.0.process(l)), hr = hatsR.1.process(hatsR.0.process(r))
+            // Vocals: centre (mid) channel of what remains, band-limited to 250 Hz – 5 kHz.
+            let mid = ((l - bl - hl) + (r - br - hr)) * 0.5
+            let v = voice.3.process(voice.2.process(voice.1.process(voice.0.process(mid))))
+            let j = i * 2
+            let g = PCM16Stereo.stemHeadroom
+            bass[j] = PCM16Stereo.toInt16(bl * g); bass[j + 1] = PCM16Stereo.toInt16(br * g)
+            drums[j] = PCM16Stereo.toInt16(hl * g); drums[j + 1] = PCM16Stereo.toInt16(hr * g)
+            vocals[j] = PCM16Stereo.toInt16(v * g); vocals[j + 1] = vocals[j]
+            melody[j] = PCM16Stereo.toInt16((l - bl - hl - v) * g)
+            melody[j + 1] = PCM16Stereo.toInt16((r - br - hr - v) * g)
         }
         return stems
     }
@@ -106,8 +102,8 @@ struct CoreMLStemSeparator: StemSeparator {
         return CoreMLStemSeparator(model: model, chunk: shape[2].intValue)
     }
 
-    func separate(_ audio: DecodedAudio) throws -> [PCM16Stereo] {
-        let n = audio.frames
+    func separate(_ source: PCM16Stereo) throws -> [PCM16Stereo] {
+        let n = source.frames
         // Demucs order → our Stem order (vocals, melody, bass, drums)
         let demucsIndex = [3, 2, 1, 0]
         let outputs = (0..<4).map { _ in PCM16Stereo(frames: n) }
@@ -119,8 +115,8 @@ struct CoreMLStemSeparator: StemSeparator {
             let inStrides = input.strides.map(\.intValue)
             let inPtr = input.dataPointer.assumingMemoryBound(to: Float.self)
             for i in 0..<chunk {
-                inPtr[i * inStrides[2]] = i < length ? audio.left[start + i] : 0
-                inPtr[inStrides[1] + i * inStrides[2]] = i < length ? audio.right[start + i] : 0
+                inPtr[i * inStrides[2]] = i < length ? source.left(start + i) : 0
+                inPtr[inStrides[1] + i * inStrides[2]] = i < length ? source.right(start + i) : 0
             }
 
             let result = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["audio": input]))

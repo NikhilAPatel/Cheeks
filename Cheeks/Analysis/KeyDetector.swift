@@ -7,19 +7,11 @@ enum KeyDetector {
     private static let minorProfile: [Float] = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
 
     /// Returns the key in Camelot notation (e.g. "8A"), or nil for silence.
-    static func detect(mono: [Float], sampleRate: Double) -> String? {
-        // Downsample by 4 (~11 kHz) — plenty for pitch content up to ~2 kHz.
-        let factor = 4
-        let rate = sampleRate / Double(factor)
-        let count = mono.count / factor
+    /// `signal` is the mono mix low-passed at 2.5 kHz and decimated to `rate` (~11 kHz);
+    /// that's plenty for pitch content up to ~2 kHz.
+    static func detect(signal: [Float], rate: Double) -> String? {
+        let count = signal.count
         guard count > 0 else { return nil }
-        var signal = [Float](repeating: 0, count: count)
-        var lowpass = Biquad.lowpass(2500, sampleRate: sampleRate)
-        var j = 0
-        for i in 0..<(count * factor) {
-            let y = lowpass.process(mono[i])
-            if i % factor == 0 { signal[j] = y; j += 1 }
-        }
 
         let log2n: vDSP_Length = 13
         let n = 1 << Int(log2n)

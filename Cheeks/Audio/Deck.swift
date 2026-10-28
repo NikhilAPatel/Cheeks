@@ -14,6 +14,8 @@ enum StemStatus: Equatable {
     case unavailable
     case separating
     case ready(String)
+    /// Track is longer than `AudioConfig.maxStemSeconds`; four stems wouldn't fit in memory.
+    case tooLong
 }
 
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
@@ -142,12 +144,11 @@ final class Deck {
         let needsAnalysis = !newTrack.isAnalyzed
         Task.detached(priority: .userInitiated) {
             do {
-                let audio = try AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)
-                let pcm = PCM16Stereo(left: audio.left, right: audio.right)
+                let pcm = try AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)
                 var waveform = LibraryFiles.cachedWaveform(id)
                 var analysis: AnalysisResult?
                 if needsAnalysis || waveform == nil {
-                    let result = TrackAnalyzer.analyze(audio)
+                    let result = TrackAnalyzer.analyze(pcm)
                     try? result.waveform.encoded().write(to: LibraryFiles.waveformURL(id), options: .atomic)
                     // A track with an existing grid (analysed or from rekordbox) only needs its waveform.
                     analysis = needsAnalysis ? result : nil

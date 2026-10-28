@@ -11,7 +11,7 @@ enum Synth {
 
     static func frequency(midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
 
-    static func track(bpm: Double, firstBeat: Double, seconds: Double, chords: [[Int]]) -> DecodedAudio {
+    static func track(bpm: Double, firstBeat: Double, seconds: Double, chords: [[Int]]) -> PCM16Stereo {
         let sr = sampleRate
         let n = Int(seconds * sr)
         var x = [Float](repeating: 0, count: n)
@@ -51,6 +51,6 @@ enum Synth {
 
         let peak = x.map(abs).max() ?? 1
         x = x.map { $0 / peak * 0.9 }
-        return DecodedAudio(left: x, right: x, sampleRate: sr)
+        return PCM16Stereo(left: x, right: x)
     }
 }

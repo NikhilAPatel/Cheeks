@@ -83,6 +83,12 @@ struct PerformancePads: View {
                     .padding(.horizontal, 5)
                     .background(Capsule().fill(.black.opacity(0.7)))
                     .allowsHitTesting(false)
+            case .tooLong:
+                Text("Stems need a track under \(Int(AudioConfig.maxStemSeconds / 60)) min")
+                    .font(.caption2.bold())
+                    .padding(6)
+                    .background(Capsule().fill(.black.opacity(0.8)))
+                    .allowsHitTesting(false)
             case .unavailable:
                 EmptyView()
             }

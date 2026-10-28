@@ -33,6 +33,8 @@ The project was written without a compiler, in a Linux container, so the first b
   - Scalars are shared with the main thread without locks on purpose.
 - **Main-actor control:** `Deck` and `DJEngine` are `@MainActor @Observable` and hold all control state.
   - The playhead is *not* observed. Views poll `deck.position` from a `TimelineView`.
-- **Sample rate:** internal audio is 44.1 kHz (`AudioConfig.sampleRate`). Audio is held as interleaved Int16 (`PCM16Stereo`) to keep memory down with 4 stems.
+- **Sample rate and memory:** internal audio is 44.1 kHz (`AudioConfig.sampleRate`).
+  - Files decode straight into interleaved Int16 (`PCM16Stereo`). Analysis and stem separation stream over that buffer, so never materialise full-length Float copies.
+  - Stems are stored at `stemHeadroom` (×0.5).
 - **Signal chain:** renderer → varispeed → timePitch → EQ/filter → delay → reverb → (channel fader → program bus) + (pre-fader cue send → cue bus).
 - **Swift language mode is 5:** keep it that way unless asked.
