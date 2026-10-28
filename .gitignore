@@ -1,15 +1,10 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+# Stem model weights are large; add them locally (see README)
+Cheeks/Stems.mlpackage/
+Cheeks/Stems.mlmodelc/
