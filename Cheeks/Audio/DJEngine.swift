@@ -119,7 +119,10 @@ final class DJEngine {
         cueBus.pan = 1
         main.outputVolume = 1
 
-        Self.installTap(on: program, recorder: recorder) { [weak self] level in self?.masterLevel = level }
+        Self.installTap(on: program, recorder: recorder) { [weak self] level in
+            guard let self else { return }
+            masterLevel = level * masterVolume
+        }
         updateVolumes()
     }
 

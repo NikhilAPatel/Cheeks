@@ -50,7 +50,7 @@ final class AnalysisTests: XCTestCase {
         let stems = try FrequencySplitSeparator().separate(audio)
         XCTAssertEqual(stems.count, 4)
         for i in stride(from: 0, to: audio.frames, by: 101) {
-            let sum = stems.reduce(Float(0)) { $0 + Float($1.data[i * 2]) } / 32767
+            let sum = stems.reduce(Float(0)) { $0 + Float($1.data[i * 2]) } / 32767 / PCM16Stereo.stemHeadroom
             XCTAssertEqual(sum, audio.left[i], accuracy: 0.0005)
         }
     }

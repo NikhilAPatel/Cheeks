@@ -94,15 +94,21 @@ struct LibraryView: View {
     }
 
     private func importRekordbox(_ url: URL) {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url), let collection = RekordboxCollection.parse(data) else {
-            importMessage = "That file isn't a rekordbox collection XML."
-            return
+        // Big collections take a moment to parse, so keep it off the main thread.
+        Task.detached(priority: .userInitiated) {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let collection = (try? Data(contentsOf: url)).flatMap(RekordboxCollection.parse)
+            await MainActor.run {
+                guard let collection else {
+                    importMessage = "That file isn't a rekordbox collection XML."
+                    return
+                }
+                let result = library.applyRekordbox(collection)
+                importMessage = "Matched \(result.matched) of \(result.total) rekordbox tracks and imported \(result.playlists) playlists. "
+                    + "Tracks are matched by file name, so import the audio files first."
+            }
         }
-        let result = library.applyRekordbox(collection)
-        importMessage = "Matched \(result.matched) of \(result.total) rekordbox tracks and added \(result.playlists) playlists. "
-            + "Tracks are matched by file name, so import the audio files first."
     }
 
     private var playlistID: UUID? {

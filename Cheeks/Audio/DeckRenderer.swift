@@ -143,8 +143,8 @@ final class DeckRenderer {
         }
         let pointers = sourcePointers
         let lastFrame = Double(count - 1)
-        let scale: Float = 1 / 32768
         let usesStems = sourceCount == 4
+        let scale: Float = (usesStems ? 1 / PCM16Stereo.stemHeadroom : 1) / 32768
 
         for i in 0..<n {
             // 1. Work out how fast the playhead moves this sample.

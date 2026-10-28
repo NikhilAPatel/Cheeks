@@ -264,7 +264,7 @@ extension Deck {
         updateTrack { $0.firstBeat = moved }
     }
 
-    /// Makes the nearest beat to the playhead the first beat of a bar.
+    /// Makes the playhead (snapped to the nearest beat when quantize is on) the first beat of a bar.
     func setDownbeatHere() {
         guard barSeconds > 0 else { return }
         let bar = barSeconds

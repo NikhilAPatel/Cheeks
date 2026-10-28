@@ -72,11 +72,12 @@ struct FrequencySplitSeparator: StemSeparator {
                     let mid = ((l - bl - hl) + (r - br - hr)) * 0.5
                     let v = voice.3.process(voice.2.process(voice.1.process(voice.0.process(mid))))
                     let j = i * 2
-                    bass[j] = PCM16Stereo.toInt16(bl); bass[j + 1] = PCM16Stereo.toInt16(br)
-                    drums[j] = PCM16Stereo.toInt16(hl); drums[j + 1] = PCM16Stereo.toInt16(hr)
-                    vocals[j] = PCM16Stereo.toInt16(v); vocals[j + 1] = vocals[j]
-                    melody[j] = PCM16Stereo.toInt16(l - bl - hl - v)
-                    melody[j + 1] = PCM16Stereo.toInt16(r - br - hr - v)
+                    let g = PCM16Stereo.stemHeadroom
+                    bass[j] = PCM16Stereo.toInt16(bl * g); bass[j + 1] = PCM16Stereo.toInt16(br * g)
+                    drums[j] = PCM16Stereo.toInt16(hl * g); drums[j + 1] = PCM16Stereo.toInt16(hr * g)
+                    vocals[j] = PCM16Stereo.toInt16(v * g); vocals[j + 1] = vocals[j]
+                    melody[j] = PCM16Stereo.toInt16((l - bl - hl - v) * g)
+                    melody[j + 1] = PCM16Stereo.toInt16((r - br - hr - v) * g)
                 }
             }
         }
@@ -132,8 +133,8 @@ struct CoreMLStemSeparator: StemSeparator {
                 let base = demucsIndex[stem] * s[1]
                 let out = outputs[stem].data
                 for i in 0..<length {
-                    out[(start + i) * 2] = PCM16Stereo.toInt16(ptr[base + i * s[3]])
-                    out[(start + i) * 2 + 1] = PCM16Stereo.toInt16(ptr[base + s[2] + i * s[3]])
+                    out[(start + i) * 2] = PCM16Stereo.toInt16(ptr[base + i * s[3]] * PCM16Stereo.stemHeadroom)
+                    out[(start + i) * 2 + 1] = PCM16Stereo.toInt16(ptr[base + s[2] + i * s[3]] * PCM16Stereo.stemHeadroom)
                 }
             }
             start += length

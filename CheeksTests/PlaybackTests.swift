@@ -86,7 +86,8 @@ final class RendererTests: XCTestCase {
         r.isPlaying = true
         r.stemGains[2] = 0 // mute the 4000 stem
         let out = r.renderOffline(frames: 20_000)
-        XCTAssertEqual(out.left.last! * 32768, 11_000, accuracy: 1)
+        // Stems are stored with headroom, so the renderer scales them back up.
+        XCTAssertEqual(out.left.last! * 32768 * PCM16Stereo.stemHeadroom, 11_000, accuracy: 1)
     }
 }
 

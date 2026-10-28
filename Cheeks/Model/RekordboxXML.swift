@@ -122,29 +122,35 @@ extension Library {
     /// Applies grids, keys, cues and playlists to tracks already in the library, matched by file name.
     func applyRekordbox(_ collection: RekordboxCollection) -> RekordboxImportResult {
         var result = RekordboxImportResult(total: collection.entries.count)
-        var byName: [String: UUID] = [:]
-        for track in tracks {
-            if let original = track.originalFileName { byName[original.lowercased()] = track.id }
+        var indexByName: [String: Int] = [:]
+        for (index, track) in tracks.enumerated() {
+            if let original = track.originalFileName { indexByName[original.lowercased()] = index }
         }
         var idForRekordboxID: [String: UUID] = [:]
         for entry in collection.entries {
-            guard let id = byName[entry.fileName.lowercased()] else { continue }
-            idForRekordboxID[entry.trackID] = id
+            guard let index = indexByName[entry.fileName.lowercased()] else { continue }
+            idForRekordboxID[entry.trackID] = tracks[index].id
             result.matched += 1
-            update(id) { t in
-                if !entry.title.isEmpty { t.title = entry.title }
-                if !entry.artist.isEmpty { t.artist = entry.artist }
-                if let bpm = entry.bpm { t.bpm = bpm }
-                if let first = entry.firstBeat { t.firstBeat = first }
-                if let key = entry.key { t.key = key }
-                for (slot, time) in entry.hotCues { t.hotCues[slot] = time }
-                if let memory = entry.memoryCue { t.memoryCue = memory }
-            }
+            // Edit in place and save once at the end; large collections have thousands of tracks.
+            var t = tracks[index]
+            if !entry.title.isEmpty { t.title = entry.title }
+            if !entry.artist.isEmpty { t.artist = entry.artist }
+            if let bpm = entry.bpm { t.bpm = bpm }
+            if let first = entry.firstBeat { t.firstBeat = first }
+            if let key = entry.key { t.key = key }
+            for (slot, time) in entry.hotCues { t.hotCues[slot] = time }
+            if let memory = entry.memoryCue { t.memoryCue = memory }
+            tracks[index] = t
         }
         for list in collection.playlists {
             let ids = list.trackIDs.compactMap { idForRekordboxID[$0] }
             guard !ids.isEmpty else { continue }
-            playlists.append(Playlist(id: UUID(), name: list.name, trackIDs: ids))
+            // Re-importing refreshes playlists instead of duplicating them.
+            if let existing = playlists.firstIndex(where: { $0.name == list.name }) {
+                playlists[existing].trackIDs = ids
+            } else {
+                playlists.append(Playlist(id: UUID(), name: list.name, trackIDs: ids))
+            }
             result.playlists += 1
         }
         save()

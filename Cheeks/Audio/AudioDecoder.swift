@@ -39,6 +39,10 @@ final class PCM16Stereo {
 
     deinit { data.deallocate() }
 
+    /// Stems are stored at half level: filtering shifts phase, so an individual stem can peak
+    /// well above the original track. The renderer applies the gain back when mixing stems.
+    static let stemHeadroom: Float = 0.5
+
     @inline(__always) static func toInt16(_ x: Float) -> Int16 {
         Int16(max(-1, min(1, x)) * 32767)
     }

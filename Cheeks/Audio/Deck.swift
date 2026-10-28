@@ -196,6 +196,7 @@ final class Deck {
         change(&current)
         track = current
         library?.update(current.id, change)
+        onMixChange?() // BPM may have changed; keep beat-synced FX in time
     }
 
     // MARK: Transport
