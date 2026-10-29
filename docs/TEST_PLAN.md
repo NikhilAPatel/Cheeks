@@ -4,7 +4,7 @@ The app was written without a compiler. This is the order for bringing it up on 
 
 ## 1. Mac bring-up (Claude can do all of this)
 
-1. **Prerequisites:** Xcode 16+ with an iOS 17+ simulator runtime. `git checkout ios-dj-app`.
+1. **Prerequisites:** Xcode 16+ with an iOS 17+ simulator runtime, with the repo cloned on `master`.
 2. **Compile:** `xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'generic/platform=iOS Simulator' build`. Fix errors minimally; expect a handful.
 3. **Unit tests:** `xcodebuild test … -destination 'platform=iOS Simulator,name=<iPad>'`. All of `CheeksTests` should pass. Their expected values were cross-checked against a numpy port of the analysis code.
 4. **Simulator UI pass:** launch on a large iPad in landscape, the closest stand-in for an unfolded foldable. Take screenshots of:

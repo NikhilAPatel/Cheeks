@@ -8,3 +8,4 @@ xcuserdata/
 # Stem model weights are large; add them locally (see README)
 Cheeks/Stems.mlpackage/
 Cheeks/Stems.mlmodelc/
+__pycache__/

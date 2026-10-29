@@ -1,5 +1,7 @@
 # Cheeks: notes for Claude
 
+**New session? Read `docs/HANDOFF.md` first.** It covers project status, decisions, and what to do next.
+
 Standalone iOS DJ app (SwiftUI + AVAudioEngine). It's designed for a wide landscape screen: an unfolded foldable iPhone, or an iPad as a stand-in. See README.md for features.
 
 ## Build, test, run (macOS with Xcode 16+)
