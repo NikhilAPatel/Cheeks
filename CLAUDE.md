@@ -50,6 +50,10 @@ The project was written without a compiler, in a Linux container, so the first b
 - **Signal chain:** renderer → varispeed → timePitch → EQ/filter → delay → reverb → (channel fader → program bus) + (pre-fader cue send → cue bus).
   - varispeed and timePitch are never bypassed, so every deck has the same latency and sync stays phase-accurate.
 - **Swift language mode is 5:** keep it that way unless asked.
-- **UI style is rekordbox's** (the owner asked for it explicitly): flat black and dark-grey panels, grey legends, one blue (`Theme.accent`) for every "on" state, no gradients or glows. The one deliberate difference is the jog: a big rekordbox-style jog display that's the centre of each deck, because the owner wants large, prominent spinners.
+- **UI style: rekordbox's screens set into a Pioneer DDJ-style control surface.** The owner asked for rekordbox, big prominent jog wheels "like a real DJ board", and rejected flat grey versions as "unpolished".
+  - Information (waveforms, deck info, browser) sits in recessed black displays (`displayWell`).
+  - Controls look like hardware, using the pieces in `Theme.swift` and `Controls.swift`: `KeyCap` keys that glow when lit, pads lit in their hot cue colours, DJM-style knobs, moulded fader caps in slots, and LED meters whose unlit segments stay faintly visible.
+  - One blue (`Theme.accent`) for every "on" state.
+  - The jogs (`JogWheel.swift`) have a brushed-metal grip ring, blue LED ring, vinyl platter and centre display. Anything that animates goes in the per-frame layer; gradients and shadows go in the static layer, so two wheels at 60 fps stay cheap.
   - Deck 2 is mirrored so each deck's tempo fader and CUE/PLAY sit at the screen edge.
   - Check layout changes with the snapshot test at the Duo size before calling them done.

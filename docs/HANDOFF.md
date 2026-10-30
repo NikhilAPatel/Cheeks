@@ -18,6 +18,7 @@ Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features)
 - **The UI was redesigned at the owner's request to look like rekordbox**, with big jog displays as the centre of each deck (see CLAUDE.md → UI style).
   - The owner rejected the first layout as "very ugly", a glossier hardware look as "still ugly", and a flat version as "low quality / lacking detail".
   - What they want is rekordbox's density: thin lines, small type, lots of small real indicators. Don't drift back to big, flat, empty shapes.
+  - On 2026-10-30 they called that flat pass "still unpolished". It now pairs rekordbox's screens with a hardware control surface: glowing keys, lit pads, DJM knobs, real fader caps, LED meters, and metal-and-LED jog wheels.
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team, then hand them TEST_PLAN §2.

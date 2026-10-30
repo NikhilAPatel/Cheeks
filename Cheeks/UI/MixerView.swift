@@ -16,7 +16,7 @@ struct MixerView: View {
             .padding(.vertical, 6)
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .background(Theme.panel)
+        .controlSurface()
     }
 }
 
@@ -26,26 +26,34 @@ struct ChannelStrip: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Knob(value: $deck.trim, label: "TRIM", color: Theme.dim, size: knobSize * 0.85)
+            Text("CH \(deck.index + 1)")
+                .font(Theme.legend(9, .bold))
+                .tracking(0.8)
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, minHeight: 16)
+                .displayWell(cornerRadius: 3)
+            Knob(value: $deck.trim, label: "TRIM", color: Color(white: 0.75), size: knobSize * 0.85)
             Knob(value: $deck.eqHigh, label: "HIGH", size: knobSize)
             Knob(value: $deck.eqMid, label: "MID", size: knobSize)
             Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
             Knob(value: $deck.filter, label: "FILTER", size: knobSize)
             Button { deck.headphoneCue.toggle() } label: {
-                Text("CUE")
-                    .font(Theme.legend(11, .semibold))
-                    .frame(maxWidth: .infinity, minHeight: 26)
-                    .foregroundStyle(deck.headphoneCue ? Color.white : Theme.dim)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(deck.headphoneCue ? Theme.accent : Theme.raised))
+                HStack(spacing: 3) {
+                    Image(systemName: "headphones").font(.system(size: 9, weight: .bold))
+                    Text("CUE").font(Theme.legend(10, .semibold)).tracking(0.4)
+                }
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .foregroundStyle(deck.headphoneCue ? Color.white : Theme.dim)
+                .background(KeyCap(color: Theme.accent, lit: deck.headphoneCue))
             }
             .buttonStyle(.plain)
             // Meters sit between the two faders.
             HStack(spacing: 4) {
                 if deck.index == 0 {
                     VerticalFader(value: $deck.fader)
-                    LevelMeter(level: deck.level).frame(width: 5)
+                    DeckLevelMeter(deck: deck).frame(width: 5)
                 } else {
-                    LevelMeter(level: deck.level).frame(width: 5)
+                    DeckLevelMeter(deck: deck).frame(width: 5)
                     VerticalFader(value: $deck.fader)
                 }
             }
@@ -72,7 +80,7 @@ struct FXUnit: View {
                             .font(Theme.legend(11, .semibold))
                             .frame(width: 24, height: 24)
                             .foregroundStyle(dj.fxTarget == target ? Color.white : Theme.dim)
-                            .background(RoundedRectangle(cornerRadius: 3).fill(dj.fxTarget == target ? Theme.accent : Theme.raised))
+                            .background(KeyCap(color: Theme.accent, lit: dj.fxTarget == target))
                     }
                     .buttonStyle(.plain)
                 }
@@ -91,7 +99,7 @@ struct FXUnit: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .frame(width: 84, height: 24)
-                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+                .background(KeyCap())
             }
             HStack(spacing: 0) {
                 Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 24) }
@@ -134,7 +142,7 @@ struct BottomBar: View {
             Spacer(minLength: crossfaderWidth + 40)
             legend("MASTER")
             Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "", size: 24)
-            LevelMeter(level: dj.masterLevel, horizontal: true).frame(width: 80, height: 7)
+            MasterMeter().frame(width: 80, height: 7)
             recordButton
         }
         .overlay {
@@ -146,7 +154,9 @@ struct BottomBar: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
-        .background(Theme.panel)
+        .controlSurface(cornerRadius: 0)
+        // Carry the panel down behind the home indicator, so the screen doesn't end in a black strip.
+        .background(Color(white: 0.075).ignoresSafeArea(edges: .bottom))
     }
 
     private func legend(_ text: String) -> some View {
@@ -171,7 +181,7 @@ struct BottomBar: View {
             }
             .padding(.horizontal, 8)
             .frame(minHeight: 26)
-            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+            .background(KeyCap())
         }
         .buttonStyle(.plain)
         .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
@@ -179,5 +189,14 @@ struct BottomBar: View {
             Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
             Button("Keep recording", role: .cancel) {}
         }
+    }
+}
+
+/// The master level, observed on its own so the meter can update without redrawing the bar.
+struct MasterMeter: View {
+    @Environment(DJEngine.self) private var dj
+
+    var body: some View {
+        LevelMeter(level: dj.masterLevel, horizontal: true)
     }
 }

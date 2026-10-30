@@ -1,10 +1,13 @@
 import SwiftUI
 
-/// Modelled on rekordbox's performance screen: flat black and dark-grey panels, grey legends,
-/// and one blue for anything that's switched on.
+/// rekordbox's screens set into a Pioneer-style control surface: black recessed displays for
+/// waveforms and track info, top-lit bevelled keys and pads that glow when on, and one blue for
+/// anything that's switched on.
 enum Theme {
     static let background = Color.black
     static let panel = Color(white: 0.085)
+    /// The control surface: dark panel, lit slightly from the top like hardware under a booth light.
+    static let surface = LinearGradient(colors: [Color(white: 0.125), Color(white: 0.075)], startPoint: .top, endPoint: .bottom)
     /// Unlit buttons and pad rows.
     static let raised = Color(white: 0.16)
     /// Waveforms and the jog displays.
@@ -53,11 +56,53 @@ enum Theme {
     }
 }
 
-/// A flat, pressable button that reports press and release separately (pads, loop controls).
+/// Hardware key face: a top-lit cap with a bevelled edge. Lit keys glow in their colour, like
+/// backlit rubber; pressing an unlit key tints it.
+struct KeyCap: View {
+    var color: Color = .white
+    var lit = false
+    var pressed = false
+    var cornerRadius: CGFloat = 4
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        ZStack {
+            if lit {
+                shape.fill(color.opacity(pressed ? 1 : 0.88))
+                shape.fill(LinearGradient(colors: [.white.opacity(0.3), .clear], startPoint: .top, endPoint: .center))
+            } else {
+                shape.fill(LinearGradient(colors: [Color(white: pressed ? 0.27 : 0.21), Color(white: pressed ? 0.18 : 0.135)],
+                                          startPoint: .top, endPoint: .bottom))
+                if pressed { shape.fill(color.opacity(0.2)) }
+            }
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(lit ? 0.4 : 0.14), .black.opacity(0.55)],
+                                              startPoint: .top, endPoint: .bottom), lineWidth: 1)
+        }
+        .shadow(color: lit ? color.opacity(0.6) : .black.opacity(0.75), radius: lit ? 6 : 1.5, y: lit ? 0 : 1)
+    }
+}
+
+extension View {
+    /// A recessed black display set into the surface (waveforms, track info, jog screens).
+    func displayWell(cornerRadius: CGFloat = 4) -> some View {
+        background(RoundedRectangle(cornerRadius: cornerRadius).fill(Theme.well))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(LinearGradient(colors: [.black, .white.opacity(0.12)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+    }
+
+    /// A section of the control surface, with a faint highlight along its top edge.
+    func controlSurface(cornerRadius: CGFloat = 6) -> some View {
+        background(RoundedRectangle(cornerRadius: cornerRadius).fill(Theme.surface))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.02)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+    }
+}
+
+/// A pressable hardware key that reports press and release separately (pads, loop controls).
 struct PadButton<Label: View>: View {
     var color: Color = .white
     var lit = false
-    var cornerRadius: CGFloat = 3
+    var cornerRadius: CGFloat = 4
     var onPress: @MainActor () -> Void
     var onRelease: @MainActor () -> Void = {}
     @ViewBuilder var label: () -> Label
@@ -65,9 +110,7 @@ struct PadButton<Label: View>: View {
     @State private var pressed = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(lit ? color : (pressed ? color.opacity(0.3) : Theme.raised))
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(Theme.edge, lineWidth: 1))
+        KeyCap(color: color, lit: lit, pressed: pressed, cornerRadius: cornerRadius)
             .overlay(label().foregroundStyle(lit ? Color.black : color).padding(2))
             .contentShape(Rectangle())
             .gesture(
@@ -92,6 +135,6 @@ extension PadButton where Label == Text {
         self.lit = lit
         self.onPress = onPress
         self.onRelease = onRelease
-        self.label = { Text(title).font(Theme.legend(12)) }
+        self.label = { Text(title).font(Theme.legend(11, .semibold)) }
     }
 }

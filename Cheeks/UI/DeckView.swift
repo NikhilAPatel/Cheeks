@@ -11,6 +11,7 @@ struct DeckView: View {
     var body: some View {
         VStack(spacing: 0) {
             DeckInfo(deck: deck)
+                .padding([.horizontal, .top], 5)
             GeometryReader { geo in
                 let edge = min(76, max(48, geo.size.width * 0.14))
                 let bottom = min(210, max(96, geo.size.height * 0.28))
@@ -47,11 +48,11 @@ struct DeckView: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         }
-        .background(Theme.panel)
+        .controlSurface()
         .overlay {
             if deck.isLoading {
                 ZStack {
-                    Color.black.opacity(0.6)
+                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.6))
                     VStack(spacing: 8) {
                         ProgressView().tint(Theme.accent)
                         Text("Loading & analysing…").font(.caption).foregroundStyle(Theme.dim)
@@ -115,11 +116,12 @@ struct DeckInfo: View {
             }
             OverviewWaveform(deck: deck)
                 .frame(height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
         }
         .padding(.horizontal, 7)
         .padding(.top, 5)
-        .padding(.bottom, 4)
-        .background(Theme.panel)
+        .padding(.bottom, 5)
+        .displayWell()
     }
 
     /// Tap the BPM to fix the beat grid.
@@ -212,10 +214,11 @@ struct TempoColumn: View {
                     .font(Theme.legend(10, .semibold))
                     .foregroundStyle(Theme.dim)
                     .frame(maxWidth: .infinity, minHeight: 24)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+                    .background(KeyCap())
             }
             .buttonStyle(.plain)
             TempoSlider(deck: deck)
+            Text("TEMPO").font(Theme.legend(8, .semibold)).tracking(0.6).foregroundStyle(Theme.dim)
         }
     }
 }
@@ -228,14 +231,15 @@ struct TempoSlider: View {
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
-            let capH: CGFloat = 16
+            let capH: CGFloat = 22
             let fraction = (deck.tempoRatioPercent / deck.tempoRange + 1) / 2 // 0 top … 1 bottom
             ZStack(alignment: .top) {
                 FaderScale(ticks: 10, inset: capH / 2, vertical: true)
-                Rectangle().fill(Color.white.opacity(0.3)).frame(width: 2).frame(maxWidth: .infinity)
-                Rectangle().fill(Theme.play).frame(width: 18, height: 2).offset(y: h / 2 - 1)
-                FaderCap(color: deck.syncOn ? Theme.accent : .black, vertical: true)
-                    .frame(width: min(28, geo.size.width), height: capH)
+                FaderSlot().padding(.vertical, capH / 2 - 3).frame(maxWidth: .infinity)
+                Rectangle().fill(Theme.play).frame(width: 26, height: 1.5).offset(y: h / 2 - 0.75)
+                    .shadow(color: Theme.play, radius: 2)
+                FaderCap(color: deck.syncOn ? Theme.accent : .white, vertical: true)
+                    .frame(width: min(30, geo.size.width), height: capH)
                     .offset(y: CGFloat(min(1, max(0, fraction))) * (h - capH))
             }
             .contentShape(Rectangle())

@@ -20,23 +20,20 @@ struct PerformancePads: View {
     private func pad(_ i: Int) -> some View {
         switch deck.padMode {
         case .hotCue:
-            // rekordbox's hot cue list: a coloured letter tag, then the cue's time.
+            // Set cues light the pad in their colour, like a DDJ; empty pads show a dim letter.
             let time = deck.track?.hotCues[i]
             let color = Theme.hotCueColors[i]
-            PadButton(color: color, onPress: { deck.hotCue(i) }) {
-                HStack(spacing: 6) {
+            PadButton(color: color, lit: time != nil, onPress: { deck.hotCue(i) }) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(Theme.hotCueLetters[i])
-                        .font(Theme.legend(11, .bold))
-                        .foregroundStyle(time != nil ? Color.white : color)
-                        .frame(width: 17, height: 17)
-                        .background(RoundedRectangle(cornerRadius: 2).fill(time != nil ? color : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(color.opacity(time != nil ? 0 : 0.6), lineWidth: 1))
+                        .font(Theme.legend(14, .bold))
+                        .foregroundStyle(time != nil ? Color.black.opacity(0.8) : color.opacity(0.75))
                     Text(time.map(\.clockString) ?? "")
-                        .font(Theme.readout(12))
-                        .foregroundStyle(.white)
+                        .font(Theme.readout(11, .semibold))
+                        .foregroundStyle(Color.black.opacity(0.65))
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 8)
             }
         case .beatLoop:
             let size = loopSizes[i]
@@ -102,13 +99,13 @@ struct PadModeMenu: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text(deck.padMode.rawValue).font(Theme.legend(11, .semibold))
+                    Text(deck.padMode.rawValue).font(Theme.legend(10.5, .semibold)).tracking(0.4)
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .frame(minWidth: 84, minHeight: 26)
-                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+                .background(KeyCap())
             }
             ToggleChip(title: "SHIFT", isOn: deck.shift, color: Theme.cue) { deck.shift.toggle() }
         }

@@ -20,10 +20,11 @@ struct ContentView: View {
 
                 if showLibrary {
                     HStack(spacing: 3) {
-                        DeckInfo(deck: dj.decks[0])
-                        DeckInfo(deck: dj.decks[1])
+                        DeckInfo(deck: dj.decks[0]).padding(5).controlSurface()
+                        DeckInfo(deck: dj.decks[1]).padding(5).controlSurface()
                     }
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 3)
                     LibraryView()
                 } else {
                     HStack(spacing: 3) {
@@ -32,6 +33,7 @@ struct ContentView: View {
                             .frame(width: mixerWidth)
                         DeckView(deck: dj.decks[1])
                     }
+                    .padding(.horizontal, 3)
                 }
                 BottomBar(crossfaderWidth: min(260, geo.size.width * 0.25))
             }
@@ -41,20 +43,24 @@ struct ContentView: View {
     }
 }
 
-/// A zoomed waveform, rekordbox style: edge to edge, deck number in the corner.
+/// A zoomed waveform, rekordbox style: edge to edge, with the deck number and its level meter
+/// in a slim strip on the left.
 struct WaveformStrip: View {
     let deck: Deck
 
     var body: some View {
-        ScrollingWaveform(deck: deck)
-            .overlay(alignment: .topLeading) {
+        HStack(spacing: 0) {
+            VStack(spacing: 3) {
                 Text("\(deck.index + 1)")
-                    .font(Theme.legend(10, .semibold))
-                    .foregroundStyle(Theme.dim)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .allowsHitTesting(false)
+                    .font(Theme.legend(11, .bold))
+                    .foregroundStyle(.white.opacity(0.8))
+                DeckLevelMeter(deck: deck).frame(width: 4)
             }
+            .padding(.vertical, 4)
+            .frame(width: 18)
+            .background(Color(white: 0.07))
+            ScrollingWaveform(deck: deck)
+        }
     }
 }
 
@@ -106,7 +112,7 @@ struct TopBar: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 32)
-        .background(Theme.panel)
+        .controlSurface(cornerRadius: 0)
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .task(id: dj.statusMessage) { [dj] in
             guard dj.statusMessage != nil else { return }
@@ -123,9 +129,9 @@ struct TopBar: View {
     /// rekordbox's square toolbar icons: blue when the view they open is showing.
     private func iconLabel(_ symbol: String, on: Bool) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 14, weight: .medium))
-            .frame(width: 32, height: 26)
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: 32, height: 24)
             .foregroundStyle(on ? Color.white : Theme.dim)
-            .background(RoundedRectangle(cornerRadius: 3).fill(on ? Theme.accent : Theme.raised))
+            .background(KeyCap(color: Theme.accent, lit: on))
     }
 }
