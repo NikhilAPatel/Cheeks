@@ -205,6 +205,14 @@ public:
         remaining = kLength;
     }
 
+    bool busy() const { return remaining > 0; }
+
+    /// Forgets what was played, for starting again from silence.
+    void reset() {
+        std::fill(&history[0][0], &history[0][0] + 2 * kLength, 0.0f);
+        remaining = 0;
+    }
+
     void process(float *left, float *right, int n) {
         for (int i = 0; i < n; ++i) {
             if (remaining > 0) {

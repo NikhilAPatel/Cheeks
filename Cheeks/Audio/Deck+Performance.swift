@@ -414,35 +414,128 @@ extension Deck {
 
     // MARK: Beat FX
 
-    /// Presses an FX pad. The effect is on for as long as it's held, or until `fxRelease`.
+    func isFXOn(_ effect: BeatFX) -> Bool { activeFX.contains { $0.effect == effect } }
+
+    /// Presses an FX pad. The effect joins the chain and stays on until it's released. If the chain's
+    /// already full, the effect that's been on longest makes way.
     func fxEngage(_ type: BeatFX) {
-        if fxOn && fxType != type { fxRelease() }
-        fxType = type
-        fxOn = true
-        switch type {
-        case .roll:
-            rollBegin(fxBeats)
-        case .brake:
-            brake(beats: max(fxBeats, 1) * 2)
-        case .backspin:
-            if isPlaying, beatFrames > 0 { renderer.startBackspin(overFrames: max(fxBeats, 1) * beatFrames / tempoRatio) }
-        default:
-            break
+        if isFXOn(type) {
+            focusFX(type)
+            return
         }
-        applyFX()
+        // Letting another effect go moves the controls to a different one, so remember these.
+        let beats = fxBeats, depth = fxDepth
+        if type.dsp == CheeksFXNone {
+            fxType = type
+            activeFX.append(ActiveFX(effect: type, link: nil, beats: fxBeats, depth: fxDepth))
+            switch type {
+            case .roll:
+                rollBegin(fxBeats)
+            case .brake:
+                brake(beats: max(fxBeats, 1) * 2)
+            case .backspin:
+                if isPlaying, beatFrames > 0 { renderer.startBackspin(overFrames: max(fxBeats, 1) * beatFrames / tempoRatio) }
+            default:
+                break
+            }
+            return
+        }
+        let chained = activeFX.compactMap(\.link)
+        if chained.count == Int(CHEEKS_FX_LINKS), let oldest = activeFX.first(where: { $0.link != nil }) {
+            fxRelease(oldest.effect, quantized: false)
+        }
+        fxType = type
+        if fxBeats != beats { fxBeats = beats }
+        if fxDepth != depth { fxDepth = depth }
+        let used = Set(activeFX.compactMap(\.link))
+        let link = (0..<Int(CHEEKS_FX_LINKS)).first { !used.contains($0) } ?? 0
+        activeFX.append(ActiveFX(effect: type, link: link, beats: beats, depth: depth))
+        renderer.setFXLink(link, type: type.dsp, on: true, beats: beats, depth: depth)
     }
 
+    /// Makes the FX controls show this effect, and changing them change it.
+    func focusFX(_ effect: BeatFX) {
+        guard let active = activeFX.first(where: { $0.effect == effect }) else { return }
+        fxType = effect
+        if fxBeats != active.beats { fxBeats = active.beats }
+        if fxDepth != active.depth { fxDepth = active.depth }
+    }
+
+    /// Lets one effect go. With quantize on, it ends on the next beat of its own length, so a gate
+    /// or a flanger finishes in time and an echo's tail starts from a beat.
+    func fxRelease(_ effect: BeatFX, quantized: Bool = true) {
+        guard let index = activeFX.firstIndex(where: { $0.effect == effect }) else { return }
+        let active = activeFX.remove(at: index)
+        if effect == .roll { rollEnd() }
+        if let link = active.link {
+            if quantized && quantize && isPlaying && beatFrames > 0 {
+                let step = min(active.beats, 1)
+                let next = ((beatPosition(renderer.playhead) / step).rounded(.down) + 1) * step
+                renderer.releaseFX(link: link, atBeat: next)
+            } else {
+                renderer.setFXLink(link, type: effect.dsp, on: false, beats: active.beats, depth: active.depth)
+            }
+        }
+        if let latest = activeFX.last { focusFX(latest.effect) }
+    }
+
+    /// Lets everything go, straight away.
     func fxRelease() {
-        guard fxOn else { return }
-        if fxType == .roll { rollEnd() }
-        fxOn = false
-        applyFX()
+        for active in activeFX { fxRelease(active.effect, quantized: false) }
+    }
+
+    /// The controls change whichever effect they're showing.
+    func fxSettingsChanged() {
+        guard let index = activeFX.firstIndex(where: { $0.effect == fxType }) else { return }
+        activeFX[index].beats = fxBeats
+        activeFX[index].depth = fxDepth
+        if let link = activeFX[index].link {
+            renderer.setFXLink(link, type: fxType.dsp, on: true, beats: fxBeats, depth: fxDepth)
+        }
     }
 
     func applyFX() {
         var mask = 0
         for stem in fxStems { mask |= 1 << stem.rawValue }
-        renderer.setFX(fxType.dsp, on: fxOn && fxType.dsp != CheeksFXNone, beats: fxBeats, depth: fxDepth, stemMask: mask == 0 ? 0xF : mask)
+        renderer.setFXStems(mask == 0 ? 0xF : mask)
+    }
+
+    /// Everything off, for a new track. Effects still ringing carry on until they've died away.
+    func clearFX() {
+        activeFX = []
+        for link in 0..<Int(CHEEKS_FX_LINKS) {
+            renderer.setFXLink(link, type: CheeksFXNone, on: false, beats: fxBeats, depth: fxDepth)
+        }
+    }
+
+    /// Ends a track on its own echo: the echo fills up, and on the next beat that's at least half a
+    /// beat away the track's sound cuts and only the repeats are left. Pressing it again brings the
+    /// track straight back.
+    func toggleEchoOut() {
+        guard isLoaded else { return }
+        if echoingOut {
+            echoingOut = false
+            renderer.restoreSource()
+            return
+        }
+        guard isPlaying, beatFrames > 0 else {
+            Haptics.shared.deny()
+            return
+        }
+        echoingOut = true
+        let here = beatPosition(renderer.playhead)
+        let cut = (here + 0.5).rounded(.up)
+        // The echo's input closes on the same beat as the cut, so what's in the line rings out.
+        if !isFXOn(.echo) {
+            fxBeats = max(0.5, min(fxBeats, 1))
+            fxDepth = max(fxDepth, 0.7)
+            fxEngage(.echo)
+        }
+        renderer.cutSource(atBeat: cut)
+        if let index = activeFX.firstIndex(where: { $0.effect == .echo }), let link = activeFX[index].link {
+            activeFX.remove(at: index)
+            renderer.releaseFX(link: link, atBeat: cut)
+        }
     }
 
     /// Splits the loaded track into stems in the background, then swaps them in seamlessly. A track
@@ -558,8 +651,10 @@ extension Deck {
         renderer.setEQ(low: gain(eqLow), mid: gain(eqMid), high: gain(eqHigh))
     }
 
-    /// One knob: left sweeps a low-pass down, right sweeps a high-pass up.
+    /// One knob, whatever it's set to do. As a filter, left sweeps a low-pass down and right sweeps a high-pass up.
     func applyFilter() {
-        renderer.setFilter(abs(filter) < 0.015 ? 0 : filter)
+        let amount = abs(filter) < 0.015 ? 0 : filter
+        renderer.setFilter(colorFX == .filter ? amount : 0)
+        renderer.setColor(colorFX.dsp, amount: colorFX == .filter ? 0 : amount)
     }
 }

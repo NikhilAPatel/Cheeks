@@ -411,4 +411,134 @@ final class EngineTests: XCTestCase {
         guard crossings.count > 2 else { return 0 }
         return Double(crossings.count - 1) * sr / (crossings.last! - crossings.first!)
     }
+
+    // MARK: FX chain
+
+    /// A steady tone on a 120 BPM grid, playing.
+    private func playingRenderer(_ seconds: Double = 8) -> DeckRenderer {
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([stereo(sine(440, seconds: seconds))])
+        r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+        r.isPlaying = true
+        return r
+    }
+
+    func testTwoEffectsRunTogetherAsAChain() {
+        // A gate on its own leaves gaps; an echo on its own doesn't. Chained, the echo runs after the
+        // gate, so it fills the gaps in.
+        func gapLevel(gate: Bool, echo: Bool) -> Float {
+            let r = playingRenderer()
+            if gate { r.setFXLink(0, type: CheeksFXGate, on: true, beats: 1, depth: 1) }
+            if echo { r.setFXLink(1, type: CheeksFXEcho, on: true, beats: 0.75, depth: 0.8) }
+            let out = r.renderOffline(frames: Int(sr * 4)).left
+            // The second half of a beat is where the gate closes.
+            let beat = Int(sr / 2)
+            return rms(out[(beat * 6 + beat * 3 / 4)..<(beat * 7)])
+        }
+        let gateOnly = gapLevel(gate: true, echo: false)
+        let both = gapLevel(gate: true, echo: true)
+        XCTAssertLessThan(gateOnly, 0.02, "The gate closes on its own")
+        XCTAssertGreaterThan(both, 0.05, "With the echo after it, the repeats fill the gap: the two are really in series")
+    }
+
+    func testAQuantizedReleaseWaitsForItsBeat() {
+        let r = playingRenderer()
+        r.setFXLink(0, type: CheeksFXGate, on: true, beats: 0.5, depth: 1)
+        // The gate's going until beat 4 (2 s), then stops, and from there it's a steady tone.
+        r.releaseFX(link: 0, atBeat: 4)
+        let out = r.renderOffline(frames: Int(sr * 3)).left
+        let eighth = Int(sr / 8)
+        var closedBefore = false
+        for i in stride(from: Int(sr * 1), to: Int(sr * 1.9), by: eighth / 4) where rms(out[i..<(i + eighth / 4)]) < 0.02 { closedBefore = true }
+        XCTAssertTrue(closedBefore, "The gate is still working before the beat")
+        for i in stride(from: Int(sr * 2.1), to: Int(sr * 2.9), by: eighth / 4) {
+            XCTAssertGreaterThan(rms(out[i..<(i + eighth / 4)]), 0.2, "The gate has let go after it")
+        }
+    }
+
+    func testEchoOutCutsTheTrackAndLeavesTheTail() {
+        let r = playingRenderer(14)
+        r.setFXLink(0, type: CheeksFXEcho, on: true, beats: 0.5, depth: 0.8)
+        r.releaseFX(link: 0, atBeat: 4)
+        r.cutSource(atBeat: 4)
+        XCTAssertTrue(r.sourceCut)
+        let before = r.renderOffline(frames: Int(sr * 2)).left
+        XCTAssertGreaterThan(rms(before[(before.count - 2000)...]), 0.2)
+        let after = r.renderOffline(frames: Int(sr * 1)).left
+        let tail = rms(after[2000..<12000])
+        XCTAssertGreaterThan(tail, 0.02, "The repeats ring on")
+        let later = r.renderOffline(frames: Int(sr * 6)).left
+        XCTAssertLessThan(rms(later[(later.count - 4000)...]), tail / 4, "They die away, with no track under them")
+        r.restoreSource()
+        XCTAssertFalse(r.sourceCut)
+        let back = r.renderOffline(frames: 8192).left
+        XCTAssertGreaterThan(rms(back[4000...]), 0.2, "And the track comes back when asked")
+    }
+
+    // MARK: Color FX
+
+    private func channel(_ type: CheeksColorType, amount: Float, source: [Float]? = nil) -> [Float] {
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([stereo(source ?? sine(440, seconds: 4))])
+        r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+        r.isPlaying = true
+        r.setColor(type, amount: amount)
+        return r.renderChannelOffline(frames: Int(sr * 2)).left
+    }
+
+    func testColorEffectsAtTheCentreLeaveTheSoundAlone() {
+        let dry = channel(CheeksColorFilter, amount: 0)
+        for type in [CheeksColorDubEcho, CheeksColorSpace, CheeksColorNoise, CheeksColorCrush, CheeksColorPitch] {
+            let out = channel(type, amount: 0)
+            for i in stride(from: 0, to: out.count, by: 997) { XCTAssertEqual(out[i], dry[i], accuracy: 0.0001, "\(type)") }
+        }
+    }
+
+    func testEveryColorEffectChangesTheSoundAndStaysBounded() {
+        let dry = channel(CheeksColorFilter, amount: 0)
+        for type in [CheeksColorDubEcho, CheeksColorSpace, CheeksColorNoise, CheeksColorCrush, CheeksColorPitch] {
+            for amount: Float in [-1, -0.5, 0.5, 1] {
+                let out = channel(type, amount: amount)
+                let peak = out.map(abs).max() ?? 0
+                XCTAssertLessThan(peak, 3, "\(type) at \(amount) ran away")
+                XCTAssertFalse(out.contains { !$0.isFinite }, "\(type) at \(amount) went bad")
+                var difference: Float = 0
+                for i in Int(sr)..<out.count { difference += abs(out[i] - dry[i]) }
+                XCTAssertGreaterThan(difference / Float(out.count), 0.005, "\(type) at \(amount) did nothing")
+            }
+        }
+    }
+
+    func testDubEchoRingsOutAfterTheKnobComesBack() {
+        let r = DeckRenderer(sampleRate: sr)
+        var source = sine(440, seconds: 6)
+        for i in Int(sr * 2)..<source.count { source[i] = 0 } // the track goes silent
+        r.setSources([stereo(source)])
+        r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+        r.isPlaying = true
+        r.setColor(CheeksColorDubEcho, amount: -0.8)
+        _ = r.renderChannelOffline(frames: Int(sr * 2))
+        r.setColor(CheeksColorDubEcho, amount: 0)
+        let tail = r.renderChannelOffline(frames: Int(sr * 1)).left
+        XCTAssertGreaterThan(rms(tail[...]), 0.01, "The repeats keep going with the knob back at the centre")
+    }
+
+    func testPitchEffectReallyMovesThePitch() {
+        // An octave up should put most of a 440 Hz tone's energy near 880 Hz.
+        func power(_ x: ArraySlice<Float>, _ frequency: Double) -> Float {
+            var re: Float = 0, im: Float = 0
+            for (k, v) in x.enumerated() {
+                let phase = 2 * Double.pi * frequency * Double(k) / sr
+                re += v * Float(cos(phase))
+                im += v * Float(sin(phase))
+            }
+            return (re * re + im * im) / Float(x.count * x.count)
+        }
+        let up = channel(CheeksColorPitch, amount: 1)
+        let slice = up[Int(sr)..<Int(sr * 1.5)]
+        XCTAssertGreaterThan(power(slice, 880), power(slice, 440) * 3)
+        let down = channel(CheeksColorPitch, amount: -1)
+        let lower = down[Int(sr)..<Int(sr * 1.5)]
+        XCTAssertGreaterThan(power(lower, 220), power(lower, 440) * 3)
+    }
 }

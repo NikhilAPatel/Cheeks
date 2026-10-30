@@ -126,4 +126,73 @@ final class CueTests: XCTestCase {
         deck.delete(.cue(MemoryCue(time: 99)))
         XCTAssertEqual(deck.memoryPage, 0, "A page that no longer exists doesn't stay selected")
     }
+
+    // MARK: FX chain, on the deck
+
+    func testEffectsChainUpToThreeAndTheOldestMakesWay() {
+        let deck = makeDeck()
+        deck.play()
+        deck.fxEngage(.echo)
+        deck.fxEngage(.flanger)
+        deck.fxEngage(.gate)
+        XCTAssertEqual(deck.activeFX.map(\.effect), [.echo, .flanger, .gate])
+        XCTAssertEqual(Set(deck.activeFX.compactMap(\.link)).count, 3, "Each in its own link")
+        deck.fxEngage(.crush)
+        XCTAssertEqual(deck.activeFX.map(\.effect), [.flanger, .gate, .crush], "The one on longest gave way")
+        XCTAssertEqual(deck.fxType, .crush)
+
+        deck.fxRelease(.gate)
+        XCTAssertFalse(deck.isFXOn(.gate))
+        XCTAssertEqual(deck.activeFX.count, 2)
+        deck.fxEngage(.reverb)
+        XCTAssertEqual(Set(deck.activeFX.compactMap(\.link)).count, 3, "A free link gets used, not a busy one")
+        deck.fxRelease()
+        XCTAssertTrue(deck.activeFX.isEmpty)
+        XCTAssertFalse(deck.fxOn)
+    }
+
+    func testControlsChangeTheEffectTheyreShowing() {
+        let deck = makeDeck()
+        deck.fxDepth = 0.2
+        deck.fxEngage(.echo)
+        deck.fxDepth = 0.9
+        deck.fxEngage(.gate)
+        deck.fxDepth = 0.4
+        XCTAssertEqual(deck.activeFX.first { $0.effect == .echo }?.depth, 0.9, "Changing the gate left the echo alone")
+        XCTAssertEqual(deck.activeFX.first { $0.effect == .gate }?.depth, 0.4)
+        deck.focusFX(.echo)
+        XCTAssertEqual(deck.fxDepth, 0.9, "Going back to the echo shows its setting")
+        XCTAssertEqual(deck.activeFX.first { $0.effect == .gate }?.depth, 0.4, "and didn't change the gate")
+    }
+
+    func testTransportEffectsDontTakeALink() {
+        let deck = makeDeck()
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.fxEngage(.brake)
+        XCTAssertNil(deck.activeFX.first?.link)
+        _ = deck.renderer.renderOffline(frames: Int(sr * 3))
+        deck.tick()
+        XCTAssertFalse(deck.isFXOn(.brake), "It lets go once the deck's stopped")
+        XCTAssertFalse(deck.isPlaying)
+    }
+
+    func testEchoOutWaitsForABeatAndComesBack() {
+        let deck = makeDeck()
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.toggleEchoOut()
+        XCTAssertTrue(deck.echoingOut)
+        XCTAssertTrue(deck.renderer.sourceCut)
+        _ = deck.renderer.renderOffline(frames: Int(sr * 0.1))
+        deck.toggleEchoOut()
+        XCTAssertFalse(deck.echoingOut)
+        XCTAssertFalse(deck.renderer.sourceCut)
+    }
+
+    func testEchoOutNeedsAPlayingDeck() {
+        let deck = makeDeck()
+        deck.toggleEchoOut()
+        XCTAssertFalse(deck.echoingOut)
+    }
 }

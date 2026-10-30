@@ -32,6 +32,7 @@ struct PadSection: View {
         case .memory: MemoryControlRow(deck: deck)
         case .stems: StemControlRow(deck: deck)
         case .fx: FXControlRow(deck: deck)
+        case .sampler: SamplerControlRow(deck: deck)
         default: LoopRow(deck: deck)
         }
     }
@@ -175,10 +176,7 @@ struct PadBank: View {
         case .fx:
             FXPad(deck: deck, effect: BeatFX.allCases[i])
         case .sampler:
-            let sample = SampleBank.names[i]
-            Pad(color: SampleBank.color(i), accessibilityName: sample.capitalized, onPress: { dj.triggerSample(i) }) {
-                Text(sample).font(Theme.silk(9.5)).tracking(0.3).multilineTextAlignment(.center).minimumScaleFactor(0.7).padding(.horizontal, 3)
-            }
+            SamplerPad(slot: i, masterDeck: dj.masterIndex)
         }
     }
 
@@ -423,6 +421,84 @@ struct StemControlRow: View {
     }
 }
 
+// MARK: Sampler
+
+/// A sound. What the press does depends on its mode: fire it, hold it, or start and stop a loop.
+struct SamplerPad: View {
+    @Environment(DJEngine.self) private var dj
+    let slot: Int
+    let masterDeck: Int
+
+    var body: some View {
+        let sampler = dj.sampler
+        let setting = sampler.slots[slot]
+        let recording = sampler.recordingSlot == slot
+        Pad(color: recording ? Theme.danger : SampleBank.color(slot), lit: recording || sampler.looping.contains(slot),
+            accessibilityName: sampler.name(slot).capitalized, onPress: {
+                if sampler.isSetting {
+                    sampler.isSetting = false
+                    sampler.slotBeingEdited = slot
+                } else {
+                    sampler.press(slot, masterDeck: masterDeck)
+                }
+            }, onRelease: {
+                sampler.release(slot)
+            }) {
+            VStack(spacing: 1) {
+                if setting.mode != .oneShot || recording {
+                    Image(systemName: recording ? "record.circle.fill" : setting.mode == .loop ? "repeat" : "hand.point.up.left.fill")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                Text(sampler.name(slot))
+                    .font(Theme.silk(9.5))
+                    .tracking(0.3)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(2)
+                    .padding(.horizontal, 3)
+            }
+        }
+    }
+}
+
+/// SET picks a pad to change; the rest apply to all of them.
+struct SamplerControlRow: View {
+    @Environment(DJEngine.self) private var dj
+    let deck: Deck
+
+    var body: some View {
+        @Bindable var sampler = dj.sampler
+        HStack(spacing: 3) {
+            if sampler.recordingSlot != nil {
+                Key(color: Theme.danger, lit: true, accessibilityName: "Stop recording", onPress: { sampler.stopRecording() }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "stop.fill").font(.system(size: 8))
+                        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                            Text(sampler.recordedSeconds.clockString).font(Theme.digits(10))
+                        }
+                    }
+                }
+                .frame(width: 58)
+            } else {
+                Key("SET", color: Theme.accent, lit: sampler.isSetting, size: 8.5, feel: .toggle, onPress: { sampler.isSetting.toggle() })
+                    .frame(width: 58)
+            }
+            Key("Q", lit: sampler.quantize, feel: .toggle, onPress: { sampler.quantize.toggle() })
+                .frame(width: 26)
+            DepthBar(value: $sampler.level, label: "VOLUME")
+            Key("STOP", color: Theme.danger, size: 8, onPress: { sampler.stopAll() })
+                .frame(width: 36)
+        }
+        .sheet(item: $sampler.slotBeingEdited) { slot in
+            SamplerSlotSheet(slot: slot).environment(dj)
+        }
+    }
+}
+
+extension Int: @retroactive Identifiable {
+    public var id: Int { self }
+}
+
 // MARK: Beat FX
 
 /// One effect. Hold for as long as you want it, or tap to latch it on. While holding, slide up and
@@ -436,17 +512,17 @@ struct FXPad: View {
     @State private var wasOn = false
 
     var body: some View {
-        let isOn = deck.fxOn && deck.fxType == effect
+        let isOn = deck.isFXOn(effect)
         Pad(color: effect.color, lit: isOn, accessibilityName: effect.rawValue.capitalized, onPress: {
             pressTime = Date()
             wasOn = isOn
+            deck.fxEngage(effect)
             startDepth = deck.fxDepth
             startBeatIndex = BeatFX.beatChoices.firstIndex(of: deck.fxBeats) ?? 2
-            if !isOn { deck.fxEngage(effect) }
         }, onRelease: {
             let held = Date().timeIntervalSince(pressTime ?? Date())
             // A quick tap latches; pressing a latched one or holding one lets it go on release.
-            if wasOn || held > 0.25 { deck.fxRelease() }
+            if wasOn || held > 0.25 { deck.fxRelease(effect) }
             pressTime = nil
         }, onDrag: { translation in
             let depth = min(1, max(0, startDepth + Float(-translation.height / 80)))
@@ -500,6 +576,8 @@ struct FXControlRow: View {
                 }
                 .frame(width: 21)
             }
+            Key("OUT", color: Theme.danger, lit: deck.echoingOut, size: 8, feel: .toggle, accessibilityName: "Echo out", onPress: deck.toggleEchoOut)
+                .frame(width: 28)
         }
     }
 
@@ -513,6 +591,7 @@ struct FXControlRow: View {
 /// A slim horizontal level bar.
 struct DepthBar: View {
     @Binding var value: Float
+    var label = "DEPTH"
     @State private var start: Float?
 
     var body: some View {
@@ -520,7 +599,7 @@ struct DepthBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.black)
                 Capsule().fill(Theme.accent).frame(width: max(4, geo.size.width * CGFloat(value)))
-                Text("DEPTH").silk(7, color: .white.opacity(0.8)).padding(.leading, 5)
+                Text(label).silk(7, color: .white.opacity(0.8)).padding(.leading, 5)
             }
             .frame(height: 13)
             .frame(maxHeight: .infinity)
@@ -532,7 +611,7 @@ struct DepthBar: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("FX depth")
+        .accessibilityLabel(label.capitalized)
         .accessibilityValue("\(Int(value * 100)) percent")
         .accessibilityAdjustableAction { value = min(1, max(0, value + ($0 == .increment ? 0.05 : -0.05))) }
     }

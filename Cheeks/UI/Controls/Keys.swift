@@ -124,8 +124,8 @@ struct Key<Label: View>: View {
 
 extension Key where Label == KeyLegend {
     init(_ title: String, color: Color = Theme.accent, lit: Bool = false, size: CGFloat = 9.5, feel: KeyFeel = .key,
-         isEnabled: Bool = true, onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
-        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: title, onPress: onPress, onRelease: onRelease) {
+         isEnabled: Bool = true, accessibilityName: String? = nil, onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
+        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, onPress: onPress, onRelease: onRelease) {
             KeyLegend(title: title, size: size)
         }
     }

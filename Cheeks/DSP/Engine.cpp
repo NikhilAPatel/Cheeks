@@ -12,6 +12,7 @@
 
 #include "CheeksDSP.h"
 #include "BeatFX.hpp"
+#include "ColorFX.hpp"
 #include "Primitives.hpp"
 #include "signalsmith-stretch/signalsmith-stretch.h"
 
@@ -69,12 +70,18 @@ struct CheeksDeck {
         outputLatency = stretch.outputLatency();
         seekBuffer[0].assign(kSeekBuffer, 0);
         seekBuffer[1].assign(kSeekBuffer, 0);
-        fx.prepare(rate);
+        for (auto &link : fx) link.prepare(rate);
+        color.prepare(rate);
         isolator.prepare(rate);
         filter.prepare(rate);
         for (int s = 0; s < kStems; ++s) {
             stemTarget[s].store(1);
             stemGain[s] = 1;
+        }
+        for (int l = 0; l < CHEEKS_FX_LINKS; ++l) {
+            fxBeats[l].store(1);
+            fxDepth[l].store(0.5f);
+            fxReleaseBeat[l].store(kNoSeek);
         }
         peakFall = float(std::exp(-double(kBlock) / (0.18 * rate)));
     }
@@ -92,10 +99,14 @@ struct CheeksDeck {
     std::atomic<double> beatFrames{0}, firstBeatFrame{0};
 
     // FX settings, applied at the start of each block
-    std::atomic<int> fxType{CheeksFXNone}, fxStemMask{0xF};
-    std::atomic<bool> fxOn{false};
-    std::atomic<double> fxBeats{1};
-    std::atomic<float> fxDepth{0.5f};
+    std::atomic<int> fxType[CHEEKS_FX_LINKS] = {}, fxStemMask{0xF};
+    std::atomic<bool> fxOn[CHEEKS_FX_LINKS] = {};
+    std::atomic<double> fxBeats[CHEEKS_FX_LINKS], fxReleaseBeat[CHEEKS_FX_LINKS];
+    std::atomic<float> fxDepth[CHEEKS_FX_LINKS];
+    std::atomic<double> cutAtBeat{kNoSeek};
+    std::atomic<bool> sourceCut{false};
+    std::atomic<int> colorType{CheeksColorFilter};
+    std::atomic<float> colorAmount{0};
 
     // MARK: Published state, written by the render thread
 
@@ -152,16 +163,39 @@ struct CheeksDeck {
         renderSource(left, right, n);
         isolator.process(left, right, n);
         filter.process(left, right, n);
+        // Runs in real time, after the stretcher, so a beat is shorter when the deck's been sped up.
+        color.process(left, right, n, CheeksColorType(relaxed(colorType)), relaxed(colorAmount), gridBeat() / std::max(ratioNow, 0.05));
         float high = 0;
         for (int i = 0; i < n; ++i) high = std::max(high, std::max(std::abs(left[i]), std::abs(right[i])));
         const float falling = relaxed(peak) * std::pow(peakFall, float(n) / kBlock);
         put(peak, std::max(high, falling));
     }
 
+    /// Where the next line of the beat grid (every `gridBeats`) falls in the block just rendered,
+    /// in frames from its start, or -1 if it isn't in this block. `skip` is set when a line has just
+    /// gone by: start now, that far in, and it's still in time.
+    int framesToGrid(double gridBeats, int n, int64_t &skip) const {
+        skip = 0;
+        const double beat = relaxed(beatFrames), rate = lastRate;
+        if (beat <= 0 || rate < 0.05 || !relaxed(playing)) return 0;
+        const double line = gridBeats * beat;
+        const double gridPosition = (position - rate * n - relaxed(firstBeatFrame)) / line;
+        const double since = (gridPosition - std::floor(gridPosition)) * line / rate;
+        if (since < sampleRate * kQuantizeForgiveness) {
+            skip = int64_t(since);
+            return 0;
+        }
+        const double until = line / rate - since;
+        return until < double(n) ? int(until) : -1;
+    }
+
     Isolator isolator;
     SweepFilter filter;
+    ColorFX color;
 
 private:
+    static constexpr double kQuantizeForgiveness = 0.03;
+
     enum Ramp { RampNone, RampBrake, RampBackspin };
 
     void renderChunk(float *left, float *right, int n) {
@@ -284,7 +318,20 @@ private:
     }
 
     void updateFX() {
-        fx.set(CheeksFXType(relaxed(fxType)), relaxed(fxOn), relaxed(fxBeats), relaxed(fxDepth));
+        const double beat = (position - relaxed(firstBeatFrame)) / gridBeat();
+        for (int l = 0; l < CHEEKS_FX_LINKS; ++l) {
+            const double releaseAt = relaxed(fxReleaseBeat[l]);
+            if (!std::isnan(releaseAt) && beat >= releaseAt) {
+                put(fxReleaseBeat[l], kNoSeek);
+                put(fxOn[l], false);
+            }
+            fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]));
+        }
+        const double cutAt = relaxed(cutAtBeat);
+        if (!std::isnan(cutAt) && beat >= cutAt) {
+            put(cutAtBeat, kNoSeek);
+            put(sourceCut, true);
+        }
         const int mask = relaxed(fxStemMask);
         for (int s = 0; s < kStems; ++s) sendTarget[s] = sourceCount == 1 || (mask >> s) & 1 ? 1.0f : 0.0f;
     }
@@ -396,7 +443,7 @@ private:
             // Effects run at the deck's tempo, so a pause or a scratch doesn't warp an echo already ringing.
             const double clockRate = std::max(ratioNow, 0.05);
             const BeatFX::Clock clock{beat / clockRate, (trace[0] - relaxed(firstBeatFrame)) / beat, speed[0] / beat};
-            fx.process(busLeft, busRight, count, clock);
+            for (auto &link : fx) link.process(busLeft, busRight, count, clock);
             for (int i = 0; i < count; ++i) {
                 left[done + i] = dryLeft[i] + busLeft[i];
                 right[done + i] = dryRight[i] + busRight[i];
@@ -418,7 +465,7 @@ private:
         std::fill(busRight, busRight + n, 0.0f);
         for (int s = 0; s < sources; ++s) {
             const int16_t *p = slots[s];
-            const float target = sources == kStems ? relaxed(stemTarget[s]) : 1.0f;
+            const float target = relaxed(sourceCut) ? 0.0f : sources == kStems ? relaxed(stemTarget[s]) : 1.0f;
             float gain = stemGain[s], send = stemSend[s];
             float high = 0;
             for (int i = 0; i < n; ++i) {
@@ -535,7 +582,7 @@ private:
             }
             readTrace(run);
             const BeatFX::Clock clock{beat, (feedPosition - first) / beat, 1 / beat};
-            fx.process(busLeft, busRight, run, clock);
+            for (auto &link : fx) link.process(busLeft, busRight, run, clock);
             for (int i = 0; i < run; ++i) {
                 feedLeft[done + i] = dryLeft[i] + busLeft[i];
                 feedRight[done + i] = dryRight[i] + busRight[i];
@@ -613,7 +660,7 @@ private:
     float stretchPitch = 1;
     bool inStretch = false, stretchDirty = true;
 
-    BeatFX fx;
+    BeatFX fx[CHEEKS_FX_LINKS];
     Declicker declick, feedDeclick;
     float peakFall = 0.99f;
 
@@ -649,6 +696,15 @@ struct Voice {
             ++position;
         }
     }
+};
+
+/// One sampler pad. Every jump in its audio goes through its own declicker.
+struct SamplerVoice {
+    Voice voice;
+    Declicker declick;
+    bool loop = false, pending = false;
+    int quantizeDeck = -1;
+    double quantizeBeats = 0;
 };
 
 constexpr int kSamples = 8;
@@ -698,11 +754,19 @@ struct CheeksEngine {
     std::atomic<double> previewPosition{0};
     std::atomic<bool> previewPlaying{false};
     std::atomic<float> sampleGain[kSamples];
-    std::atomic<bool> sampleTrigger[kSamples], sampleStop[kSamples], sampleActive[kSamples];
+    std::atomic<bool> sampleTrigger[kSamples], sampleStop[kSamples], sampleActive[kSamples], sampleLoop[kSamples];
+    std::atomic<int> sampleDeck[kSamples];
+    std::atomic<double> sampleGrid[kSamples];
+    std::atomic<float> samplerLevel{1};
 
     TryLock voiceLock;
-    Voice samples[kSamples];
+    SamplerVoice samples[kSamples];
     Voice preview;
+
+    TryLock captureLock;
+    int16_t *captureBuffer = nullptr;
+    int64_t captureMax = 0, captureCount = 0;
+    std::atomic<int64_t> captureProgress{0};
     std::vector<float> record;
 
 private:
@@ -734,16 +798,7 @@ private:
         }
 
         if (voiceLock.tryLock()) {
-            for (int s = 0; s < kSamples; ++s) {
-                if (sampleTrigger[s].exchange(false, std::memory_order_relaxed) && samples[s].pcm) {
-                    samples[s].position = 0;
-                    samples[s].active = true;
-                    samples[s].gain = relaxed(sampleGain[s]);
-                }
-                if (sampleStop[s].exchange(false, std::memory_order_relaxed)) samples[s].active = false;
-                samples[s].mixInto(programLeft, programRight, n, 1);
-                put(sampleActive[s], samples[s].active);
-            }
+            for (int s = 0; s < kSamples; ++s) renderSampler(s, n);
             const double seekPreview = previewSeek.exchange(kNoSeek, std::memory_order_relaxed);
             if (!std::isnan(seekPreview)) preview.position = int64_t(seekPreview);
             preview.active = relaxed(previewPlaying) && preview.pcm && preview.position < preview.frames;
@@ -761,6 +816,7 @@ private:
         }
 
         limiter.process(programLeft, programRight, n);
+        writeCapture(n);
         const float gainNow = limiter.lastGain();
         put(limiterDB, gainNow < 0.9999f ? -20 * std::log10(std::max(gainNow, 0.0001f)) : 0.0f);
 
@@ -809,6 +865,97 @@ private:
         put(masterPeakRight, std::max(highRight * masterTarget, relaxed(masterPeakRight) * fall));
     }
 
+    /// Mixes one sampler pad into the program bus.
+    void renderSampler(int s, int n) {
+        SamplerVoice &pad = samples[s];
+        if (sampleTrigger[s].exchange(false, std::memory_order_relaxed) && pad.voice.pcm) {
+            pad.pending = true;
+            pad.quantizeDeck = relaxed(sampleDeck[s]);
+            pad.quantizeBeats = relaxed(sampleGrid[s]);
+            pad.voice.gain = relaxed(sampleGain[s]);
+        }
+        pad.loop = relaxed(sampleLoop[s]);
+        const bool stop = sampleStop[s].exchange(false, std::memory_order_relaxed);
+        if (stop) pad.pending = false;
+        if (!pad.pending && !pad.voice.active && !pad.declick.busy() && !stop) {
+            put(sampleActive[s], false);
+            return;
+        }
+        std::fill(voiceLeft, voiceLeft + n, 0.0f);
+        std::fill(voiceRight, voiceRight + n, 0.0f);
+        if (stop && pad.voice.active) {
+            pad.voice.active = false;
+            pad.declick.trigger();
+        }
+        int from = 0;
+        if (pad.pending) {
+            int64_t skip = 0;
+            const bool locked = pad.quantizeDeck >= 0 && pad.quantizeDeck < deckCount;
+            const int offset = locked ? decks[pad.quantizeDeck]->framesToGrid(pad.quantizeBeats, n, skip) : 0;
+            if (offset >= 0) {
+                // Whatever was playing carries on up to the moment the new one starts.
+                renderVoice(pad, 0, offset);
+                if (pad.voice.active) {
+                    pad.declick.trigger();
+                } else {
+                    pad.declick.reset();
+                }
+                pad.voice.position = std::min(skip, pad.voice.frames);
+                pad.voice.active = true;
+                pad.pending = false;
+                from = offset;
+            }
+        }
+        renderVoice(pad, from, n);
+        const float level = relaxed(samplerLevel);
+        for (int i = 0; i < n; ++i) {
+            programLeft[i] += voiceLeft[i] * level;
+            programRight[i] += voiceRight[i] * level;
+        }
+        put(sampleActive[s], pad.voice.active || pad.pending);
+    }
+
+    /// Runs a pad from `from` up to `to` in the voice buffers, wrapping or ending as it goes.
+    void renderVoice(SamplerVoice &pad, int from, int to) {
+        Voice &v = pad.voice;
+        int i = from;
+        while (i < to && v.active && v.pcm) {
+            const int run = int(std::min<int64_t>(to - i, v.frames - v.position));
+            const float scale = v.gain / 32768;
+            for (int k = 0; k < run; ++k) {
+                voiceLeft[i + k] = float(v.pcm[(v.position + k) * 2]) * scale;
+                voiceRight[i + k] = float(v.pcm[(v.position + k) * 2 + 1]) * scale;
+            }
+            v.position += run;
+            pad.declick.process(voiceLeft + i, voiceRight + i, run);
+            i += run;
+            if (v.position >= v.frames) {
+                if (pad.loop && v.frames > 0) {
+                    v.position = 0;
+                } else {
+                    v.active = false;
+                }
+                pad.declick.trigger();
+            }
+        }
+        if (i < to) pad.declick.process(voiceLeft + i, voiceRight + i, to - i);
+    }
+
+    void writeCapture(int n) {
+        if (!captureLock.tryLock()) return;
+        if (captureBuffer) {
+            const int64_t count = std::min<int64_t>(n, captureMax - captureCount);
+            int16_t *out = captureBuffer + captureCount * 2;
+            for (int64_t i = 0; i < count; ++i) {
+                out[i * 2] = int16_t(clampd(programLeft[i], -1, 1) * 32767);
+                out[i * 2 + 1] = int16_t(clampd(programRight[i], -1, 1) * 32767);
+            }
+            captureCount += count;
+            put(captureProgress, captureCount);
+        }
+        captureLock.unlock();
+    }
+
     void pushRecording(int n) {
         int write = recordWrite.load(std::memory_order_relaxed);
         const int read = recordRead.load(std::memory_order_acquire);
@@ -833,6 +980,7 @@ private:
     float trimNow[4] = {1, 1, 1, 1}, faderNow[4] = {}, cueNow[4] = {};
     float masterNow = 0.9f, phonesNow = 0.8f, blendNow = 0.5f, splitNow = 0;
     float chLeft[kBlock], chRight[kBlock], programLeft[kBlock], programRight[kBlock], cueLeft[kBlock], cueRight[kBlock];
+    float voiceLeft[kBlock], voiceRight[kBlock];
 };
 
 // MARK: C API
@@ -974,15 +1122,35 @@ void cheeks_deck_set_grid(CheeksDeck *deck, double beatFrames, double firstBeatF
     put(deck->firstBeatFrame, firstBeatFrame);
 }
 void cheeks_deck_set_fx(CheeksDeck *deck, CheeksFXType type, bool on, double beats, float depth, int stemMask) {
-    put(deck->fxType, int(type));
-    put(deck->fxOn, on);
-    put(deck->fxBeats, beats);
-    put(deck->fxDepth, depth);
-    put(deck->fxStemMask, stemMask);
+    cheeks_deck_set_fx_link(deck, 0, type, on, beats, depth);
+    cheeks_deck_set_fx_stems(deck, stemMask);
 }
+void cheeks_deck_set_fx_link(CheeksDeck *deck, int link, CheeksFXType type, bool on, double beats, float depth) {
+    if (link < 0 || link >= CHEEKS_FX_LINKS) return;
+    put(deck->fxType[link], int(type));
+    put(deck->fxOn[link], on);
+    put(deck->fxBeats[link], beats);
+    put(deck->fxDepth[link], depth);
+    // Whatever's asked for now replaces a release that was waiting.
+    put(deck->fxReleaseBeat[link], kNoSeek);
+}
+void cheeks_deck_set_fx_stems(CheeksDeck *deck, int stemMask) { put(deck->fxStemMask, stemMask); }
+void cheeks_deck_release_fx_at(CheeksDeck *deck, int link, double beat) {
+    if (link >= 0 && link < CHEEKS_FX_LINKS) put(deck->fxReleaseBeat[link], beat);
+}
+void cheeks_deck_cut_source_at(CheeksDeck *deck, double beat) { put(deck->cutAtBeat, beat); }
+void cheeks_deck_restore_source(CheeksDeck *deck) {
+    put(deck->cutAtBeat, kNoSeek);
+    put(deck->sourceCut, false);
+}
+bool cheeks_deck_source_cut(const CheeksDeck *deck) { return relaxed(deck->sourceCut) || !std::isnan(relaxed(deck->cutAtBeat)); }
 
 void cheeks_deck_set_eq(CheeksDeck *deck, float low, float mid, float high) { deck->isolator.setGains(low, mid, high); }
 void cheeks_deck_set_filter(CheeksDeck *deck, float amount) { deck->filter.setAmount(amount); }
+void cheeks_deck_set_color(CheeksDeck *deck, CheeksColorType type, float amount) {
+    put(deck->colorType, int(type));
+    put(deck->colorAmount, amount);
+}
 float cheeks_deck_peak(const CheeksDeck *deck) { return relaxed(deck->peak); }
 
 CheeksEngine *cheeks_engine_create(double sampleRate, CheeksDeck *const *decks, int count) {
@@ -997,6 +1165,9 @@ CheeksEngine *cheeks_engine_create(double sampleRate, CheeksDeck *const *decks, 
         engine->sampleTrigger[s].store(false);
         engine->sampleStop[s].store(false);
         engine->sampleActive[s].store(false);
+        engine->sampleLoop[s].store(false);
+        engine->sampleDeck[s].store(-1);
+        engine->sampleGrid[s].store(0);
     }
     return engine;
 }
@@ -1042,23 +1213,55 @@ int64_t cheeks_engine_recording_overruns(const CheeksEngine *engine) { return en
 void cheeks_engine_set_sample(CheeksEngine *engine, int slot, const int16_t *pcm, int64_t frames) {
     if (slot < 0 || slot >= kSamples) return;
     engine->voiceLock.lock();
-    engine->samples[slot].pcm = pcm;
-    engine->samples[slot].frames = frames;
-    engine->samples[slot].active = false;
+    engine->samples[slot].voice.pcm = pcm;
+    engine->samples[slot].voice.frames = frames;
+    engine->samples[slot].voice.active = false;
+    engine->samples[slot].pending = false;
     engine->voiceLock.unlock();
 }
 void cheeks_engine_trigger_sample(CheeksEngine *engine, int slot, float gain) {
+    cheeks_engine_trigger_sample_quantized(engine, slot, gain, -1, 0);
+}
+void cheeks_engine_trigger_sample_quantized(CheeksEngine *engine, int slot, float gain, int deck, double gridBeats) {
     if (slot < 0 || slot >= kSamples) return;
     put(engine->sampleGain[slot], gain);
+    put(engine->sampleDeck[slot], deck);
+    put(engine->sampleGrid[slot], gridBeats);
+    // The last thing asked for wins, even if the render thread hasn't seen the one before it.
+    put(engine->sampleStop[slot], false);
     put(engine->sampleTrigger[slot], true);
     put(engine->sampleActive[slot], true);
 }
 void cheeks_engine_stop_sample(CheeksEngine *engine, int slot) {
-    if (slot >= 0 && slot < kSamples) put(engine->sampleStop[slot], true);
+    if (slot < 0 || slot >= kSamples) return;
+    put(engine->sampleTrigger[slot], false);
+    put(engine->sampleStop[slot], true);
 }
 bool cheeks_engine_sample_active(const CheeksEngine *engine, int slot) {
     return slot >= 0 && slot < kSamples && relaxed(engine->sampleActive[slot]);
 }
+
+void cheeks_engine_set_sample_loop(CheeksEngine *engine, int slot, bool loop) {
+    if (slot >= 0 && slot < kSamples) put(engine->sampleLoop[slot], loop);
+}
+void cheeks_engine_set_sampler_level(CheeksEngine *engine, float level) { put(engine->samplerLevel, level); }
+
+void cheeks_engine_capture_start(CheeksEngine *engine, int16_t *buffer, int64_t maxFrames) {
+    engine->captureLock.lock();
+    engine->captureBuffer = buffer;
+    engine->captureMax = maxFrames;
+    engine->captureCount = 0;
+    engine->captureLock.unlock();
+    put(engine->captureProgress, int64_t(0));
+}
+int64_t cheeks_engine_capture_stop(CheeksEngine *engine) {
+    engine->captureLock.lock();
+    engine->captureBuffer = nullptr;
+    const int64_t count = engine->captureCount;
+    engine->captureLock.unlock();
+    return count;
+}
+int64_t cheeks_engine_capture_frames(const CheeksEngine *engine) { return relaxed(engine->captureProgress); }
 
 void cheeks_engine_set_preview(CheeksEngine *engine, const int16_t *pcm, int64_t frames) {
     engine->voiceLock.lock();

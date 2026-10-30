@@ -39,6 +39,13 @@ struct MixerPanel: View {
             Key("SPLIT", lit: dj.splitCue, size: 8, feel: .toggle, onPress: { dj.splitCue.toggle() })
                 .frame(height: 20)
                 .padding(.top, 1)
+            Key(dj.colorFX.rawValue, color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter, size: 7.5,
+                feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", onPress: {
+                let all = ColorEffect.allCases
+                dj.colorFX = all[((all.firstIndex(of: dj.colorFX) ?? 0) + 1) % all.count]
+            })
+            .frame(height: 20)
+            .padding(.top, 1)
             Spacer(minLength: 2)
             LimiterLight()
             CentreMeters()
@@ -95,7 +102,7 @@ struct ChannelStrip: View {
             Knob(value: $deck.eqHigh, label: "HI", size: knobSize)
             Knob(value: $deck.eqMid, label: "MID", size: knobSize)
             Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-            Knob(value: $deck.filter, label: "FILTER", color: Theme.accent, size: knobSize)
+            Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize)
             Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", onPress: { deck.headphoneCue.toggle() }) {
                 HStack(spacing: 2) {
                     Image(systemName: "headphones").font(.system(size: 8, weight: .bold))

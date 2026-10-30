@@ -39,6 +39,26 @@ final class DeckRenderer {
         frameCount = frames
     }
 
+    /// A copy of part of what's playing: the mix, or the stems added together with these levels,
+    /// so a loop grabbed with the vocal muted comes out without the vocal.
+    func copyAudio(fromFrame start: Int, toFrame end: Int, stemGains: [Float]) -> PCM16Stereo {
+        guard let first = sources.first else { return PCM16Stereo(frames: 0) }
+        if sources.count == 1 { return first.slice(from: start, count: end - start) }
+        let begin = max(0, min(start, frameCount))
+        let length = max(0, min(end, frameCount) - begin)
+        let out = PCM16Stereo(frames: length)
+        let undo = 1 / PCM16Stereo.stemHeadroom
+        for (s, stem) in sources.enumerated() {
+            let gain = (s < stemGains.count ? stemGains[s] : 1) * undo
+            guard gain > 0 else { continue }
+            for i in 0..<(length * 2) {
+                let sum = Float(out.data[i]) + Float(stem.data[(begin * 2) + i]) * gain
+                out.data[i] = Int16(max(-32767, min(32767, sum)))
+            }
+        }
+        return out
+    }
+
     // MARK: Transport
 
     var playhead: Double {
@@ -143,6 +163,17 @@ final class DeckRenderer {
     func setFX(_ type: CheeksFXType, on: Bool, beats: Double, depth: Float, stemMask: Int) {
         cheeks_deck_set_fx(handle, type, on, beats, depth, Int32(stemMask))
     }
+
+    func setFXLink(_ link: Int, type: CheeksFXType, on: Bool, beats: Double, depth: Float) {
+        cheeks_deck_set_fx_link(handle, Int32(link), type, on, beats, depth)
+    }
+
+    func setFXStems(_ mask: Int) { cheeks_deck_set_fx_stems(handle, Int32(mask)) }
+    func releaseFX(link: Int, atBeat beat: Double) { cheeks_deck_release_fx_at(handle, Int32(link), beat) }
+    func cutSource(atBeat beat: Double) { cheeks_deck_cut_source_at(handle, beat) }
+    func restoreSource() { cheeks_deck_restore_source(handle) }
+    var sourceCut: Bool { cheeks_deck_source_cut(handle) }
+    func setColor(_ type: CheeksColorType, amount: Float) { cheeks_deck_set_color(handle, type, amount) }
 
     func setEQ(low: Float, mid: Float, high: Float) { cheeks_deck_set_eq(handle, low, mid, high) }
     func setFilter(_ amount: Float) { cheeks_deck_set_filter(handle, amount) }

@@ -49,6 +49,26 @@ final class PCM16Stereo {
 
     var duration: Double { Double(frames) / AudioConfig.sampleRate }
 
+    /// A copy of part of this audio.
+    func slice(from start: Int, count: Int) -> PCM16Stereo {
+        let first = max(0, min(start, frames))
+        let length = max(0, min(count, frames - first))
+        let out = PCM16Stereo(frames: length)
+        out.data.update(from: data + first * 2, count: length * 2)
+        return out
+    }
+
+    /// Writes 16-bit audio to a file, at the app's sample rate.
+    func write(to url: URL) throws {
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: AudioConfig.sampleRate, channels: 2, interleaved: true),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(frames, 1))),
+              let channel = buffer.int16ChannelData else { throw AudioDecoder.DecodeError.unsupportedFormat }
+        channel[0].update(from: data, count: frames * 2)
+        buffer.frameLength = AVAudioFrameCount(frames)
+        let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatInt16, interleaved: true)
+        try file.write(from: buffer)
+    }
+
     // MARK: Building (decoder only, before the buffer is handed to a renderer)
 
     fileprivate func append(left l: UnsafePointer<Float>, right r: UnsafePointer<Float>, count: Int) {

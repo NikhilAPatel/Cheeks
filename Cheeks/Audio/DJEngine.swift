@@ -14,6 +14,7 @@ enum CrossfaderCurve: String, CaseIterable, Identifiable {
 @Observable
 final class DJEngine {
     let decks: [Deck]
+    let sampler: Sampler
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private let core: OpaquePointer
     @ObservationIgnored private var sourceNode: AVAudioSourceNode?
@@ -21,6 +22,8 @@ final class DJEngine {
     @ObservationIgnored private let audioQueue = DispatchQueue(label: "com.nikhilpatel.cheeks.audio-session", qos: .userInitiated)
 
     var crossfader: Float = 0 { didSet { updateVolumes() } }
+    /// What the COLOR knobs do, on both channels.
+    var colorFX: ColorEffect = .filter { didSet { decks.forEach { $0.colorFX = colorFX } } }
     var crossfaderCurve: CrossfaderCurve = .smooth { didSet { updateVolumes() } }
     var masterVolume: Float = 0.9 { didSet { updateVolumes() } }
 
@@ -75,7 +78,6 @@ final class DJEngine {
     private static let onAirSeconds: TimeInterval = 10
 
     @ObservationIgnored private var timer: Timer?
-    @ObservationIgnored private var samples: [PCM16Stereo] = []
     @ObservationIgnored private var nowPlaying: NowPlaying?
 
     init(library: Library) {
@@ -83,6 +85,7 @@ final class DJEngine {
         let handles: [OpaquePointer?] = newDecks.map { $0.renderer.handle }
         decks = newDecks
         core = handles.withUnsafeBufferPointer { cheeks_engine_create(AudioConfig.sampleRate, $0.baseAddress, Int32($0.count)) }
+        sampler = Sampler(core: core)
         self.library = library
         for deck in decks {
             deck.library = library
@@ -104,11 +107,7 @@ final class DJEngine {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
-        // The sampler's sounds are synthesised, which takes a moment.
-        Task.detached(priority: .utility) {
-            let bank = SampleBank.render()
-            await MainActor.run { self.installSamples(bank) }
-        }
+        sampler.loadSounds()
         // Recordings interrupted by a crash or the app being killed get saved now.
         for caf in Recordings.unfinished() { finalize(caf, recovered: true) }
         nowPlaying = NowPlaying(engine: self)
@@ -240,17 +239,6 @@ final class DJEngine {
 
     // MARK: Sampler and preview
 
-    private func installSamples(_ bank: [PCM16Stereo]) {
-        samples = bank // keeps the buffers alive; the render thread only sees their raw pointers
-        for (slot, pcm) in bank.enumerated() {
-            cheeks_engine_set_sample(core, Int32(slot), pcm.data, Int64(pcm.frames))
-        }
-    }
-
-    func triggerSample(_ slot: Int, gain: Float = 1) { cheeks_engine_trigger_sample(core, Int32(slot), gain) }
-    func stopSample(_ slot: Int) { cheeks_engine_stop_sample(core, Int32(slot)) }
-    func isSampleActive(_ slot: Int) -> Bool { cheeks_engine_sample_active(core, Int32(slot)) }
-
     /// Auditions a track from about a quarter of the way in, where the music has usually started.
     func togglePreview(_ track: Track) {
         if previewingTrack == track.id {
@@ -348,6 +336,7 @@ final class DJEngine {
 
     private func tick() {
         decks.forEach { $0.tick() }
+        sampler.tick()
         updateMaster()
         for deck in decks where deck.syncOn && deck.index != masterIndex {
             let master = decks[masterIndex]

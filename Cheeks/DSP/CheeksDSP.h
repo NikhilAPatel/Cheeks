@@ -32,6 +32,19 @@ typedef enum {
     CheeksFXSpiral,
 } CheeksFXType;
 
+#define CHEEKS_FX_LINKS 3
+
+/// Effects on the channel's COLOR knob, after the EQ. The filter is the default and has no bus.
+/// Echo and space ring out after the knob comes back to the centre.
+typedef enum {
+    CheeksColorFilter = 0,
+    CheeksColorDubEcho,
+    CheeksColorSpace,
+    CheeksColorNoise,
+    CheeksColorCrush,
+    CheeksColorPitch,
+} CheeksColorType;
+
 /// A snapshot for drawing: position in frames, playback speed, and the host time it was taken at.
 typedef struct {
     double position;
@@ -121,11 +134,23 @@ float cheeks_deck_stem_level(const CheeksDeck *deck, int stem);
 void cheeks_deck_set_grid(CheeksDeck *deck, double beatFrames, double firstBeatFrame);
 /// `stemMask` picks the stems that go through the FX bus (bit 0 = first stem); a full mix always does.
 void cheeks_deck_set_fx(CheeksDeck *deck, CheeksFXType type, bool on, double beats, float depth, int stemMask);
+/// Sets one link of the FX chain. Links run in order, each feeding the next.
+void cheeks_deck_set_fx_link(CheeksDeck *deck, int link, CheeksFXType type, bool on, double beats, float depth);
+void cheeks_deck_set_fx_stems(CheeksDeck *deck, int stemMask);
+/// Turns a link off when the track reaches `beat`, so the effect ends in time and its tail rings from there.
+void cheeks_deck_release_fx_at(CheeksDeck *deck, int link, double beat);
+/// From `beat` on the track's own sound is cut and only FX tails are left: an echo out.
+void cheeks_deck_cut_source_at(CheeksDeck *deck, double beat);
+/// Brings the track's own sound back, straight away.
+void cheeks_deck_restore_source(CheeksDeck *deck);
+bool cheeks_deck_source_cut(const CheeksDeck *deck);
 
 /// Band gains are linear: 0 is a true kill (the band is removed), 1 is flat.
 void cheeks_deck_set_eq(CheeksDeck *deck, float low, float mid, float high);
 /// -1...0 sweeps a low-pass down, 0...1 sweeps a high-pass up.
 void cheeks_deck_set_filter(CheeksDeck *deck, float amount);
+/// `amount` is -1...1 with 0 off; the two directions are each effect's dark and bright sides.
+void cheeks_deck_set_color(CheeksDeck *deck, CheeksColorType type, float amount);
 
 /// Peak level since the last call (pre-fader), decaying like a meter's ballistics.
 float cheeks_deck_peak(const CheeksDeck *deck);
@@ -157,11 +182,22 @@ int cheeks_engine_read_recording(CheeksEngine *engine, float *left, float *right
 /// Frames dropped because the reader fell behind.
 int64_t cheeks_engine_recording_overruns(const CheeksEngine *engine);
 
-// Sampler: one-shots mixed into the program bus. Buffers are interleaved 16-bit stereo.
+// Sampler: voices mixed into the program bus. Buffers are interleaved 16-bit stereo.
 void cheeks_engine_set_sample(CheeksEngine *engine, int slot, const int16_t *pcm, int64_t frames);
 void cheeks_engine_trigger_sample(CheeksEngine *engine, int slot, float gain);
+/// Starts on the next line of `deck`'s beat grid, every `gridBeats`. A press just after a line is
+/// taken as meant for that line, and starts straight away, part-way into the sample, still in time.
+void cheeks_engine_trigger_sample_quantized(CheeksEngine *engine, int slot, float gain, int deck, double gridBeats);
 void cheeks_engine_stop_sample(CheeksEngine *engine, int slot);
 bool cheeks_engine_sample_active(const CheeksEngine *engine, int slot);
+void cheeks_engine_set_sample_loop(CheeksEngine *engine, int slot, bool loop);
+void cheeks_engine_set_sampler_level(CheeksEngine *engine, float level);
+
+// Capture: writes the master into a buffer the caller owns, until stopped or the buffer's full.
+void cheeks_engine_capture_start(CheeksEngine *engine, int16_t *buffer, int64_t maxFrames);
+/// Returns the frames written. The buffer isn't touched again after this returns.
+int64_t cheeks_engine_capture_stop(CheeksEngine *engine);
+int64_t cheeks_engine_capture_frames(const CheeksEngine *engine);
 
 // Preview: an independent player for auditioning tracks from the browser, on the cue bus.
 void cheeks_engine_set_preview(CheeksEngine *engine, const int16_t *pcm, int64_t frames);

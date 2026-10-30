@@ -49,6 +49,36 @@ enum BeatFX: String, CaseIterable, Identifiable {
     static let beatChoices: [Double] = [1.0 / 8, 1.0 / 4, 1.0 / 2, 3.0 / 4, 1, 2, 4, 8, 16, 32]
 }
 
+/// One effect that's on: which link of the chain it's in, or none if it works the transport.
+struct ActiveFX: Equatable {
+    var effect: BeatFX
+    var link: Int?
+    var beats: Double
+    var depth: Float
+}
+
+/// What the channel's COLOR knob does.
+enum ColorEffect: String, CaseIterable, Identifiable {
+    case filter = "FILTER"
+    case dubEcho = "DUB"
+    case space = "SPACE"
+    case noise = "NOISE"
+    case crush = "CRUSH"
+    case pitch = "PITCH"
+    var id: String { rawValue }
+
+    var dsp: CheeksColorType {
+        switch self {
+        case .filter: CheeksColorFilter
+        case .dubEcho: CheeksColorDubEcho
+        case .space: CheeksColorSpace
+        case .noise: CheeksColorNoise
+        case .crush: CheeksColorCrush
+        case .pitch: CheeksColorPitch
+        }
+    }
+}
+
 enum StemStatus: Equatable {
     case unavailable
     /// Progress is 0...1, or nil while it's waiting its turn or the model is loading.
@@ -133,10 +163,15 @@ final class Deck {
     @ObservationIgnored var stemsBeforeSolo: [Bool]?
 
     // Beat FX
+    /// The effects that are on, oldest first. Up to `CHEEKS_FX_LINKS` run at once as a chain.
+    var activeFX: [ActiveFX] = []
+    /// The effect the row of FX controls is showing.
     var fxType: BeatFX = .echo
-    var fxOn = false
-    var fxBeats: Double = 0.5 { didSet { applyFX() } }
-    var fxDepth: Float = 0.6 { didSet { applyFX() } }
+    var fxOn: Bool { !activeFX.isEmpty }
+    var fxBeats: Double = 0.5 { didSet { fxSettingsChanged() } }
+    var fxDepth: Float = 0.6 { didSet { fxSettingsChanged() } }
+    /// True from an echo out until the track's sound is brought back.
+    var echoingOut = false
     /// The stems the FX bus is applied to; all of them, or the whole track without stems.
     var fxStems: Set<Stem> = Set(Stem.allCases) { didSet { applyFX() } }
 
@@ -146,6 +181,8 @@ final class Deck {
     var eqMid: Float = 0 { didSet { applyEQ() } }
     var eqLow: Float = 0 { didSet { applyEQ() } }
     var filter: Float = 0 { didSet { applyFilter() } }
+    /// What the COLOR knob does. Shared between channels, like a mixer's Color FX buttons.
+    var colorFX: ColorEffect = .filter { didSet { applyFilter() } }
     var fader: Float = 0.85 { didSet { onMixChange?() } }
     var headphoneCue = false { didSet { onMixChange?() } }
     /// Channel level, pre-fader. Not observed; meters poll it.
@@ -279,8 +316,9 @@ final class Deck {
         loopActive = false
         syncOn = false
         reverse = false
-        fxOn = false
-        applyFX()
+        clearFX()
+        echoingOut = false
+        renderer.restoreSource()
         stemStatus = .unavailable
         stemsOn = [true, true, true, true]
         stemLevels = [1, 1, 1, 1]
@@ -425,6 +463,6 @@ final class Deck {
         followTempoMap()
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
-        if fxOn && (fxType == .brake || fxType == .backspin) && !renderer.braking { fxOn = false }
+        if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
     }
 }

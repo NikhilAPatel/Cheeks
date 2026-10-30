@@ -16,6 +16,7 @@ final class TouchWiringTests: XCTestCase {
         var out: [String: String] = [
             "crossfader": "\(dj.crossfader)", "masterVolume": "\(dj.masterVolume)", "headphoneMix": "\(dj.headphoneMix)",
             "headphoneVolume": "\(dj.headphoneVolume)", "splitCue": "\(dj.splitCue)", "masterIndex": "\(dj.masterIndex)",
+            "colorFX": dj.colorFX.rawValue,
         ]
         for deck in dj.decks {
             let d = "deck\(deck.index)."
@@ -134,7 +135,7 @@ final class TouchWiringTests: XCTestCase {
             XCTAssertTrue(changed.contains("deck0." + name), "No control on deck 1 changed \(name)")
             XCTAssertTrue(changed.contains("deck1." + name), "No control on deck 2 changed \(name)")
         }
-        for name in ["crossfader", "masterVolume", "headphoneMix", "headphoneVolume", "splitCue"] {
+        for name in ["crossfader", "masterVolume", "headphoneMix", "headphoneVolume", "splitCue", "colorFX"] {
             XCTAssertTrue(changed.contains(name), "No control changed \(name)")
         }
         window?.isHidden = true
