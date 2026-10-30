@@ -21,7 +21,7 @@ Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features)
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team, then hand them TEST_PLAN §2.
-- **The folded cover screen** (678×466 pt) overflows. The fixed-width toolbars don't fit, and it needs its own compact layout. Ask the owner whether they ever use it folded before building one.
+- **The folded cover screen** (678×466 pt) overflows, and that's fine: on 2026-10-30 the owner said they only use the phone unfolded. Don't build a folded layout.
 - **Not yet checked:** the beat-grid menu (menus can't be snapshotted), audio playback by ear, two real tracks loaded through the UI, and the in-app Allocations instrument. These need the simulator panel (`sudo xcode-select -s …`, see CLAUDE.md) or the phone.
 - **Log warnings at launch, harmless for now:**
   - `AVAudioSession` "Hang Risk": `setActive` runs on the main thread. Move to the async activation API.
@@ -37,7 +37,7 @@ Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features)
 ---
 
 ## 1. The owner and what they want
-- **Device:** an iPhone Duo, used **unfolded, in landscape**: 951×669 pt (see Status above). Design for that size first; the 13-inch iPad is a larger check.
+- **Device:** an iPhone Duo, used **unfolded, in landscape, never folded**: 951×669 pt (see Status above). Design for that size first; the 13-inch iPad is a larger check.
 - **Goal:** a **fully functional, pro-level DJ app in the style of rekordbox**, used **entirely on the phone with no controller**, with pro features like stems. The name "rekordbox" is trademarked, so the app is called Cheeks after the repo.
 - **Out of scope by the owner's choice:** hardware (MIDI/controllers, audio interfaces, CDJ link, DVS) and streaming services.
 - **Called out as important:** recording a session, including the tracklist.
@@ -110,13 +110,12 @@ Update `docs/TEST_PLAN.md` and this file with what you learn.
 Work through `docs/ROADMAP.md` Phase 1 in order. The biggest gap is **real AI stems** (HT-Demucs → Core ML with STFT in Swift; the plan is in the roadmap). The Mac can download the model weights; the cloud container couldn't.
 
 ## 8. Working agreements
-- **Git:** commit in small, validated steps with clear messages. Up to now the owner has had work merged to `master`; confirm before pushing to `master` yourself, and never force-push.
+- **Git:** commit in small, validated steps with clear messages. The owner said (2026-10-30) to commit straight to `master`; still confirm before pushing, and never force-push.
 - **Realtime rules** (CLAUDE.md): nothing in `DeckRenderer.render` may allocate, lock (except the existing `trylock`), or touch the main actor.
 - **DSP changes:** update `tools/analysis-check/` and the tests together.
 - **Testing on the device:** ask the owner to test on the phone for anything you can't verify by ear. Be specific about what to listen or feel for.
 - **Keep the docs current:** `README.md`, `docs/TEST_PLAN.md`, `docs/ROADMAP.md`, and this file.
 
 ## 9. Open questions for the owner
-- Does the app need to work folded, on the 678×466 cover screen? It currently doesn't fit there.
 - Which roadmap items they want first after bring-up. AI stems is the recommendation.
 - How they'll import music (Files, iCloud Drive, a rekordbox XML export), so you can test that path first.

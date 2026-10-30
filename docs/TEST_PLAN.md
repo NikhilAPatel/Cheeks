@@ -4,7 +4,7 @@ The app was written without a compiler. This is the order for bringing it up on 
 
 ## 1. Mac bring-up (Claude can do all of this)
 
-Status on 2026-10-29: steps 2, 3 and 6 pass. Step 4 is done for the iPhone Duo and 13-inch iPad sizes through `CheeksTests/LayoutSnapshots`, apart from the beat-grid menu. Step 5 found that the folded Duo cover screen doesn't fit. Step 7 waits on the signing team. Commands are in CLAUDE.md.
+Status on 2026-10-29: steps 2, 3 and 6 pass. Step 4 is done for the iPhone Duo and 13-inch iPad sizes through `CheeksTests/LayoutSnapshots`, apart from the beat-grid menu. Step 5 found that the folded Duo cover screen doesn't fit; the owner only uses it unfolded, so that's out of scope. Step 7 waits on the signing team. Commands are in CLAUDE.md.
 
 1. **Prerequisites:** Xcode 16+ with an iOS 17+ simulator runtime, with the repo cloned on `master`.
 2. **Compile:** `xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'generic/platform=iOS Simulator' build`. Fix errors minimally; expect a handful.

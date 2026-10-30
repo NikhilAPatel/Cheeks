@@ -2,7 +2,7 @@
 
 **New session? Read `docs/HANDOFF.md` first.** It covers project status, decisions, and what to do next.
 
-Standalone iOS DJ app (SwiftUI + AVAudioEngine). It's designed for a wide landscape screen: the owner's iPhone Duo unfolded (951×669 pt in landscape), with iPads as a bigger fallback. See README.md for features.
+Standalone iOS DJ app (SwiftUI + AVAudioEngine). It's designed for a wide landscape screen: the owner's iPhone Duo unfolded (951×669 pt in landscape), with iPads as a bigger fallback. The owner only uses it unfolded, so the folded cover screen (678×466 pt) is deliberately unsupported. See README.md for features.
 
 ## Build, test, run (macOS with Xcode 16+)
 
@@ -15,7 +15,7 @@ xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'generic/platfo
 # unit tests (offline audio engine and analysis tests)
 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 
-# layout snapshots: renders every screen at the Duo, Duo-folded and 13" iPad sizes into a folder (opt-in test)
+# layout snapshots: renders every screen at the Duo (unfolded) and 13" iPad sizes into a folder (opt-in test)
 TEST_RUNNER_CHEEKS_SNAPSHOT_DIR=/tmp/cheeks-snaps xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build -only-testing:CheeksTests/LayoutSnapshots
 
 # memory for a 6-minute track and its stems (opt-in test; prints MEMORY: lines)
@@ -30,7 +30,7 @@ xcrun simctl io booted screenshot screenshot.png
 ```
 
 - **Simulator names:** list the installed ones with `xcrun simctl list devices available`. Xcode 27 here has no standalone Simulator.app; use `simctl` or the Claude simulator panel.
-- **iPhone Duo simulator:** it boots folded, so the app shows on the 466-pt-tall cover screen and the inner screen stays black. `simctl` can't unfold it (toggling screen power crashes SpringBoard). Use the layout snapshots for the unfolded size. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
+- **iPhone Duo simulator:** it boots folded, so the app shows on the 466-pt-tall cover screen and the inner screen stays black. Neither `simctl` nor the Claude simulator panel can unfold it (toggling screen power crashes SpringBoard), and the cramped cover-screen layout there is expected. Use the layout snapshots for the unfolded size, and the 13-inch iPad simulator for live tapping. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
 - **Installing on the phone:** this needs a signing team (`DEVELOPMENT_TEAM`). The owner sets it once in Xcode; don't invent one.
 
 ## History

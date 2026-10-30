@@ -18,7 +18,6 @@ final class LayoutSnapshots: XCTestCase {
     /// Landscape sizes in points. The Duo's insets are guesses until it's seen on the device.
     static let screens = [
         Screen(name: "duo", size: CGSize(width: 951, height: 669), insets: UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)),
-        Screen(name: "duo-folded", size: CGSize(width: 678, height: 466), insets: UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59)),
         Screen(name: "ipad13", size: CGSize(width: 1376, height: 1032), insets: UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0), scale: 2),
     ]
 
