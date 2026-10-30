@@ -69,6 +69,9 @@ final class Deck {
     @ObservationIgnored weak var library: Library?
     /// Called when anything affecting channel volume or tempo-synced FX changes.
     @ObservationIgnored var onMixChange: (@MainActor () -> Void)?
+    /// A message for the status capsule.
+    @ObservationIgnored var onMessage: (@MainActor (String) -> Void)?
+    @ObservationIgnored var stemJob: StemJob?
     /// Called after something destructive, to offer a way back.
     @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
 
@@ -189,6 +192,8 @@ final class Deck {
     func load(_ newTrack: Track) {
         guard let library else { return }
         pause()
+        stemJob?.cancel()
+        stemJob = nil
         isLoading = true
         loadError = nil
         loadGeneration += 1
@@ -274,7 +279,13 @@ final class Deck {
         cuePoint = track?.memoryCue ?? track?.firstBeat ?? 0
         seek(to: cuePoint)
         isLoading = false
-        if UserDefaults.standard.object(forKey: "prepareStemsOnLoad") as? Bool ?? true { prepareStems() }
+        // Without the model, stems are only a rough filter split: not worth their memory until asked for.
+        // When the phone's hot, leave the GPU alone until they're asked for too.
+        let thermal = ProcessInfo.processInfo.thermalState
+        if StemSeparation.hasModel, thermal != .serious, thermal != .critical,
+           UserDefaults.standard.object(forKey: "prepareStemsOnLoad") as? Bool ?? true {
+            prepareStems()
+        }
     }
 
     /// Tracks are brought to about this loudness (LUFS), which leaves headroom for mixing two together.

@@ -60,7 +60,9 @@ final class LayoutSnapshots: XCTestCase {
         for mode in PadMode.allCases {
             dj.decks.forEach { $0.padMode = mode }
             if mode == .stems {
-                let stems = try FrequencySplitSeparator().separate(dj.decks[0].renderer.mixSource ?? PCM16Stereo(frames: 1))
+                // CHEEKS_REAL_STEMS runs the real model, to see what the colours look like with true stems.
+                let separator: StemSeparator = env["CHEEKS_REAL_STEMS"] != nil ? StemSeparation.makeSeparator() : FrequencySplitSeparator()
+                let stems = try separator.separate(dj.decks[0].renderer.mixSource ?? PCM16Stereo(frames: 1))
                 dj.decks[0].renderer.setSources(stems)
                 dj.decks[0].stemWaveform = StemWaveformData(stems: stems)
                 dj.decks[0].stemStatus = .ready("AI")

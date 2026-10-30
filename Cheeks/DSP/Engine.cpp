@@ -111,6 +111,9 @@ struct CheeksDeck {
         lock.lock();
         for (int s = 0; s < kStems; ++s) slots[s] = s < count ? newSlots[s] : nullptr;
         sourceCount = std::min(count, kStems);
+        // The same length means stems replacing their own mix: they sum back to it exactly, so
+        // the audio carries straight on. Anything else is a new track.
+        newTrack = newTrack || newFrames != frames;
         frames = newFrames;
         stemScale = scale;
         sourceChanged = true;
@@ -165,10 +168,13 @@ private:
         applyCommands();
         if (sourceChanged) {
             sourceChanged = false;
-            if (position >= double(frames)) position = 0;
             snapSends = true;
-            declick.trigger();
-            stretchDirty = true;
+            if (newTrack) {
+                newTrack = false;
+                if (position >= double(frames)) position = 0;
+                declick.trigger();
+                stretchDirty = true;
+            }
         }
         if (frames < 2 || sourceCount == 0) {
             std::fill(left, left + n, 0.0f);
@@ -588,7 +594,7 @@ private:
     int sourceCount = 0;
     int64_t frames = 0;
     float stemScale = 1.0f / 16384;
-    bool sourceChanged = false, snapSends = true;
+    bool sourceChanged = false, newTrack = false, snapSends = true;
 
     // Render thread state
     double position = 0, slipPosition = 0, lastRate = 0, nudge = 0;

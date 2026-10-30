@@ -87,6 +87,7 @@ final class DJEngine {
         for deck in decks {
             deck.library = library
             deck.onMixChange = { [weak self] in self?.updateVolumes() }
+            deck.onMessage = { [weak self] message in self?.statusMessage = message }
             deck.offerUndo = { [weak self] message, undo in
                 self?.statusMessage = message
                 self?.undoAction = undo

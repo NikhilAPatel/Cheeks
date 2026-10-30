@@ -147,6 +147,39 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(r.playhead - start, 44_100 * 1.03, accuracy: 2)
     }
 
+    /// Stems arriving while a deck plays must be inaudible: the audio carries on sample for sample.
+    func testSwappingToStemsIsSeamless() throws {
+        // Enough going on across the spectrum to give all four stems something.
+        let n = Int(sr * 8)
+        let music: [Float] = (0..<n).map { i in
+            let t = Double(i) / sr
+            return Float(0.3 * sin(2 * .pi * 80 * t) + 0.2 * sin(2 * .pi * 900 * t) + 0.1 * sin(2 * .pi * 8000 * t))
+        }
+        let mix = stereo(music)
+        let stems = try FrequencySplitSeparator().separate(mix)
+
+        func render(swapping: Bool, ratio: Double) -> [Float] {
+            let r = DeckRenderer(sampleRate: sr)
+            r.setSources([mix])
+            r.setTempo(ratio: ratio, keyLock: true, keyShift: 0)
+            r.isPlaying = true
+            var out = r.renderOffline(frames: 22_050).left
+            if swapping { r.setSources(stems) }
+            out += r.renderOffline(frames: 22_050).left
+            return out
+        }
+
+        // At normal speed it's read directly: the difference is only 16-bit rounding.
+        let plain = render(swapping: false, ratio: 1), swapped = render(swapping: true, ratio: 1)
+        let worst = Array(zip(plain, swapped))[22_050...].map { abs($0 - $1) }.max() ?? 1
+        XCTAssertLessThan(worst, 0.002)
+
+        // With the stretcher in the path, it mustn't be restarted, which would jolt its phases.
+        let stretched = render(swapping: false, ratio: 1.05), stretchedSwap = render(swapping: true, ratio: 1.05)
+        let drift = Array(zip(stretched, stretchedSwap))[23_000...].map { abs($0 - $1) }.max() ?? 1
+        XCTAssertLessThan(drift, 0.02)
+    }
+
     // MARK: Isolator EQ and filter
 
     private func channelLevel(frequency: Double, low: Float = 1, mid: Float = 1, high: Float = 1, filter: Float = 0) -> Float {

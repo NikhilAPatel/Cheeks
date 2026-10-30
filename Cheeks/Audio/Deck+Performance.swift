@@ -303,7 +303,8 @@ extension Deck {
         renderer.setFX(fxType.dsp, on: fxOn && fxType.dsp != CheeksFXNone, beats: fxBeats, depth: fxDepth, stemMask: mask == 0 ? 0xF : mask)
     }
 
-    /// Splits the loaded track into stems in the background, then swaps them in seamlessly.
+    /// Splits the loaded track into stems in the background, then swaps them in seamlessly. A track
+    /// that's been split before comes straight back from the cache.
     func prepareStems() {
         // Separates the audio already loaded on the deck, so there's no second decode.
         guard let track, !isLoading, stemStatus == .unavailable, let mix = renderer.mixSource else { return }
@@ -315,23 +316,33 @@ extension Deck {
         let id = track.id
         // Results from a separation started before another track was loaded are dropped.
         let generation = loadGeneration
-        Task.detached(priority: .userInitiated) {
+        let job = StemJob()
+        stemJob = job
+        StemJob.started()
+        Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let separator = StemSeparation.makeSeparator()
-                let label = separator.isMachineLearning ? "AI" : "≈EQ"
-                let stems = try separator.separate(mix)
+                let (stems, label) = try StemJob.stems(for: id, mix: mix, job: job) { progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.loadGeneration == generation, case .separating = self.stemStatus else { return }
+                        self.stemStatus = .separating(progress)
+                    }
+                }
                 let waves = StemWaveformData(stems: stems)
                 await MainActor.run {
-                    guard self.loadGeneration == generation, self.track?.id == id else { return }
+                    StemJob.finished()
+                    guard let self, self.loadGeneration == generation, self.track?.id == id else { return }
                     self.renderer.setSources(stems)
                     self.applyStemGains()
                     self.stemWaveform = waves
                     self.stemStatus = .ready(label)
                 }
             } catch {
+                let wasCancelled = error is CancellationError
                 await MainActor.run {
-                    guard self.loadGeneration == generation else { return }
+                    StemJob.finished()
+                    guard let self, self.loadGeneration == generation else { return }
                     self.stemStatus = .unavailable
+                    if !wasCancelled { self.onMessage?("Couldn't split this track into stems.") }
                 }
             }
         }

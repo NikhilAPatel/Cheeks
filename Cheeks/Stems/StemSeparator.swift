@@ -75,6 +75,9 @@ enum StemSeparation {
         bundled ?? FrequencySplitSeparator()
     }
 
+    /// True when the app was built with the real model, not just the frequency splitter.
+    static var hasModel: Bool { bundled != nil }
+
     /// Frees the model's memory, for when no separation is pending. A running job keeps it until
     /// it ends. The next separation loads it again.
     static func releaseModel() {

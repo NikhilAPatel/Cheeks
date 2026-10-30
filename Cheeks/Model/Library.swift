@@ -144,6 +144,7 @@ final class Library {
         try? FileManager.default.removeItem(at: url(for: track))
         try? FileManager.default.removeItem(at: LibraryFiles.waveformURL(track.id))
         ArtworkStore.delete(track.id)
+        StemCache.shared.remove(track.id)
         tracks.removeAll { $0.id == track.id }
         for i in playlists.indices { playlists[i].trackIDs.removeAll { $0 == track.id } }
         save()
