@@ -144,6 +144,34 @@ final class DeckTests: XCTestCase {
         XCTAssertEqual(deck.renderer.loopStart / deck.sampleRate, 12, accuracy: 0.0001)
     }
 
+    func testPressingPlayWhileHoldingCueKeepsPlaying() {
+        let deck = makeDeck(0, bpm: 120, at: 10)
+        deck.cueDown() // paused: sets the cue here and previews
+        XCTAssertTrue(deck.isPlaying)
+        deck.togglePlay()
+        deck.cueUp()
+        XCTAssertTrue(deck.isPlaying, "PLAY during a cue preview must latch playback, as on a CDJ")
+    }
+
+    func testRollingTwoPadsReturnsToTheFirstPadsReturnPoint() {
+        let deck = makeDeck(0, bpm: 120, at: 10)
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: 4410)
+        deck.rollBegin(0.25)
+        _ = deck.renderer.renderOffline(frames: 4410)
+        deck.rollBegin(0.5)
+        _ = deck.renderer.renderOffline(frames: 4410)
+        deck.rollEnd()
+        XCTAssertTrue(deck.renderer.loopActive, "Letting go of one pad leaves the other rolling")
+        _ = deck.renderer.renderOffline(frames: 4410)
+        deck.rollEnd()
+        _ = deck.renderer.renderOffline(frames: 512)
+        // 10 s, plus everything rendered, as if the rolls had never happened.
+        let expected = 10 * AudioConfig.sampleRate + 4 * 4410 + 512
+        XCTAssertEqual(deck.renderer.playhead, expected, accuracy: 300)
+        XCTAssertFalse(deck.renderer.loopActive)
+    }
+
     func testGridEditing() {
         let deck = makeDeck(0, bpm: 64, firstBeat: 0.1, at: 9.0)
         deck.scaleBPM(2)

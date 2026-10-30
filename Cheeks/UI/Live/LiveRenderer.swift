@@ -158,7 +158,6 @@ class LiveView: UIView {
         metalLayer.framebufferOnly = true
         metalLayer.isOpaque = false
         metalLayer.maximumDrawableCount = 3
-        metalLayer.allowsNextDrawableTimeout = false
         isOpaque = false
         backgroundColor = .clear
     }

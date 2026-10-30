@@ -118,13 +118,19 @@ extension Deck {
     /// Momentary loop: the track keeps running underneath and resumes in time on release.
     func rollBegin(_ beats: Double) {
         guard isLoaded, beatFrames > 0 else { return }
-        renderer.engageSlip()
+        if heldMomentaryPads == 0 { renderer.engageSlip() }
+        heldMomentaryPads += 1
         renderer.loopActive = false
         loopActive = false
         setLoop(beats: beats, resizeExisting: false)
     }
 
-    func rollEnd() {
+    func rollEnd() { momentaryPadReleased() }
+
+    /// When the last held pad comes up, the track returns to where it would have been.
+    private func momentaryPadReleased() {
+        heldMomentaryPads = max(0, heldMomentaryPads - 1)
+        guard heldMomentaryPads == 0 else { return }
         renderer.loopActive = false
         loopActive = false
         renderer.releaseSlip()
@@ -141,17 +147,15 @@ extension Deck {
         let beat = beatPosition(renderer.playhead)
         let barStart = firstBeatFrame + (beat / 4).rounded(.down) * 4 * beatFrames
         let start = barStart + Double(slice) * length
-        renderer.engageSlip()
+        // A second pad while one's held plays that slice; the return point stays where it was.
+        if heldMomentaryPads == 0 { renderer.engageSlip() }
+        heldMomentaryPads += 1
         renderer.setLoop(start: start, end: start + length, active: true)
         renderer.playhead = start
         loopActive = true
     }
 
-    func sliceEnd() {
-        renderer.loopActive = false
-        loopActive = false
-        renderer.releaseSlip()
-    }
+    func sliceEnd() { momentaryPadReleased() }
 
     // MARK: Key sync
 

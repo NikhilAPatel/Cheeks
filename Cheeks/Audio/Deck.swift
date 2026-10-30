@@ -107,6 +107,8 @@ final class Deck {
 
     // Performance
     var padMode: PadMode = .hotCue
+    /// Roll and slicer pads being held, so letting go of one doesn't end the other.
+    @ObservationIgnored var heldMomentaryPads = 0
     var shift = false
     var loopActive = false
     var loopBeats: Double = 4
@@ -288,7 +290,16 @@ final class Deck {
 
     // MARK: Transport
 
-    func togglePlay() { isPlaying ? pause() : play() }
+    func togglePlay() {
+        // PLAY while holding CUE means "keep going from here", as on a CDJ.
+        if cuePreviewing {
+            play()
+        } else if isPlaying {
+            pause()
+        } else {
+            play()
+        }
+    }
 
     func play() {
         guard isLoaded else { return }

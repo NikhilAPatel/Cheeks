@@ -2,7 +2,7 @@
 
 **New session? Read `docs/HANDOFF.md` first.** It covers project status, decisions, and what to do next.
 
-Standalone iOS DJ app (SwiftUI + AVAudioEngine). It's designed for a wide landscape screen: the owner's iPhone Duo unfolded (951×669 pt in landscape), with iPads as a bigger fallback. The owner only uses it unfolded, so the folded cover screen (678×466 pt) is deliberately unsupported. See README.md for features.
+Standalone iOS DJ app (SwiftUI, Metal and a C++ audio core hosted in AVAudioEngine). It's designed for a wide landscape screen: the owner's iPhone Duo unfolded (951×669 pt in landscape), with iPads as a bigger fallback. The owner only uses it unfolded, so the folded cover screen (678×466 pt) is deliberately unsupported. See README.md for features.
 
 ## Build, test, run (macOS with Xcode 16+)
 

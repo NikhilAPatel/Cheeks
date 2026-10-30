@@ -205,9 +205,9 @@ final class DJEngine {
         // Mix knob: centre plays both at full level, each end fades the other out.
         let cueLevel = min(1, 2 * (1 - headphoneMix))
         let programInCue = min(1, 2 * headphoneMix)
+        let automatic = UserDefaults.standard.object(forKey: "autoGain") as? Bool ?? true
         for deck in decks {
             let xf = deck.index == 0 ? a : b
-            let automatic = UserDefaults.standard.object(forKey: "autoGain") as? Bool ?? true
             let trim = pow(10, (deck.trim * 12 + (automatic ? deck.autoGainDB : 0)) / 20)
             let fader = deck.fader * deck.fader * xf
             channelGains[deck.index] = fader * trim
