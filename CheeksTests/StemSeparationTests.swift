@@ -611,6 +611,50 @@ final class StemCacheTests: XCTestCase {
 ///
 ///     TEST_RUNNER_CHEEKS_STEM_MODEL=1 xcodebuild test ... -only-testing:CheeksTests/StemModelTests
 final class StemModelTests: XCTestCase {
+    /// The whole path a deck takes: split, cache, swap in, and straight back from the cache next time.
+    @MainActor
+    func testDeckSplitsCachesAndReloadsInstantly() async throws {
+        guard ProcessInfo.processInfo.environment["CHEEKS_STEM_MODEL"] != nil else {
+            throw XCTSkip("set TEST_RUNNER_CHEEKS_STEM_MODEL=1 to run")
+        }
+        let id = UUID()
+        defer { StemCache.shared.remove(id) }
+        let audio = Synth.track(bpm: 126, firstBeat: 0.2, seconds: 12, chords: Synth.aMinor)
+
+        func makeDeck() -> Deck {
+            let deck = Deck(index: 0)
+            deck.renderer.setSources([audio])
+            deck.track = Track(id: id, title: "T", artist: "", fileName: "none", duration: audio.duration, bpm: 126)
+            return deck
+        }
+        func waitUntilReady(_ deck: Deck) async throws -> TimeInterval {
+            let start = Date()
+            var sawProgress = false
+            while Date().timeIntervalSince(start) < 180 {
+                if case .ready = deck.stemStatus { break }
+                if case .separating(.some) = deck.stemStatus { sawProgress = true }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            print("STEMS: ready after \(Date().timeIntervalSince(start)) s, saw progress: \(sawProgress)")
+            return Date().timeIntervalSince(start)
+        }
+
+        let first = makeDeck()
+        first.prepareStems()
+        let firstTime = try await waitUntilReady(first)
+        XCTAssertEqual(first.stemStatus, .ready("AI"))
+        XCTAssertTrue(first.renderer.hasStems)
+        XCTAssertEqual(first.stemWaveform?.levels.count, 4)
+        XCTAssertNotNil(StemCache.shared.load(id))
+
+        let second = makeDeck()
+        second.prepareStems()
+        let secondTime = try await waitUntilReady(second)
+        XCTAssertEqual(second.stemStatus, .ready("AI"))
+        XCTAssertTrue(second.renderer.hasStems)
+        XCTAssertLessThan(secondTime, firstTime / 3, "The cache should be far quicker than splitting again")
+    }
+
     func testRealModelOnAClip() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["CHEEKS_STEM_MODEL"] != nil else {

@@ -12,9 +12,18 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - **Interface rebuilt:** Metal for everything that moves, pre-rendered hardware parts, UIKit touch handling and Core Haptics. See CLAUDE.md → UI rules.
 - **New:** stem colours on the waveforms, per-stem levels, stem-targeted FX, 12 beat FX, slicer, sampler, beat jump, key sync, loudness matching, artwork, browser preview, sort and filters, drag to load, undo, Lock Screen now playing, settings.
 
-**Proven:** all unit tests pass, including offline click detection, key lock pitch, instant hot cues under key lock, isolator kills, limiter ceiling, a 3-minute sync lock and end-to-end recording. Every screen renders at the Duo and iPad sizes with real music, and the app launches in the simulator with the live Metal path.
+- **Real AI stems:** HT-Demucs on Core ML, with the STFT and overlap-add in Swift. See `tools/stems/README.md` for the full numbers.
 
-**Not yet proven, because nothing here could touch or hear it:** real touch handling, haptic tuning, how it sounds, and on-device thermals and frame rate. `docs/COMPUTER_USE_TEST.md` covers touch. The owner covers the rest with TEST_PLAN §2.
+**Proven:**
+- All unit tests pass, including offline click detection, key lock pitch, instant hot cues under key lock, isolator kills, limiter ceiling, a 3-minute sync lock and end-to-end recording.
+- `TouchWiringTests` hit-tests the real screen the way UIKit does and presses every control, in every pad mode. So the controls are reachable and wired, but no real touch has gone through them.
+- Every screen renders at the Duo and iPad sizes with real music, and the app launches in the simulator with the live Metal path.
+- Stems match PyTorch to within 0.005 dB per stem on 34 s clips. A separate scoring script on six MUSDB songs joined into one clip gave drums 8.9 dB, bass 6.6, instruments 5.5, vocals 4.9, against -2 to -7 dB for no separation, and the stems sum back to the mix.
+- A 6-minute track takes 15.7 s on this M1 Pro's GPU, using about 575 MB beyond the audio buffers. A cached track comes back in about 0.02 s (12 s clip).
+
+**Not yet proven, because nothing here could touch or hear it:** real touch delivery, haptic tuning, how it sounds, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. `docs/COMPUTER_USE_TEST.md` covers touch. The owner covers the rest with TEST_PLAN §2.
+
+**Before distributing the app:** the Demucs code is MIT, and states no separate terms for its weights, but they were trained partly on MUSDB18, which is non-commercial. Personal use is fine. Get a real answer before anything commercial.
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team.

@@ -67,7 +67,7 @@ Real AI stems with cache, per-stem levels, stem-targeted FX, 12 Beat FX, key syn
 ## Phase 4: Sound quality and performance
 - **Stretcher tuning (S):** block size against latency against quality, once it's been heard on real tracks at real tempo changes.
 - **Stem latency with key lock (M):** stem mutes and FX go in ahead of the stretcher, so they're heard about 125 ms late when it's in the path. Shortening its block helps, at some cost in bass quality. Worth doing if the owner notices.
-- **Thermal and battery (S):** drop to the frequency splitter for new stem jobs when `ProcessInfo.thermalState` is serious.
+- **Stem speed on the phone (?):** nothing's been measured there. If it's too slow, a smaller model such as `htdemucs` with fewer transformer layers, or streaming only the part around the playhead, are the options to look at.
 
 ## Phase 5: UX polish
 - **Settings (S):** tempo range and quantize defaults, load lock override.

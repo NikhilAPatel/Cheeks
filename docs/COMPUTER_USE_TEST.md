@@ -115,8 +115,8 @@ For each one, record PASS, FAIL or BLOCKED, what you actually saw, and any scree
 5. **Simultaneous controls:** if your tooling can do two touches at once, hold a pad while moving a fader. Report if not.
 
 ### I. Stems (`STEMS` tab) — the headline feature
-1. Load a track and open the `STEMS` tab. The control row should show a percentage counting up, then a green dot with **AI** (or **≈EQ** if no model is installed; note which). Note how long it takes for the 2:25 track and the 6:52 track. In the simulator it's expected to be slow (CPU only); record the time anyway.
-2. When ready, the waveform should change to four colours: pink vocals, green instruments, blue bass, amber drums. Screenshot `i2-stems`.
+1. First check the model is present: `ls Cheeks/Stems.mlpackage`. It isn't in git, so if it's missing, stop and report that, because the rest of this section would only test the fallback. Load a track and open the `STEMS` tab. Separation starts by itself on load. The control row should show a percentage counting up, then a green dot with **AI**. Note how long it takes for the 2:25 track and the 6:52 track. The simulator is CPU-only, so expect well under realtime but much slower than a real GPU; record the times anyway.
+2. When ready, the waveform should change to four colours: pink vocals, green instruments, blue bass, amber drums. Both test tracks are instrumental, so little or no pink is expected. Screenshot `i2-stems`.
 3. Tap `VOCAL`. The pad should dim immediately, and the pink layer on the waveform should drop to a ghost. Tap again to restore it.
 4. Slide up and down on a stem pad: its level changes, a dark band shows it, and the waveform layer changes size or brightness. The stem should **not** end up muted by the slide.
 5. Try `ACAPELLA`, `NO VOCAL`, `BEAT` and `ALL`, and each `SOLO` pad (soloing again restores what was on before).

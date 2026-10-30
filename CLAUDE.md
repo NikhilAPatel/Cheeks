@@ -23,6 +23,9 @@ TEST_RUNNER_CHEEKS_SNAPSHOT_DIR=/tmp/cheeks-snaps xcodebuild test -project Cheek
 # memory for a 6-minute track and its stems (opt-in test; prints MEMORY: lines)
 TEST_RUNNER_CHEEKS_MEMORY=1 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build -only-testing:CheeksTests/MemoryFootprint
 
+# the real stem model, in the simulator on the CPU: separates a clip, and runs a deck through split, cache and reload (opt-in)
+TEST_RUNNER_CHEEKS_STEM_MODEL=1 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build -only-testing:CheeksTests/StemModelTests
+
 # run in the simulator and screenshot
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null
 xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build build
@@ -49,6 +52,9 @@ xcrun simctl io booted screenshot screenshot.png
 - **Sample rate and memory:** internal audio is 44.1 kHz (`AudioConfig.sampleRate`).
   - Files decode straight into interleaved Int16 (`PCM16Stereo`). Analysis and stem separation stream over that buffer, so never materialise full-length Float copies.
   - Stems are stored at `stemHeadroom` (×0.5).
+- **Stems:** `Cheeks/Stems.mlpackage` (100 MB, git-ignored) is HT-Demucs, built by `tools/stems/convert.py`. Without it, the app builds and falls back to a frequency split.
+  - **Never run it with `.all` or `.cpuAndNeuralEngine`.** The Neural Engine returns audio 3 to 9 dB worse with no error. Use `.cpuAndGPU`, falling back to `.cpuOnly`.
+  - Stems sum back to the mix exactly (melody takes the residual), so swapping them in is inaudible and needs no restart of the stretcher.
 - **Swift language mode is 5:** keep it that way unless asked.
 - **Vendored code:** `DSP/vendor/` is Signalsmith Stretch and Linear (MIT), unmodified. `Bridging.h` is the Swift bridging header, and it includes `UI/Live/ShaderTypes.h`, which Metal also includes.
 
@@ -65,6 +71,7 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **Deck 2 is mirrored** so each deck's tempo fader and CUE/PLAY sit at the screen edge.
 - **The Duo has a centre crease when unfolded**, so the mixer sits across it and the waveform playhead sits off-centre.
 - **Check visual changes with the snapshot test at the Duo size** before calling them done, using real music (below). Synthetic fixtures make waveforms look much worse than they are.
+- **Run one `xcodebuild test` per simulator at a time.** A second run on the same simulator installs over the first and kills it with `signal kill`, which looks like a crash.
 
 Snapshot options, on top of `TEST_RUNNER_CHEEKS_SNAPSHOT_DIR`:
 
@@ -74,6 +81,7 @@ TEST_RUNNER_CHEEKS_FIXTURE_A="/tmp/cheeks-music/Exhilarate.mp3"          # real 
 TEST_RUNNER_CHEEKS_FIXTURE_B="/tmp/cheeks-music/Severe Tire Damage.mp3"  # and deck 2
 TEST_RUNNER_CHEEKS_SNAPSHOT_SCREEN=duo                                   # one screen size only
 TEST_RUNNER_CHEEKS_SNAPSHOT_ONLY=decks-cue,browser                       # only these views
+TEST_RUNNER_CHEEKS_REAL_STEMS=1                                          # decks-stems uses the real model
 TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also writes AppIcon.png
 ```
 
