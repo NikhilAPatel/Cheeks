@@ -2,20 +2,65 @@ import AVFoundation
 import Observation
 
 enum PadMode: String, CaseIterable, Identifiable {
-    case hotCue = "HOT CUE"
-    case beatLoop = "BEAT LOOP"
+    case hotCue = "CUE"
+    case beatLoop = "LOOP"
     case roll = "ROLL"
-    case beatJump = "BEAT JUMP"
+    case slicer = "SLICER"
+    case beatJump = "JUMP"
     case stems = "STEMS"
+    case fx = "FX"
+    case sampler = "SAMPLER"
     var id: String { rawValue }
+}
+
+/// Beat FX. Most run on the deck's FX bus in the realtime core; roll, brake and backspin work the transport.
+enum BeatFX: String, CaseIterable, Identifiable {
+    case echo = "ECHO"
+    case pingPong = "PING PONG"
+    case spiral = "SPIRAL"
+    case reverb = "REVERB"
+    case flanger = "FLANGER"
+    case phaser = "PHASER"
+    case filterLFO = "FILTER"
+    case gate = "TRANS"
+    case crush = "CRUSH"
+    case roll = "ROLL"
+    case brake = "BRAKE"
+    case backspin = "BACKSPIN"
+    var id: String { rawValue }
+
+    /// The realtime effect, or none for the ones that work the transport instead.
+    var dsp: CheeksFXType {
+        switch self {
+        case .echo: CheeksFXEcho
+        case .pingPong: CheeksFXPingPong
+        case .spiral: CheeksFXSpiral
+        case .reverb: CheeksFXReverb
+        case .flanger: CheeksFXFlanger
+        case .phaser: CheeksFXPhaser
+        case .filterLFO: CheeksFXFilterLFO
+        case .gate: CheeksFXGate
+        case .crush: CheeksFXCrush
+        case .roll, .brake, .backspin: CheeksFXNone
+        }
+    }
+
+    static let beatChoices: [Double] = [1.0 / 8, 1.0 / 4, 1.0 / 2, 3.0 / 4, 1, 2, 4, 8, 16, 32]
 }
 
 enum StemStatus: Equatable {
     case unavailable
-    case separating
+    /// Progress is 0...1, or nil while it's waiting its turn or the model is loading.
+    case separating(Double?)
     case ready(String)
     /// Track is longer than `AudioConfig.maxStemSeconds`; four stems wouldn't fit in memory.
     case tooLong
+}
+
+/// A waveform per stem, in `Stem.allCases` order, computed once a track has been split.
+struct StemWaveformData {
+    var levels: [[UInt8]]
+    var count: Int { levels.first?.count ?? 0 }
 }
 
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
@@ -24,25 +69,19 @@ enum StemStatus: Equatable {
 @Observable
 final class Deck {
     let index: Int
+    /// The deck in the realtime core. Signal chain: stems → FX bus → stretcher (if needed) → isolator EQ → filter → channel.
     let renderer = DeckRenderer(sampleRate: AudioConfig.sampleRate)
-
-    // Signal chain: renderer → varispeed → timePitch → EQ/filter → echo → reverb → channel
-    let varispeed = AVAudioUnitVarispeed()
-    let timePitch = AVAudioUnitTimePitch()
-    let eq = AVAudioUnitEQ(numberOfBands: 4)
-    let delay = AVAudioUnitDelay()
-    let reverb = AVAudioUnitReverb()
-    let channel = AVAudioMixerNode()
-    /// Pre-fader send to the headphone (cue) bus.
-    let cueSend = AVAudioMixerNode()
 
     @ObservationIgnored weak var library: Library?
     /// Called when anything affecting channel volume or tempo-synced FX changes.
     @ObservationIgnored var onMixChange: (@MainActor () -> Void)?
 
     // Track
-    var track: Track?
+    var track: Track? { didSet { applyGrid() } }
     var waveform: WaveformData?
+    /// Per-stem waveforms, available once the track has been split.
+    var stemWaveform: StemWaveformData?
+    var artwork: CGImage?
     private(set) var isLoading = false
     /// Bumped on every load so a slow, superseded load can't replace a newer one.
     @ObservationIgnored private(set) var loadGeneration = 0
@@ -53,7 +92,7 @@ final class Deck {
     var cuePoint: Double = 0
     @ObservationIgnored var cuePreviewing = false
     var quantize = true
-    var slipMode = false { didSet { if !slipMode { renderer.slipEngaged = false } } }
+    var slipMode = false { didSet { if !slipMode { renderer.cancelSlip() } } }
     var reverse = false { didSet { setReverse() } }
 
     // Tempo
@@ -70,6 +109,18 @@ final class Deck {
     var loopBeats: Double = 4
     var stemStatus: StemStatus = .unavailable
     var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
+    /// Each stem's level (0...1), on top of its on/off state.
+    var stemLevels: [Float] = [1, 1, 1, 1] { didSet { applyStemGains() } }
+    /// Set when the stems were last heard all on, for restoring after a solo.
+    @ObservationIgnored var stemsBeforeSolo: [Bool]?
+
+    // Beat FX
+    var fxType: BeatFX = .echo
+    var fxOn = false
+    var fxBeats: Double = 0.5 { didSet { applyFX() } }
+    var fxDepth: Float = 0.6 { didSet { applyFX() } }
+    /// The stems the FX bus is applied to; all of them, or the whole track without stems.
+    var fxStems: Set<Stem> = Set(Stem.allCases) { didSet { applyFX() } }
 
     // Mixer channel (knobs are -1...1, 0 = centre)
     var trim: Float = 0 { didSet { onMixChange?() } }
@@ -79,32 +130,13 @@ final class Deck {
     var filter: Float = 0 { didSet { applyFilter() } }
     var fader: Float = 0.85 { didSet { onMixChange?() } }
     var headphoneCue = false { didSet { onMixChange?() } }
-    var level: Float = 0
+    /// Channel level, pre-fader. Not observed; meters poll it.
+    var level: Float { renderer.peak }
 
     init(index: Int) {
         self.index = index
-        let bands = eq.bands
-        bands[0].filterType = .lowShelf
-        bands[0].frequency = 120
-        bands[1].filterType = .parametric
-        bands[1].frequency = 1000
-        bands[1].bandwidth = 1.6
-        bands[2].filterType = .highShelf
-        bands[2].frequency = 7000
-        bands[3].filterType = .resonantLowPass
-        bands[3].frequency = 20000
-        bands[3].bandwidth = 0.6
-        for band in bands.prefix(3) { band.gain = 0; band.bypass = false }
-        bands[3].bypass = true
-
-        delay.feedback = 45
-        delay.lowPassCutoff = 9000
-        delay.wetDryMix = 0
-        delay.bypass = true
-        reverb.loadFactoryPreset(.largeHall)
-        reverb.wetDryMix = 0
-        reverb.bypass = true
         applyTempo()
+        applyFX()
     }
 
     // MARK: Derived values
@@ -116,6 +148,14 @@ final class Deck {
     var isLoaded: Bool { renderer.frameCount > 0 && !isLoading }
     /// Current playhead in seconds. Not observed; views poll it from a TimelineView.
     var position: Double { renderer.playhead / sampleRate }
+    /// Where the audio coming out of the speakers is right now, in frames: the published position,
+    /// carried forward to this moment and pulled back by the output latency.
+    func heardFrame(hostTime: UInt64, secondsPerTick: Double, outputLatency: Double) -> Double {
+        let state = renderer.displayState
+        let elapsed = hostTime > state.hostTime ? Double(hostTime - state.hostTime) * secondsPerTick : 0
+        let ahead = min(elapsed, 0.05) - outputLatency
+        return max(0, state.position + state.rate * ahead * sampleRate)
+    }
     var duration: Double { Double(renderer.frameCount) / sampleRate }
     var beatFrames: Double { bpm > 0 ? 60 / bpm * sampleRate : 0 }
     var firstBeatFrame: Double { (track?.firstBeat ?? 0) * sampleRate }
@@ -188,19 +228,25 @@ final class Deck {
 
         renderer.isPlaying = false
         renderer.loopActive = false
-        renderer.slipEngaged = false
-        renderer.scratching = false
+        renderer.cancelSlip()
+        renderer.endScratch()
         renderer.reachedEnd = false
         renderer.setSources([pcm])
 
         track = library?.track(id)
         self.waveform = waveform
+        stemWaveform = nil
+        artwork = nil
         isPlaying = false
         loopActive = false
         syncOn = false
         reverse = false
+        fxOn = false
+        applyFX()
         stemStatus = .unavailable
         stemsOn = [true, true, true, true]
+        stemLevels = [1, 1, 1, 1]
+        stemsBeforeSolo = nil
         cuePoint = track?.memoryCue ?? track?.firstBeat ?? 0
         seek(to: cuePoint)
         isLoading = false
@@ -276,19 +322,12 @@ final class Deck {
     func setTempo(_ value: Double) { tempo = value }
 
     private func applyTempo() {
-        let rate = Float(tempoRatio)
-        if keyLock {
-            varispeed.rate = 1
-            timePitch.rate = rate
-        } else {
-            varispeed.rate = rate
-            timePitch.rate = 1
-        }
-        timePitch.pitch = Float(keyShift * 100)
-        // Never bypass these: the time-pitch stage adds latency, so bypassing it on a deck at 0%
-        // would make that deck play earlier than a synced deck at +2% and the kicks would flam.
-        // Keeping both stages always on gives both decks identical latency.
+        renderer.setTempo(ratio: tempoRatio, keyLock: keyLock, keyShift: keyShift)
         onMixChange?()
+    }
+
+    private func applyGrid() {
+        renderer.setGrid(beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
     }
 
     private func setReverse() {
@@ -301,5 +340,6 @@ final class Deck {
     func tick() {
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
+        if fxOn && (fxType == .brake || fxType == .backspin) && !renderer.braking { fxOn = false }
     }
 }

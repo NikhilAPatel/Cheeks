@@ -2,32 +2,23 @@ import Accelerate
 import AVFoundation
 import Observation
 
-enum BeatFX: String, CaseIterable, Identifiable {
-    case echo = "ECHO"
-    case reverb = "REVERB"
-    case roll = "ROLL"
-    case brake = "BRAKE"
-    var id: String { rawValue }
-}
-
 enum CrossfaderCurve: String, CaseIterable, Identifiable {
     case smooth = "SMOOTH"
     case scratch = "SCRATCH"
     var id: String { rawValue }
 }
 
-/// The mixer: owns the AVAudioEngine graph, both decks, crossfader, Beat FX, sync and recording.
+/// The mixer: hosts the realtime core in an AVAudioEngine, and owns both decks, the crossfader,
+/// sync and recording. All audio processing happens in `DSP/Engine.cpp`; this class sets its controls.
 @MainActor
 @Observable
 final class DJEngine {
-    let engine = AVAudioEngine()
     let decks: [Deck]
-    /// The audience mix (both channels after faders/crossfader). Recorded and metered here.
-    private let program = AVAudioMixerNode()
-    /// Mono copy of the program for the left ear in split-cue mode.
-    private let monoMaster = AVAudioMixerNode()
-    /// Headphone bus: pre-fader cue sends plus some program, mono, right ear in split-cue mode.
-    private let cueBus = AVAudioMixerNode()
+    @ObservationIgnored private let engine = AVAudioEngine()
+    @ObservationIgnored private let core: OpaquePointer
+    @ObservationIgnored private var sourceNode: AVAudioSourceNode?
+    /// Session and engine calls can block for a while, so they stay off the main thread.
+    @ObservationIgnored private let audioQueue = DispatchQueue(label: "com.nikhilpatel.cheeks.audio-session", qos: .userInitiated)
 
     var crossfader: Float = 0 { didSet { updateVolumes() } }
     var crossfaderCurve: CrossfaderCurve = .smooth { didSet { updateVolumes() } }
@@ -39,19 +30,18 @@ final class DJEngine {
     /// 0 = cue only, 0.5 = both, 1 = master only (in the cue ear).
     var headphoneMix: Float = 0.25 { didSet { updateVolumes() } }
     var headphoneVolume: Float = 0.8 { didSet { updateVolumes() } }
-    var masterLevel: Float = 0
+    /// Master level and limiter state. Not observed; meters poll them.
+    var masterLevel: Float { cheeks_engine_master_peak(core) }
+    var limiterReduction: Float { cheeks_engine_limiter_reduction(core) }
+    var cpuLoad: Float { cheeks_engine_load(core) }
     var engineError: String?
+    /// Seconds between the render callback and the speaker, for drawing what's actually being heard.
+    @ObservationIgnored private(set) var outputLatency: Double = 0
 
-    // Beat FX
-    var fxType: BeatFX = .echo {
-        willSet { if fxOn && newValue != fxType { fxOn = false } }
-        didSet { applyFX() }
-    }
-    var fxBeats: Double = 0.5 { didSet { applyFX() } }
-    var fxLevel: Float = 0.5 { didSet { applyFX() } }
-    /// 0 = deck 1, 1 = deck 2, 2 = both
-    var fxTarget = 2 { didSet { applyFX() } }
-    var fxOn = false { didSet { fxToggled(oldValue) } }
+    /// The deck everything syncs to. It moves to whichever deck starts playing when the current one isn't.
+    private(set) var masterIndex = 0
+    /// What each channel contributes to the master right now, for on-air detection.
+    @ObservationIgnored private var channelGains: [Float] = [0, 0]
 
     // Recording
     private(set) var isRecording = false
@@ -65,6 +55,7 @@ final class DJEngine {
     /// Short message for the top bar (saved, low storage, errors).
     var statusMessage: String?
     private let recorder = MixRecorder()
+    @ObservationIgnored private var recordingDrain: RecordingDrain?
     @ObservationIgnored private var recordingURL: URL?
     @ObservationIgnored private weak var library: Library?
 
@@ -77,21 +68,19 @@ final class DJEngine {
 
     @ObservationIgnored private var timer: Timer?
 
-    static let fxBeatChoices: [Double] = [1.0 / 8, 1.0 / 4, 1.0 / 2, 3.0 / 4, 1, 2, 4, 8]
-
     init(library: Library) {
-        decks = [Deck(index: 0), Deck(index: 1)]
+        let newDecks = [Deck(index: 0), Deck(index: 1)]
+        let handles: [OpaquePointer?] = newDecks.map { $0.renderer.handle }
+        decks = newDecks
+        core = handles.withUnsafeBufferPointer { cheeks_engine_create(AudioConfig.sampleRate, $0.baseAddress, Int32($0.count)) }
         self.library = library
         for deck in decks {
             deck.library = library
-            deck.onMixChange = { [weak self] in
-                self?.updateVolumes()
-                self?.applyFX()
-            }
+            deck.onMixChange = { [weak self] in self?.updateVolumes() }
         }
-        configureSession()
         buildGraph()
-        start()
+        updateVolumes()
+        startAudio()
         observeSession()
         // .common mode keeps sync and transport state updating while a list is being scrolled.
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
@@ -105,88 +94,49 @@ final class DJEngine {
 
     // MARK: Graph
 
-    /// deck chain → channel fader → program ─┬─────────────→ main (normal)
-    ///            ↘ cue send ──→ cue bus ←────┤               main L (split)
-    ///                               └─ mono → main R (split)  └→ mono master ─┘
+    /// One source node runs the whole core, so both decks and the mixer share a single sample clock.
     private func buildGraph() {
         let stereo = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2)!
-        let mono = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 1)!
-        let main = engine.mainMixerNode
-        [program, monoMaster, cueBus].forEach(engine.attach)
+        let core = self.core
+        // Only captures a raw pointer, so the render thread does no reference counting.
+        let node = AVAudioSourceNode(format: stereo) { _, _, frameCount, bufferList in
+            let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+            guard buffers.count >= 2,
+                  let left = buffers[0].mData?.assumingMemoryBound(to: Float.self),
+                  let right = buffers[1].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
+            cheeks_engine_render(core, left, right, Int32(frameCount))
+            return noErr
+        }
+        sourceNode = node
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: stereo)
+        engine.mainMixerNode.outputVolume = 1
+    }
 
-        for deck in decks {
-            let chain: [AVAudioNode] = [deck.renderer.node, deck.varispeed, deck.timePitch, deck.eq, deck.delay, deck.reverb]
-            (chain + [deck.channel, deck.cueSend]).forEach(engine.attach)
-            for (from, to) in zip(chain, chain.dropFirst()) {
-                engine.connect(from, to: to, format: stereo)
+    /// Sets up the session and starts the engine. Stays off the main thread, as both can take a moment.
+    func startAudio() {
+        audioQueue.async { [engine, weak self] in
+            let session = AVAudioSession.sharedInstance()
+            var failure: String?
+            do {
+                try session.setCategory(.playback, mode: .default)
+                try session.setPreferredSampleRate(AudioConfig.sampleRate)
+                try session.setPreferredIOBufferDuration(0.005)
+                try session.setActive(true)
+                if !engine.isRunning {
+                    engine.prepare()
+                    try engine.start()
+                }
+            } catch {
+                failure = "Audio: \(error.localizedDescription)"
             }
-            // Fan out after FX: one path to the channel fader, one pre-fader to the cue bus.
-            engine.connect(deck.reverb, to: [AVAudioConnectionPoint(node: deck.channel, bus: 0),
-                                             AVAudioConnectionPoint(node: deck.cueSend, bus: 0)],
-                           fromBus: 0, format: stereo)
-            engine.connect(deck.channel, to: program, fromBus: 0, toBus: deck.index, format: stereo)
-            engine.connect(deck.cueSend, to: cueBus, fromBus: 0, toBus: deck.index, format: stereo)
-            Self.installTap(on: deck.channel, recorder: nil) { [weak deck] level in deck?.level = level }
-        }
-
-        engine.connect(program, to: [AVAudioConnectionPoint(node: main, bus: 0),
-                                     AVAudioConnectionPoint(node: monoMaster, bus: 0),
-                                     AVAudioConnectionPoint(node: cueBus, bus: 2)],
-                       fromBus: 0, format: stereo)
-        engine.connect(monoMaster, to: main, fromBus: 0, toBus: 1, format: mono)
-        engine.connect(cueBus, to: main, fromBus: 0, toBus: 2, format: mono)
-        monoMaster.pan = -1
-        cueBus.pan = 1
-        main.outputVolume = 1
-
-        Self.installTap(on: program, recorder: recorder) { [weak self] level in
-            guard let self else { return }
-            masterLevel = level * masterVolume
-        }
-        updateVolumes()
-    }
-
-    /// Level meter tap (and, for the master bus, the recorder). Nonisolated so the tap
-    /// closure is not tied to the main actor; it runs on an AVAudioEngine thread.
-    nonisolated private static func installTap(on node: AVAudioNode, recorder: MixRecorder?, update: @escaping @MainActor (Float) -> Void) {
-        node.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in
-            recorder?.write(buffer)
-            let level = peak(buffer)
-            Task { @MainActor in update(level) }
-        }
-    }
-
-    nonisolated private static func peak(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let data = buffer.floatChannelData else { return 0 }
-        var peak: Float = 0
-        for ch in 0..<Int(buffer.format.channelCount) {
-            var m: Float = 0
-            vDSP_maxmgv(data[ch], 1, &m, vDSP_Length(buffer.frameLength))
-            peak = max(peak, m)
-        }
-        return peak
-    }
-
-    private func configureSession() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playback, mode: .default)
-            try session.setPreferredSampleRate(AudioConfig.sampleRate)
-            try session.setPreferredIOBufferDuration(0.005)
-            try session.setActive(true)
-        } catch {
-            engineError = "Audio session: \(error.localizedDescription)"
-        }
-    }
-
-    func start() {
-        guard !engine.isRunning else { return }
-        do {
-            engine.prepare()
-            try engine.start()
-            engineError = nil
-        } catch {
-            engineError = "Audio engine: \(error.localizedDescription)"
+            let latency = session.outputLatency + session.ioBufferDuration
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.engineError = failure
+                    self?.outputLatency = latency
+                }
+            }
         }
     }
 
@@ -195,14 +145,14 @@ final class DJEngine {
         center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             MainActor.assumeIsolated {
-                if raw == AVAudioSession.InterruptionType.ended.rawValue {
-                    try? AVAudioSession.sharedInstance().setActive(true)
-                    self?.start()
-                }
+                if raw == AVAudioSession.InterruptionType.ended.rawValue { self?.startAudio() }
             }
         }
         center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.start() }
+            MainActor.assumeIsolated { self?.startAudio() }
+        }
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.startAudio() }
         }
     }
 
@@ -228,53 +178,75 @@ final class DJEngine {
         for deck in decks {
             let xf = deck.index == 0 ? a : b
             let trim = pow(10, deck.trim * 12 / 20)
-            deck.channel.outputVolume = deck.fader * deck.fader * xf * trim
-            deck.cueSend.outputVolume = deck.headphoneCue ? cueLevel * trim : 0
+            let fader = deck.fader * deck.fader * xf
+            channelGains[deck.index] = fader * trim
+            cheeks_engine_set_channel(core, Int32(deck.index), trim, fader, deck.headphoneCue ? cueLevel : 0)
         }
-        let main = engine.mainMixerNode
-        program.destination(forMixer: main, bus: 0)?.volume = splitCue ? 0 : masterVolume
-        program.destination(forMixer: cueBus, bus: 2)?.volume = programInCue
-        monoMaster.outputVolume = splitCue ? masterVolume : 0
-        cueBus.outputVolume = splitCue ? headphoneVolume : 0
+        cheeks_engine_set_master(core, masterVolume, headphoneVolume, programInCue, splitCue)
     }
 
-    // MARK: Beat FX
+    // MARK: Sampler and preview
 
-    private var fxDecks: [Deck] { fxTarget == 2 ? decks : [decks[fxTarget]] }
-
-    func applyFX() {
-        for deck in decks {
-            let active = fxOn && fxDecks.contains { $0 === deck }
-            let bpm = deck.effectiveBPM > 0 ? deck.effectiveBPM : 120
-            deck.delay.delayTime = min(2, fxBeats * 60 / bpm)
-            deck.delay.wetDryMix = active && fxType == .echo ? fxLevel * 70 : 0
-            deck.delay.feedback = 35 + fxLevel * 35
-            deck.delay.bypass = !(active && fxType == .echo)
-            deck.reverb.wetDryMix = active && fxType == .reverb ? fxLevel * 80 : 0
-            deck.reverb.bypass = !(active && fxType == .reverb)
-        }
+    func setSample(_ slot: Int, pcm: PCM16Stereo) {
+        cheeks_engine_set_sample(core, Int32(slot), pcm.data, Int64(pcm.frames))
     }
 
-    private func fxToggled(_ wasOn: Bool) {
-        guard wasOn != fxOn else { return }
-        switch fxType {
-        case .roll:
-            for deck in fxDecks { fxOn ? deck.rollBegin(fxBeats) : deck.rollEnd() }
-        case .brake:
-            if fxOn {
-                for deck in fxDecks { deck.brake(beats: max(fxBeats, 1) * 2) }
+    func triggerSample(_ slot: Int, gain: Float = 1) { cheeks_engine_trigger_sample(core, Int32(slot), gain) }
+    func stopSample(_ slot: Int) { cheeks_engine_stop_sample(core, Int32(slot)) }
+    func isSampleActive(_ slot: Int) -> Bool { cheeks_engine_sample_active(core, Int32(slot)) }
+
+    func setPreview(pcm: PCM16Stereo?) {
+        cheeks_engine_set_preview(core, pcm?.data, Int64(pcm?.frames ?? 0))
+    }
+
+    func setPreviewPlaying(_ playing: Bool) {
+        // Without a split cable there's no cue bus to hear, so it plays through the master at a safe level.
+        cheeks_engine_set_preview_routing(core, 1, splitCue ? 0 : 0.8)
+        cheeks_engine_set_preview_playing(core, playing)
+    }
+
+    func seekPreview(toFrame frame: Double) { cheeks_engine_seek_preview(core, frame) }
+    var previewFrame: Double { cheeks_engine_preview_position(core) }
+
+    /// Renders the whole mix offline, for tests.
+    func renderOffline(frames: Int) -> (left: [Float], right: [Float]) {
+        var left = [Float](repeating: 0, count: frames)
+        var right = [Float](repeating: 0, count: frames)
+        left.withUnsafeMutableBufferPointer { l in
+            right.withUnsafeMutableBufferPointer { r in
+                cheeks_engine_render(core, l.baseAddress!, r.baseAddress!, Int32(frames))
             }
-        case .echo, .reverb:
-            break
         }
-        applyFX()
+        return (left, right)
+    }
+
+    func tickForTesting() { tick() }
+
+    /// Stops the realtime audio engine, so a test can render by hand without a second thread rendering too.
+    func stopRealtimeForTesting() {
+        audioQueue.sync { engine.stop() }
     }
 
     // MARK: Sync & housekeeping
 
-    /// The deck others sync to: the other deck when one is synced, else whichever is playing.
+    /// The deck a given deck syncs to: the tempo master, or the other deck if it's the master itself.
     func master(for deck: Deck) -> Deck {
-        decks[1 - deck.index]
+        masterIndex == deck.index ? decks[1 - deck.index] : decks[masterIndex]
+    }
+
+    func setMaster(_ deck: Deck) {
+        masterIndex = deck.index
+        deck.syncOn = false
+    }
+
+    /// A deck that isn't playing can't lead, so the first deck to start playing takes over.
+    private func updateMaster() {
+        let current = decks[masterIndex]
+        if current.isPlaying && current.isLoaded { return }
+        if let playing = decks.first(where: { $0.isPlaying && $0.isLoaded && !$0.syncOn }) ?? decks.first(where: { $0.isPlaying && $0.isLoaded }) {
+            masterIndex = playing.index
+            playing.syncOn = false
+        }
     }
 
     func toggleSync(_ deck: Deck) {
@@ -286,22 +258,20 @@ final class DJEngine {
     }
 
     private func tick() {
-        for deck in decks {
-            deck.tick()
-            guard deck.syncOn else { continue }
-            let master = master(for: deck)
-            guard master.isLoaded, master.bpm > 0, !master.syncOn || master.index == 0 else { continue }
+        decks.forEach { $0.tick() }
+        updateMaster()
+        for deck in decks where deck.syncOn && deck.index != masterIndex {
+            let master = decks[masterIndex]
+            guard master.isLoaded, master.bpm > 0, deck.bpm > 0 else { continue }
             // Follow the master's tempo…
             let wanted = (deck.matchedBPM(for: master.effectiveBPM) / deck.bpm - 1) * 100
-            if abs(wanted - deck.tempoRatioPercent) > 0.001 { deck.setTempo(wanted) }
-            // …and gently correct any phase drift while both play.
+            if abs(wanted - deck.tempoRatioPercent) > 0.0005 { deck.setTempo(wanted) }
+            // …and gently correct phase while both play. Both decks run on one clock, so this
+            // only ever has to undo a jog nudge, a jump or the tempo glide at the moment sync engages.
             if deck.isPlaying && master.isPlaying && !deck.renderer.scratching && deck.renderer.pendingNudge == 0 {
                 let drift = deck.phaseOffset(to: master)
-                if abs(drift) > 0.02 { deck.alignPhase(to: master, smoothly: true) }
+                if abs(drift) > 0.0002 { deck.alignPhase(to: master, smoothly: true) }
             }
-        }
-        if fxOn && fxType == .brake && !fxDecks.contains(where: { $0.renderer.braking }) {
-            fxOn = false
         }
         trackOnAir()
         if isRecording && recorder.didFail {
@@ -316,7 +286,7 @@ final class DJEngine {
         let now = Date()
         for deck in decks {
             let i = deck.index
-            guard let track = deck.track, deck.isPlaying, deck.channel.outputVolume > 0.05 else {
+            guard let track = deck.track, deck.isPlaying, channelGains[i] > 0.05 else {
                 onAirSince[i] = nil
                 continue
             }
@@ -357,12 +327,14 @@ final class DJEngine {
             return
         }
         let url = Recordings.directory.appending(path: Recordings.newBaseName() + Recordings.inProgressSuffix)
+        let format = AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2)!
         do {
-            try recorder.start(url: url, format: program.outputFormat(forBus: 0))
+            try recorder.start(url: url, format: format)
         } catch {
             statusMessage = "Couldn't start recording."
             return
         }
+        recordingDrain = RecordingDrain(core: core, recorder: recorder, format: format)
         recordingURL = url
         recordingStarted = Date()
         isRecording = true
@@ -376,12 +348,20 @@ final class DJEngine {
     }
 
     private func stopRecording() {
-        recorder.stop()
+        cheeks_engine_set_recording(core, false)
         isRecording = false
         recordingStarted = nil
-        guard let caf = recordingURL else { return }
+        let caf = recordingURL
         recordingURL = nil
-        finalize(caf, recovered: false)
+        // The tail of the ring reaches the file and the file closes before it's converted.
+        recordingDrain?.finish { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if let caf { self?.finalize(caf, recovered: false) }
+                }
+            }
+        }
+        recordingDrain = nil
     }
 
     /// Converts the raw capture to the chosen format in the background and writes the tracklist.

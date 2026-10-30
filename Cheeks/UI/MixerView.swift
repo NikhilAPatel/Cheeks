@@ -64,65 +64,6 @@ struct ChannelStrip: View {
     }
 }
 
-/// rekordbox's FX unit in Beat FX mode: channel assign, level, effect, beat length, on.
-struct FXUnit: View {
-    @Environment(DJEngine.self) private var dj
-
-    var body: some View {
-        @Bindable var dj = dj
-        HStack(spacing: 5) {
-            Text("FX").font(Theme.legend(12, .semibold)).foregroundStyle(Theme.dim)
-            HStack(spacing: 2) {
-                // 0 = deck 1, 1 = deck 2, 2 = both (rekordbox's M, for master)
-                ForEach(0..<3, id: \.self) { target in
-                    Button { dj.fxTarget = target } label: {
-                        Text(["1", "2", "M"][target])
-                            .font(Theme.legend(11, .semibold))
-                            .frame(width: 24, height: 24)
-                            .foregroundStyle(dj.fxTarget == target ? Color.white : Theme.dim)
-                            .background(KeyCap(color: Theme.accent, lit: dj.fxTarget == target))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            Knob(value: $dj.fxLevel, range: 0...1, defaultValue: 0.5, label: "", size: 24)
-            Menu {
-                Picker("Effect", selection: $dj.fxType) {
-                    ForEach(BeatFX.allCases) { Text($0.rawValue).tag($0) }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(dj.fxType.rawValue).font(Theme.legend(11, .semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .frame(width: 84, height: 24)
-                .background(KeyCap())
-            }
-            HStack(spacing: 0) {
-                Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 24) }
-                Text(beatLabel(dj.fxBeats))
-                    .font(Theme.readout(12, .medium))
-                    .frame(minWidth: 30)
-                Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 24) }
-            }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white)
-            .buttonStyle(.plain)
-            ToggleChip(title: "ON", isOn: dj.fxOn, height: 24) { dj.fxOn.toggle() }
-        }
-        .fixedSize()
-    }
-
-    private func step(_ direction: Int) {
-        let choices = DJEngine.fxBeatChoices
-        let i = choices.firstIndex(of: dj.fxBeats) ?? 2
-        dj.fxBeats = choices[min(choices.count - 1, max(0, i + direction))]
-    }
-}
-
 /// rekordbox's bottom row: headphones on the left, the crossfader under the mixer,
 /// master level and recording on the right.
 struct BottomBar: View {

@@ -17,7 +17,8 @@ final class RendererTests: XCTestCase {
         r.isPlaying = true
         let out = r.renderOffline(frames: 512)
         XCTAssertEqual(r.playhead, 612, accuracy: 0.0001)
-        XCTAssertEqual(out.left[10] * 32768, 110, accuracy: 0.01)
+        // Past the fade-in that stops the start from clicking.
+        XCTAssertEqual(out.left[300] * 32768, 400, accuracy: 0.01)
     }
 
     func testPausedIsSilentAndStill() {
@@ -84,7 +85,7 @@ final class RendererTests: XCTestCase {
         }
         r.setSources(stems)
         r.isPlaying = true
-        r.stemGains[2] = 0 // mute the 4000 stem
+        r.setStemGain(2, 0) // mute the 4000 stem
         let out = r.renderOffline(frames: 20_000)
         // Stems are stored with headroom, so the renderer scales them back up.
         XCTAssertEqual(out.left.last! * 32768 * PCM16Stereo.stemHeadroom, 11_000, accuracy: 1)

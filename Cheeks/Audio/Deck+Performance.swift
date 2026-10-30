@@ -15,16 +15,16 @@ extension Deck {
             updateTrack { $0.hotCues[slot] = time }
             return
         }
-        var target = time * sampleRate
-        if quantize && isPlaying && beatFrames > 0 {
-            // Keep the current position within the beat so the jump lands in time.
-            let beat = beatPosition(renderer.playhead)
-            target += (beat - beat.rounded(.down)) * beatFrames
-        }
+        let target = time * sampleRate
         if renderer.loopActive && (target < renderer.loopStart || target >= renderer.loopEnd) {
             exitLoop()
         }
-        renderer.playhead = target
+        if quantize && isPlaying && beatFrames > 0 {
+            // Keeps the current position within the beat, measured on the audio thread, so the jump lands in time.
+            renderer.seekBeatLocked(target, beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
+        } else {
+            renderer.playhead = target
+        }
         if !isPlaying { play() }
     }
 
@@ -51,22 +51,19 @@ extension Deck {
             start = renderer.playhead
         }
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
-        renderer.loopStart = start
-        renderer.loopEnd = start + length
-        if renderer.playhead >= renderer.loopEnd || renderer.playhead < start {
+        renderer.setLoop(start: start, end: start + length, active: true)
+        if renderer.playhead >= start + length || renderer.playhead < start {
             renderer.playhead = start + max(0, renderer.playhead - start).truncatingRemainder(dividingBy: length)
         }
-        renderer.loopActive = true
         loopActive = true
         loopBeats = beats
     }
 
     func loopIn() {
         guard isLoaded else { return }
-        renderer.loopActive = false
+        let start = snap(renderer.playhead)
+        renderer.setLoop(start: start, end: start, active: false)
         loopActive = false
-        renderer.loopStart = snap(renderer.playhead)
-        renderer.loopEnd = renderer.loopStart
     }
 
     func loopOut() {
@@ -74,8 +71,7 @@ extension Deck {
         let end = snap(renderer.playhead)
         guard end > renderer.loopStart + sampleRate * 0.01 else { return }
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
-        renderer.loopEnd = end
-        renderer.loopActive = true
+        renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true
         if beatFrames > 0 { loopBeats = (end - renderer.loopStart) / beatFrames }
     }
@@ -109,10 +105,9 @@ extension Deck {
         guard isLoaded, beatFrames > 0 else { return }
         let delta = beats * beatFrames
         if renderer.loopActive {
-            renderer.loopStart += delta
-            renderer.loopEnd += delta
+            renderer.setLoop(start: renderer.loopStart + delta, end: renderer.loopEnd + delta, active: true)
         }
-        renderer.playhead = max(0, renderer.playhead + delta)
+        renderer.jump(by: delta)
     }
 
     /// Momentary loop: the track keeps running underneath and resumes in time on release.
@@ -139,17 +134,17 @@ extension Deck {
     }
 
     func scratchMove(seconds: Double) {
-        renderer.scratchTarget += seconds * sampleRate
+        renderer.moveScratch(byFrames: seconds * sampleRate)
     }
 
     func scratchEnd() {
-        renderer.scratching = false
+        renderer.endScratch()
         if slipMode { renderer.releaseSlip() }
     }
 
     /// Pitch bend from the jog ring: speeds up or slows down briefly by `seconds` of audio.
     func bend(seconds: Double) {
-        renderer.pendingNudge += seconds * sampleRate
+        renderer.nudge(by: seconds * sampleRate)
     }
 
     func brake(beats: Double) {
@@ -192,9 +187,9 @@ extension Deck {
     func alignPhase(to master: Deck, smoothly: Bool) {
         let d = phaseOffset(to: master)
         if smoothly {
-            renderer.pendingNudge = d * beatFrames
+            renderer.nudge(by: d * beatFrames)
         } else {
-            renderer.playhead += d * beatFrames
+            renderer.jump(by: d * beatFrames)
         }
     }
 
@@ -203,19 +198,66 @@ extension Deck {
     func toggleStem(_ stem: Stem) {
         prepareStems()
         guard stemStatus != .tooLong else { return }
+        stemsBeforeSolo = nil
         stemsOn[stem.rawValue].toggle()
     }
 
-    /// Solo a stem; soloing the already-soloed stem brings all back.
+    /// Solo a stem; soloing the already-soloed stem restores what was on before.
     func soloStem(_ stem: Stem) {
         prepareStems()
         guard stemStatus != .tooLong else { return }
         let alreadySolo = stemsOn.indices.allSatisfy { stemsOn[$0] == ($0 == stem.rawValue) }
-        stemsOn = alreadySolo ? [true, true, true, true] : Stem.allCases.map { $0 == stem }
+        if alreadySolo {
+            stemsOn = stemsBeforeSolo ?? [true, true, true, true]
+            stemsBeforeSolo = nil
+        } else {
+            if stemsBeforeSolo == nil { stemsBeforeSolo = stemsOn }
+            stemsOn = Stem.allCases.map { $0 == stem }
+        }
+    }
+
+    func setStems(_ on: Set<Stem>) {
+        prepareStems()
+        guard stemStatus != .tooLong else { return }
+        stemsBeforeSolo = nil
+        stemsOn = Stem.allCases.map { on.contains($0) }
     }
 
     func applyStemGains() {
-        for i in 0..<4 { renderer.stemGains[i] = stemsOn[i] ? 1 : 0 }
+        for i in 0..<4 { renderer.setStemGain(i, stemsOn[i] ? stemLevels[i] : 0) }
+    }
+
+    // MARK: Beat FX
+
+    /// Presses an FX pad. The effect is on for as long as it's held, or until `fxRelease`.
+    func fxEngage(_ type: BeatFX) {
+        if fxOn && fxType != type { fxRelease() }
+        fxType = type
+        fxOn = true
+        switch type {
+        case .roll:
+            rollBegin(fxBeats)
+        case .brake:
+            brake(beats: max(fxBeats, 1) * 2)
+        case .backspin:
+            if isPlaying, beatFrames > 0 { renderer.startBackspin(overFrames: max(fxBeats, 1) * beatFrames / tempoRatio) }
+        default:
+            break
+        }
+        applyFX()
+    }
+
+    func fxRelease() {
+        guard fxOn else { return }
+        if fxType == .roll { rollEnd() }
+        fxOn = false
+        applyFX()
+    }
+
+    func applyFX() {
+        var mask = 0
+        for stem in fxStems { mask |= 1 << stem.rawValue }
+        renderer.setFX(fxType.dsp, on: fxOn && fxType.dsp != CheeksFXNone, beats: fxBeats, depth: fxDepth, stemMask: mask == 0 ? 0xF : mask)
     }
 
     /// Splits the loaded track into stems in the background, then swaps them in seamlessly.
@@ -226,7 +268,7 @@ extension Deck {
             stemStatus = .tooLong
             return
         }
-        stemStatus = .separating
+        stemStatus = .separating(nil)
         let id = track.id
         // Results from a separation started before another track was loaded are dropped.
         let generation = loadGeneration
@@ -286,27 +328,14 @@ extension Deck {
 
     // MARK: EQ / filter
 
+    /// Knob to linear gain: fully left removes the band, centre is flat, fully right is +6 dB.
     func applyEQ() {
-        func gain(_ v: Float) -> Float { v <= -0.97 ? -96 : (v < 0 ? v * 26 : v * 6) }
-        eq.bands[0].gain = gain(eqLow)
-        eq.bands[1].gain = gain(eqMid)
-        eq.bands[2].gain = gain(eqHigh)
+        func gain(_ v: Float) -> Float { v <= -0.97 ? 0 : pow(10, (v < 0 ? v * 26 : v * 6) / 20) }
+        renderer.setEQ(low: gain(eqLow), mid: gain(eqMid), high: gain(eqHigh))
     }
 
     /// One knob: left sweeps a low-pass down, right sweeps a high-pass up.
     func applyFilter() {
-        let band = eq.bands[3]
-        let amount = Double(abs(filter))
-        if filter < -0.03 {
-            band.filterType = .resonantLowPass
-            band.frequency = Float(20000 * pow(100.0 / 20000, amount))
-            band.bypass = false
-        } else if filter > 0.03 {
-            band.filterType = .resonantHighPass
-            band.frequency = Float(20 * pow(9000.0 / 20, amount))
-            band.bypass = false
-        } else {
-            band.bypass = true
-        }
+        renderer.setFilter(abs(filter) < 0.015 ? 0 : filter)
     }
 }

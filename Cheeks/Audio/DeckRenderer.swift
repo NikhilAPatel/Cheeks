@@ -1,77 +1,26 @@
 import AVFoundation
-import os
 
-/// The realtime half of a deck: owns the playhead and produces audio on the render thread.
+/// Swift's view of one deck in the realtime core (`DSP/Engine.cpp`).
 ///
-/// Scalar state (playhead, loop points, scratch target…) is written from the main thread
-/// and read on the audio thread without locking; a stale read only delays a change by
-/// one render cycle. Swapping the audio sources is the one structural change and is
-/// guarded by an unfair lock that the render thread only ever *tries* to take.
+/// `playhead` is what is being heard, in frames. Setters queue a change for the render thread and
+/// getters read what it last published, so nothing here ever blocks on audio.
 final class DeckRenderer {
     let sampleRate: Double
+    let handle: OpaquePointer
 
-    // Sources: one full mix, or four stems (see `Stem`).
-    /// Strong references keep the buffers alive; the render thread only sees the raw slots below.
+    /// Strong references keep the buffers alive; the render thread only sees their raw pointers.
     private var sources: [PCM16Stereo] = []
-    private let sourceSlots: UnsafeMutablePointer<UnsafeMutablePointer<Int16>?>
-    private var sourceCount = 0
-    /// Gain that undoes the stems' storage headroom (read on the audio thread, so precomputed).
-    private let stemScale: Float = 1 / PCM16Stereo.stemHeadroom / 32768
     private(set) var frameCount = 0
-    private let lock: UnsafeMutablePointer<os_unfair_lock>
 
-    // Transport
-    var playhead: Double = 0
-    var isPlaying = false
-    var reverse = false
-    /// Frames still to be added (or removed) by a pitch bend; decays as it is applied.
-    var pendingNudge: Double = 0
-    /// Set once playback runs off the end of the track.
-    var reachedEnd = false
-
-    // Scratch: the jog wheel moves a target and the playhead chases it like vinyl under a finger.
-    var scratching = false
-    var scratchTarget: Double = 0
-    private var scratchRate: Double = 0
-
-    // Brake effect: playback slows to a stop over `brakeLength` frames.
-    private(set) var braking = false
-    private var brakeRate: Double = 1
-    private var brakeStep: Double = 0
-
-    // Loop
-    var loopActive = false
-    var loopStart: Double = 0
-    var loopEnd: Double = 0
-
-    // Slip: while engaged, a shadow playhead keeps running so the track resumes where it would have been.
-    var slipEngaged = false
-    private(set) var slipPlayhead: Double = 0
-
-    // Stem gains (target) and smoothed current gains, order of `Stem.allCases`.
-    let stemGains: UnsafeMutablePointer<Float>
-    private let currentGains: UnsafeMutablePointer<Float>
-
-    private(set) lazy var node: AVAudioSourceNode = makeNode()
+    /// Gain that undoes the stems' storage headroom.
+    private static let stemScale: Float = 1 / PCM16Stereo.stemHeadroom / 32768
 
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
-        lock = .allocate(capacity: 1)
-        lock.initialize(to: os_unfair_lock())
-        stemGains = .allocate(capacity: 4)
-        stemGains.initialize(repeating: 1, count: 4)
-        currentGains = .allocate(capacity: 4)
-        currentGains.initialize(repeating: 1, count: 4)
-        sourceSlots = .allocate(capacity: 4)
-        sourceSlots.initialize(repeating: nil, count: 4)
+        handle = cheeks_deck_create(sampleRate)
     }
 
-    deinit {
-        lock.deallocate()
-        stemGains.deallocate()
-        currentGains.deallocate()
-        sourceSlots.deallocate()
-    }
+    deinit { cheeks_deck_destroy(handle) }
 
     var hasStems: Bool { sources.count == 4 }
 
@@ -80,155 +29,151 @@ final class DeckRenderer {
 
     /// Replaces the audio being played. Pass one buffer (full mix) or four (stems).
     func setSources(_ newSources: [PCM16Stereo]) {
-        os_unfair_lock_lock(lock)
+        let slots: [UnsafePointer<Int16>?] = newSources.map { UnsafePointer($0.data) }
+        let frames = newSources.first?.frames ?? 0
+        slots.withUnsafeBufferPointer {
+            cheeks_deck_set_sources(handle, $0.baseAddress, Int32(newSources.count), Int64(frames), Self.stemScale)
+        }
+        // Old buffers are released only once the render thread can no longer reach them.
         sources = newSources
-        for i in 0..<4 { sourceSlots[i] = i < newSources.count ? newSources[i].data : nil }
-        sourceCount = min(newSources.count, 4)
-        frameCount = newSources.first?.frames ?? 0
-        if playhead > Double(frameCount) { playhead = 0 }
-        os_unfair_lock_unlock(lock)
+        frameCount = frames
     }
 
-    func startBrake(overFrames frames: Double) {
-        brakeRate = 1
-        brakeStep = 1 / max(frames, 1)
-        braking = true
+    // MARK: Transport
+
+    var playhead: Double {
+        get { cheeks_deck_position(handle) }
+        set { cheeks_deck_seek(handle, newValue) }
     }
 
-    func beginScratch() {
-        scratchTarget = playhead
-        scratchRate = isPlaying ? 1 : 0
-        scratching = true
+    var isPlaying: Bool {
+        get { cheeks_deck_playing(handle) }
+        set { cheeks_deck_set_playing(handle, newValue) }
     }
 
-    func engageSlip() {
-        slipPlayhead = playhead
-        slipEngaged = true
+    var reverse: Bool {
+        get { cheeks_deck_reverse(handle) }
+        set { cheeks_deck_set_reverse(handle, newValue) }
     }
+
+    var reachedEnd: Bool {
+        get { cheeks_deck_reached_end(handle) }
+        set { if !newValue { cheeks_deck_clear_reached_end(handle) } }
+    }
+
+    /// Frames still to be added or removed by a pitch bend; decays as it's applied.
+    var pendingNudge: Double {
+        get { cheeks_deck_nudge(handle) }
+        set { cheeks_deck_add_nudge(handle, newValue - pendingNudge) }
+    }
+
+    func nudge(by frames: Double) { cheeks_deck_add_nudge(handle, frames) }
+
+    func jump(by frames: Double) { cheeks_deck_jump(handle, frames) }
+
+    /// Jumps to `frame` plus the deck's current position within the beat, so the jump lands in time.
+    func seekBeatLocked(_ frame: Double, beatFrames: Double, firstBeatFrame: Double) {
+        cheeks_deck_seek_beat_locked(handle, frame, beatFrames, firstBeatFrame)
+    }
+
+    func setTempo(ratio: Double, keyLock: Bool, keyShift: Int) {
+        cheeks_deck_set_tempo(handle, ratio, keyLock, Int32(keyShift))
+    }
+
+    var isStretching: Bool { cheeks_deck_is_stretching(handle) }
+
+    // MARK: Scratch, brake, backspin
+
+    var scratching: Bool { cheeks_deck_scratching(handle) }
+
+    var scratchTarget: Double {
+        get { cheeks_deck_scratch_target(handle) }
+        set { cheeks_deck_scratch_move(handle, newValue - scratchTarget) }
+    }
+
+    func beginScratch() { cheeks_deck_scratch_begin(handle) }
+    func moveScratch(byFrames frames: Double) { cheeks_deck_scratch_move(handle, frames) }
+    func endScratch() { cheeks_deck_scratch_end(handle) }
+
+    var braking: Bool { cheeks_deck_ramping(handle) }
+    func startBrake(overFrames frames: Double) { cheeks_deck_brake(handle, frames) }
+    func startBackspin(overFrames frames: Double) { cheeks_deck_backspin(handle, frames) }
+
+    // MARK: Loop and slip
+
+    var loopActive: Bool {
+        get { cheeks_deck_loop_active(handle) }
+        set { cheeks_deck_set_loop_active(handle, newValue) }
+    }
+
+    var loopStart: Double {
+        get { cheeks_deck_loop_start(handle) }
+        set { cheeks_deck_set_loop(handle, newValue, loopEnd, loopActive) }
+    }
+
+    var loopEnd: Double {
+        get { cheeks_deck_loop_end(handle) }
+        set { cheeks_deck_set_loop(handle, loopStart, newValue, loopActive) }
+    }
+
+    func setLoop(start: Double, end: Double, active: Bool) {
+        cheeks_deck_set_loop(handle, start, end, active)
+    }
+
+    var slipEngaged: Bool { cheeks_deck_slip_engaged(handle) }
+    var slipPlayhead: Double { cheeks_deck_slip_position(handle) }
+
+    func engageSlip() { cheeks_deck_slip_engage(handle) }
 
     /// Ends slip and jumps back to where the track would have been.
-    func releaseSlip() {
-        guard slipEngaged else { return }
-        slipEngaged = false
-        playhead = slipPlayhead
+    func releaseSlip() { cheeks_deck_slip_release(handle) }
+
+    /// Ends slip and stays put.
+    func cancelSlip() { cheeks_deck_slip_cancel(handle) }
+
+    // MARK: Stems, FX and channel
+
+    func setStemGain(_ stem: Int, _ gain: Float) { cheeks_deck_set_stem_gain(handle, Int32(stem), gain) }
+    func stemPeak(_ stem: Int) -> Float { cheeks_deck_stem_level(handle, Int32(stem)) }
+
+    func setGrid(beatFrames: Double, firstBeatFrame: Double) {
+        cheeks_deck_set_grid(handle, beatFrames, firstBeatFrame)
     }
 
-    /// Renders `frames` frames outside of an audio engine (used by tests).
+    func setFX(_ type: CheeksFXType, on: Bool, beats: Double, depth: Float, stemMask: Int) {
+        cheeks_deck_set_fx(handle, type, on, beats, depth, Int32(stemMask))
+    }
+
+    func setEQ(low: Float, mid: Float, high: Float) { cheeks_deck_set_eq(handle, low, mid, high) }
+    func setFilter(_ amount: Float) { cheeks_deck_set_filter(handle, amount) }
+    var peak: Float { cheeks_deck_peak(handle) }
+
+    /// Position, speed and the time they were captured, for drawing between audio callbacks.
+    var displayState: CheeksDisplayState { cheeks_deck_display_state(handle) }
+
+    // MARK: Offline rendering (used by tests)
+
+    /// Renders `frames` frames of the source path: transport, stems, FX and the stretcher.
     func renderOffline(frames: Int) -> (left: [Float], right: [Float]) {
         var left = [Float](repeating: 0, count: frames)
         var right = [Float](repeating: 0, count: frames)
         left.withUnsafeMutableBufferPointer { l in
             right.withUnsafeMutableBufferPointer { r in
-                render(l.baseAddress!, r.baseAddress!, frames)
+                cheeks_deck_render_source(handle, l.baseAddress!, r.baseAddress!, Int32(frames))
             }
         }
         return (left, right)
     }
 
-    private func makeNode() -> AVAudioSourceNode {
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
-        // unowned(unsafe): no reference counting on the audio thread; the renderer lives as long as its deck.
-        return AVAudioSourceNode(format: format) { [unowned(unsafe) self] _, _, frameCount, bufferList in
-            let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
-            guard buffers.count >= 2,
-                  let left = buffers[0].mData?.assumingMemoryBound(to: Float.self),
-                  let right = buffers[1].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
-            self.render(left, right, Int(frameCount))
-            return noErr
-        }
-    }
-
-    private func render(_ outL: UnsafeMutablePointer<Float>, _ outR: UnsafeMutablePointer<Float>, _ n: Int) {
-        guard os_unfair_lock_trylock(lock) else {
-            outL.update(repeating: 0, count: n)
-            outR.update(repeating: 0, count: n)
-            return
-        }
-        defer { os_unfair_lock_unlock(lock) }
-
-        let count = frameCount
-        let sourceCount = self.sourceCount
-        guard count > 1, sourceCount > 0 else {
-            outL.update(repeating: 0, count: n)
-            outR.update(repeating: 0, count: n)
-            return
-        }
-        let lastFrame = Double(count - 1)
-        let usesStems = sourceCount == 4
-        let scale: Float = usesStems ? stemScale : 1 / 32768
-
-        for i in 0..<n {
-            // 1. Work out how fast the playhead moves this sample.
-            var rate: Double
-            if scratching {
-                let wanted = max(-8, min(8, (scratchTarget - playhead) / (sampleRate * 0.015)))
-                scratchRate += (wanted - scratchRate) * 0.01
-                rate = scratchRate
-            } else if braking {
-                brakeRate -= brakeStep
-                if brakeRate <= 0 {
-                    braking = false
-                    isPlaying = false
-                    brakeRate = 1
-                    rate = 0
-                } else {
-                    rate = brakeRate
-                }
-            } else if isPlaying {
-                rate = reverse ? -1 : 1
-                if pendingNudge != 0 {
-                    let bend = max(-0.3, min(0.3, pendingNudge * 0.0004))
-                    rate += bend
-                    pendingNudge -= bend
-                    if abs(pendingNudge) < 0.5 { pendingNudge = 0 }
-                }
-            } else {
-                rate = 0
-            }
-
-            // 2. Read the (interpolated) sample, mixing stems with their gains.
-            var l: Float = 0
-            var r: Float = 0
-            let pos = playhead
-            if rate != 0 && pos >= 0 && pos < lastFrame {
-                let i0 = Int(pos)
-                let frac = Float(pos - Double(i0))
-                for s in 0..<sourceCount {
-                    var gain: Float = 1
-                    if usesStems {
-                        currentGains[s] += (stemGains[s] - currentGains[s]) * 0.002
-                        gain = currentGains[s]
-                        if gain < 0.0001 { continue }
-                    }
-                    let p = sourceSlots[s].unsafelyUnwrapped
-                    let a0 = Float(p[i0 * 2]), a1 = Float(p[i0 * 2 + 2])
-                    let b0 = Float(p[i0 * 2 + 1]), b1 = Float(p[i0 * 2 + 3])
-                    l += gain * (a0 + (a1 - a0) * frac)
-                    r += gain * (b0 + (b1 - b0) * frac)
-                }
-            }
-            outL[i] = l * scale
-            outR[i] = r * scale
-
-            // 3. Advance.
-            playhead += rate
-            if slipEngaged {
-                if isPlaying { slipPlayhead += 1 }
-            } else {
-                slipPlayhead = playhead
-            }
-            if loopActive && rate > 0 && playhead >= loopEnd && loopEnd > loopStart {
-                playhead -= (loopEnd - loopStart)
-            }
-            if playhead >= lastFrame {
-                playhead = lastFrame
-                if isPlaying && !scratching {
-                    isPlaying = false
-                    reachedEnd = true
-                }
-            } else if playhead < 0 {
-                playhead = 0
+    /// Renders `frames` frames of the whole channel: the source path plus EQ and filter.
+    func renderChannelOffline(frames: Int) -> (left: [Float], right: [Float]) {
+        var left = [Float](repeating: 0, count: frames)
+        var right = [Float](repeating: 0, count: frames)
+        left.withUnsafeMutableBufferPointer { l in
+            right.withUnsafeMutableBufferPointer { r in
+                cheeks_deck_render_channel(handle, l.baseAddress!, r.baseAddress!, Int32(frames))
             }
         }
+        return (left, right)
     }
 }

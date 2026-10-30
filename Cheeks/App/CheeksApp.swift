@@ -25,7 +25,7 @@ struct CheeksApp: App {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 library.importInbox() // pick up files added through the Files app
-                dj.start()
+                dj.startAudio()
             } else if phase == .background {
                 library.saveNow()
             }

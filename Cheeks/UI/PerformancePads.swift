@@ -53,6 +53,8 @@ struct PerformancePads: View {
             } else {
                 PadButton("SOLO", color: stem.color) { deck.soloStem(stem) }
             }
+        default:
+            PadButton("-", color: .white) {}
         }
     }
 

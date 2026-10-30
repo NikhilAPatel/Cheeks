@@ -91,9 +91,6 @@ struct TopBar: View {
                 iconLabel("gearshape", on: false)
             }
 
-            Rectangle().fill(Theme.stroke).frame(width: 1, height: 20).padding(.horizontal, 4)
-            FXUnit()
-
             if let error = dj.engineError {
                 Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
             } else if let message = dj.statusMessage {

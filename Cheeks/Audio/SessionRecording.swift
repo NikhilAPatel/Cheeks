@@ -99,7 +99,7 @@ enum Recordings {
     }
 }
 
-/// Writes the program bus from the tap thread to a 24-bit CAF. CAF stays recoverable if the
+/// Writes the program bus from the drain queue to a 24-bit CAF. CAF stays recoverable if the
 /// app is killed mid-set (see `RecordingFinalizer.repairCAF`); it's converted to the chosen
 /// format when recording stops.
 final class MixRecorder: @unchecked Sendable {
@@ -144,6 +144,47 @@ final class MixRecorder: @unchecked Sendable {
     /// Closes the file (AVAudioFile finalises its header when released).
     func stop() {
         lock.withLock { file = nil }
+    }
+}
+
+/// The render thread captures the program bus to a lock-free ring. This moves it to the file on a
+/// background queue, so disk writes can never hold up audio.
+final class RecordingDrain: @unchecked Sendable {
+    private let core: OpaquePointer
+    private let recorder: MixRecorder
+    private let buffer: AVAudioPCMBuffer
+    private let timer: DispatchSourceTimer
+
+    init?(core: OpaquePointer, recorder: MixRecorder, format: AVAudioFormat) {
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_384) else { return nil }
+        self.core = core
+        self.recorder = recorder
+        self.buffer = buffer
+        timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.nikhilpatel.cheeks.recording", qos: .userInitiated))
+        cheeks_engine_set_recording(core, true)
+        timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
+        timer.setEventHandler { [unowned self] in drain() }
+        timer.resume()
+    }
+
+    private func drain() {
+        guard let channels = buffer.floatChannelData else { return }
+        while true {
+            let frames = cheeks_engine_read_recording(core, channels[0], channels[1], Int32(buffer.frameCapacity))
+            guard frames > 0 else { return }
+            buffer.frameLength = AVAudioFrameCount(frames)
+            recorder.write(buffer)
+        }
+    }
+
+    /// Writes whatever is left, closes the file, then calls `completion` on the drain's queue.
+    func finish(_ completion: @escaping @Sendable () -> Void) {
+        timer.setCancelHandler { [self] in
+            drain()
+            recorder.stop()
+            completion()
+        }
+        timer.cancel()
     }
 }
 

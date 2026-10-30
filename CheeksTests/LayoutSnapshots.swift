@@ -44,7 +44,7 @@ final class LayoutSnapshots: XCTestCase {
         for mode in PadMode.allCases {
             dj.decks.forEach { $0.padMode = mode }
             if mode == .stems {
-                dj.decks[0].stemStatus = .separating
+                dj.decks[0].stemStatus = .separating(0.42)
                 dj.decks[1].stemStatus = .ready("APPROX")
             }
             try await snapAll("decks-\(mode.id.lowercased().replacingOccurrences(of: " ", with: "-"))", ContentView())
