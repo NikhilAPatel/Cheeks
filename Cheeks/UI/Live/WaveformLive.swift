@@ -90,6 +90,8 @@ final class WaveformLiveView: LiveView {
     private var lastDrawn = WaveUniforms()
     private var lastCues: [SIMD4<Float>] = []
     private var cues: [SIMD4<Float>] = []
+    private var sections: [SIMD4<Float>] = [.zero]
+    private var lastSections: [SIMD4<Float>] = []
     private var needsDraw = true
 
     private var atlasOwner: Int = -1
@@ -179,8 +181,14 @@ final class WaveformLiveView: LiveView {
             } }
         }
 
-        u.beatSeconds = deck.bpm > 0 ? Float(60 / deck.bpm) : 0
-        u.firstBeat = Float(deck.track?.firstBeat ?? 0)
+        // The tempo sections on screen, for the beat lines. Almost always just one.
+        if let grid = deck.grid {
+            let span = (Double(u.startSeconds), Double(u.startSeconds) + width * secondsPerPixel)
+            sections = Self.visibleSections(grid, from: span.0, to: span.1)
+        } else {
+            sections = [.zero]
+        }
+        u.sectionCount = deck.grid == nil ? 0 : Int32(sections.count)
         let r = deck.renderer
         let hasLoop = r.loopEnd > r.loopStart
         u.loopStart = hasLoop ? Float(r.loopStart / sr) : -1
@@ -217,7 +225,7 @@ final class WaveformLiveView: LiveView {
         u.stemGains = stemGains
 
         if deck.isPlaying, deck.bpm > 0 {
-            let beats = (position - deck.firstBeatSeconds) * deck.bpm / 60
+            let beats = deck.beatPosition(position * sr)
             u.beatPulse = Float(exp(-(beats - floor(beats)) * 5))
         } else {
             u.beatPulse = 0
@@ -225,11 +233,28 @@ final class WaveformLiveView: LiveView {
 
         uniforms = u
         // Skip the draw if nothing changed: a paused deck costs no GPU time at all.
-        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues { return false }
+        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues && sections == lastSections { return false }
         lastDrawn = u
         lastCues = cues
+        lastSections = sections
         needsDraw = false
         return true
+    }
+
+    /// Time, beat and seconds per beat of each section on screen. When a very busy tempo map has
+    /// more than the shader takes, some are skipped, which can't be seen at this scale.
+    static func visibleSections(_ grid: BeatGrid, from: Double, to: Double) -> [SIMD4<Float>] {
+        let first = grid.sectionIndex(at: from), last = grid.sectionIndex(at: to)
+        let count = last - first + 1
+        let stride = max(1, (count + Int(WAVE_MAX_SECTIONS) - 2) / (Int(WAVE_MAX_SECTIONS) - 1))
+        var out: [SIMD4<Float>] = []
+        var i = first
+        while i <= last {
+            let s = grid.sections[i]
+            out.append(SIMD4(Float(s.time), Float(s.beat), Float(s.secondsPerBeat), 0))
+            i += stride
+        }
+        return out
     }
 
     override func encode(_ encoder: MTLRenderCommandEncoder) {
@@ -237,6 +262,7 @@ final class WaveformLiveView: LiveView {
         encoder.setRenderPipelineState(renderer.pipeline(fragment: "waveform_fragment"))
         withUnsafeBytes(of: &uniforms) { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 0) }
         cues.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
+        sections.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
         encoder.setFragmentTexture(bands?.texture ?? renderer.blackTexture, index: 0)
         encoder.setFragmentTexture(stems?.texture ?? renderer.blackTexture, index: 1)
         encoder.setFragmentTexture(renderer.cueLetters, index: 2)
@@ -270,7 +296,7 @@ final class WaveformLiveView: LiveView {
     /// While the waveform is being moved by hand, the beat grid is something you can feel.
     private func feelBeats() {
         guard deck.bpm > 0 else { return }
-        let beats = (deck.renderer.scratchTarget / deck.sampleRate - deck.firstBeatSeconds) * deck.bpm / 60
+        let beats = deck.beatPosition(deck.renderer.scratchTarget)
         let index = Int(floor(beats))
         if let last = lastBeatIndex, last != index {
             Haptics.shared.beat(isBar: (index % 4 + 4) % 4 == 0)

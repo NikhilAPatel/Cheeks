@@ -9,21 +9,104 @@ struct Track: Identifiable, Codable, Hashable {
     /// Name of the file when it was imported; used to match rekordbox XML entries.
     var originalFileName: String?
     var duration: Double = 0
+    /// The track's tempo, or its typical tempo when `tempoMarkers` says it moves around.
     var bpm: Double?
     /// Time of the first beat of the beat grid, in seconds.
     var firstBeat: Double = 0
+    /// Set when the tempo changes through the track. The grid comes from these instead of `bpm` and `firstBeat`.
+    var tempoMarkers: [TempoMarker]?
     /// Camelot notation, e.g. "8A".
     var key: String?
     /// Integrated loudness in LUFS, from analysis. Used to bring tracks to a matched level.
     var loudness: Double?
     /// Hot cue slot (0...7) → time in seconds. Stored with the track like rekordbox.
     var hotCues: [Int: Double] = [:]
-    var memoryCue: Double?
+    /// Optional extras for a hot cue slot: its name, its own colour, and a loop if it's a hot loop.
+    var hotCueInfo: [Int: HotCueInfo] = [:]
+    /// Points to come back to, like a CDJ's memory. The earliest is where the track loads.
+    var memoryCues: [MemoryCue] = []
+    var savedLoops: [SavedLoop] = []
+    /// The song's structure, from analysis. Nil until it's been worked out.
+    var phrases: [Phrase]?
     var rating: Int = 0
     var playCount: Int = 0
     var dateAdded = Date()
 
     var isAnalyzed: Bool { bpm != nil }
+    /// Where the track loads: the earliest memory cue.
+    var memoryCue: Double? { memoryCues.map(\.time).min() }
+}
+
+extension Track {
+    private enum LegacyKeys: String, CodingKey { case memoryCue }
+
+    /// Written out by hand so a library saved by any earlier version still loads: anything it
+    /// doesn't have takes its default instead of making the whole file unreadable.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        artist = try c.decode(String.self, forKey: .artist)
+        fileName = try c.decode(String.self, forKey: .fileName)
+        originalFileName = try c.decodeIfPresent(String.self, forKey: .originalFileName)
+        duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        bpm = try c.decodeIfPresent(Double.self, forKey: .bpm)
+        firstBeat = try c.decodeIfPresent(Double.self, forKey: .firstBeat) ?? 0
+        tempoMarkers = try c.decodeIfPresent([TempoMarker].self, forKey: .tempoMarkers)
+        key = try c.decodeIfPresent(String.self, forKey: .key)
+        loudness = try c.decodeIfPresent(Double.self, forKey: .loudness)
+        hotCues = try c.decodeIfPresent([Int: Double].self, forKey: .hotCues) ?? [:]
+        hotCueInfo = try c.decodeIfPresent([Int: HotCueInfo].self, forKey: .hotCueInfo) ?? [:]
+        savedLoops = try c.decodeIfPresent([SavedLoop].self, forKey: .savedLoops) ?? []
+        phrases = try c.decodeIfPresent([Phrase].self, forKey: .phrases)
+        rating = try c.decodeIfPresent(Int.self, forKey: .rating) ?? 0
+        playCount = try c.decodeIfPresent(Int.self, forKey: .playCount) ?? 0
+        dateAdded = try c.decodeIfPresent(Date.self, forKey: .dateAdded) ?? Date()
+        if let saved = try c.decodeIfPresent([MemoryCue].self, forKey: .memoryCues) {
+            memoryCues = saved
+        } else if let single = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Double.self, forKey: .memoryCue) {
+            memoryCues = [MemoryCue(time: single)]
+        }
+    }
+}
+
+/// A colour stored with a track, from rekordbox or chosen by hand.
+struct CueColor: Codable, Hashable {
+    var red: Double
+    var green: Double
+    var blue: Double
+}
+
+struct HotCueInfo: Codable, Hashable {
+    var name: String = ""
+    var color: CueColor?
+    /// Set when this is a hot loop: pressing the pad jumps to the cue and loops up to here.
+    var loopEnd: Double?
+}
+
+struct MemoryCue: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var time: Double
+    var name: String = ""
+    var color: CueColor?
+}
+
+struct SavedLoop: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var start: Double
+    var end: Double
+    var name: String = ""
+    /// Turns on when the track loads, so the deck stays in it once it gets there, as on a CDJ.
+    var activeOnLoad = false
+}
+
+/// A section of the song, from the phrase analysis.
+struct Phrase: Codable, Hashable {
+    enum Kind: String, Codable, CaseIterable {
+        case intro = "INTRO", verse = "VERSE", up = "UP", chorus = "CHORUS", down = "DOWN", outro = "OUTRO"
+    }
+    var start: Double
+    var kind: Kind
 }
 
 struct Playlist: Identifiable, Codable, Hashable {

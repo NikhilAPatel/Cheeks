@@ -38,9 +38,21 @@ static inline float3 bandShade(float3 color, float y, float height, float aa) {
     return mix(shaded, color * 1.35 + 0.08, rim * 0.5);
 }
 
+/// Position on the beat grid at time `t` (x), and the length of a beat there in seconds (y).
+/// Each section is time, first beat, seconds per beat.
+static inline float2 gridAt(float t, constant float4 *sections, int count) {
+    int i = 0;
+    for (int k = 1; k < count; ++k) {
+        if (t < sections[k].x) break;
+        i = k;
+    }
+    return float2(sections[i].y + (t - sections[i].x) / sections[i].z, sections[i].z);
+}
+
 fragment float4 waveform_fragment(VOut in [[stage_in]],
                                   constant WaveUniforms &u [[buffer(0)]],
                                   constant float4 *cues [[buffer(1)]],
+                                  constant float4 *sections [[buffer(2)]],
                                   texture2d<float, access::read> bands [[texture(0)]],
                                   texture2d<float, access::read> stems [[texture(1)]],
                                   texture2d<float> letters [[texture(2)]]) {
@@ -55,8 +67,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
     // Near-black, with every other eight bars lifted very slightly so phrases read at a glance.
     float3 color = float3(0.016, 0.018, 0.022);
     const float secondsPerPixelAbs = abs(u.secondsPerPixel);
-    if (u.beatSeconds > 0 && u.loaded > 0.5) {
-        const float beats = (t - u.firstBeat) / u.beatSeconds;
+    const float2 gridHere = u.sectionCount > 0 ? gridAt(t, sections, u.sectionCount) : float2(0, 1);
+    const float beats = gridHere.x, beatSeconds = gridHere.y;
+    if (u.sectionCount > 0 && u.loaded > 0.5) {
         const float phrase = fmod(floor(beats / 32.0) + 4096.0, 2.0);
         color += float3(0.012, 0.013, 0.016) * phrase;
     }
@@ -75,10 +88,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
     }
 
     // Beat grid, under the waveform so it never hides the audio.
-    if (u.beatSeconds > 0 && inTrack) {
-        const float beats = (t - u.firstBeat) / u.beatSeconds;
+    if (u.sectionCount > 0 && inTrack) {
         const float nearest = round(beats);
-        const float distancePx = abs(beats - nearest) * u.beatSeconds / secondsPerPixelAbs;
+        const float distancePx = abs(beats - nearest) * beatSeconds / secondsPerPixelAbs;
         const float line = 1.0 - smoothstep(0.35 * u.scale, 0.35 * u.scale + 1.0, distancePx);
         const bool isBar = fmod(nearest + 40000.0, 4.0) < 0.5;
         color += line * (isBar ? float3(0.2, 0.21, 0.24) : float3(0.07, 0.075, 0.09));
@@ -142,10 +154,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
     }
 
     // Bar ticks along the top and bottom edges, red like rekordbox's.
-    if (u.beatSeconds > 0 && inTrack) {
-        const float beats = (t - u.firstBeat) / u.beatSeconds;
+    if (u.sectionCount > 0 && inTrack) {
         const float nearest = round(beats);
-        const float dx = abs(beats - nearest) * u.beatSeconds / secondsPerPixelAbs;
+        const float dx = abs(beats - nearest) * beatSeconds / secondsPerPixelAbs;
         const float edge = min(px.y, u.size.y - px.y);
         const bool isBar = fmod(nearest + 40000.0, 4.0) < 0.5;
         const float size = (isBar ? 5.0 : 2.5) * u.scale;

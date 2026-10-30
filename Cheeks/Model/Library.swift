@@ -182,6 +182,7 @@ final class Library {
                         guard t.bpm == nil else { return }
                         t.bpm = result.bpm
                         t.firstBeat = result.firstBeat
+                        t.tempoMarkers = result.tempoMarkers
                         if t.key == nil { t.key = result.key }
                     }
                     self.update(id) { $0.loudness = result.loudness }

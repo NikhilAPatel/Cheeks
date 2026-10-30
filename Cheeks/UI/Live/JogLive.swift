@@ -127,7 +127,7 @@ final class JogLiveView: LiveView {
             u.loopTo = 99
         }
         if deck.isPlaying, deck.bpm > 0 {
-            let beats = (position - deck.firstBeatSeconds) * deck.bpm / 60
+            let beats = deck.beatPosition(position * deck.sampleRate)
             u.beatPulse = Float(exp(-(beats - floor(beats)) * 4))
         } else {
             u.beatPulse = 0
@@ -198,7 +198,7 @@ final class JogLiveView: LiveView {
     /// Fine ticks as the platter turns, with stronger ones as you cross each beat and bar.
     private func feelMovement() {
         if mode == .scratch, deck.bpm > 0 {
-            let beats = (deck.renderer.scratchTarget / deck.sampleRate - deck.firstBeatSeconds) * deck.bpm / 60
+            let beats = deck.beatPosition(deck.renderer.scratchTarget)
             let index = Int(floor(beats))
             if let last = lastBeatIndex, last != index {
                 Haptics.shared.beat(isBar: (index % 4 + 4) % 4 == 0)

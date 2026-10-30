@@ -41,7 +41,11 @@ final class RekordboxTests: XCTestCase {
         // Beat 3 of the bar sits at 0.4 s, so the next downbeat is two beats later.
         XCTAssertEqual(first.firstBeat ?? -1, 0.4 + 2 * 60 / 128.0, accuracy: 0.0001)
         XCTAssertEqual(first.memoryCue, 0.4)
-        XCTAssertEqual(first.hotCues, [0: 45.4, 3: 75.025]) // the saved loop (Type 4) is skipped
+        XCTAssertEqual(first.hotCues, [0: 45.4, 1: 50, 3: 75.025])
+        XCTAssertEqual(first.hotCueInfo[1]?.loopEnd, 52)
+        XCTAssertEqual(first.hotCueInfo[0]?.name, "Drop")
+        XCTAssertEqual(first.hotCueInfo[0]?.color, CueColor(red: 40.0 / 255, green: 226.0 / 255, blue: 20.0 / 255))
+        XCTAssertNil(first.tempoMarkers, "Two markers at one tempo are a steady grid")
 
         XCTAssertEqual(collection.entries[1].key, "8B")
         XCTAssertEqual(collection.playlists.count, 1)
@@ -59,5 +63,33 @@ final class RekordboxTests: XCTestCase {
 
     func testRejectsNonRekordboxXML() {
         XCTAssertNil(RekordboxCollection.parse(Data("<plist><dict/></plist>".utf8)))
+    }
+
+    func testReadsEveryMemoryCueLoopAndTempoChange() throws {
+        let xml = """
+        <DJ_PLAYLISTS Version="1.0.0"><COLLECTION Entries="1">
+          <TRACK TrackID="1" Name="Live" Artist="Band" AverageBpm="100.00" Location="file://localhost/a/live.mp3">
+            <TEMPO Inizio="0.5" Bpm="100.00" Metro="4/4" Battito="1"/>
+            <TEMPO Inizio="2.9" Bpm="104.00" Metro="4/4" Battito="1"/>
+            <TEMPO Inizio="5.2076" Bpm="98.00" Metro="4/4" Battito="1"/>
+            <POSITION_MARK Name="First" Type="0" Start="10.0" Num="-1"/>
+            <POSITION_MARK Name="Second" Type="0" Start="20.0" Num="-1" Red="255" Green="0" Blue="0"/>
+            <POSITION_MARK Name="Hook" Type="4" Start="30.0" End="34.0" Num="-1"/>
+            <POSITION_MARK Name="Fade" Type="1" Start="1.0" Num="-1"/>
+          </TRACK>
+        </COLLECTION></DJ_PLAYLISTS>
+        """
+        let entry = try XCTUnwrap(RekordboxCollection.parse(Data(xml.utf8))?.entries.first)
+        XCTAssertEqual(entry.memoryCues.map(\.time), [10, 20])
+        XCTAssertEqual(entry.memoryCues[1].name, "Second")
+        XCTAssertEqual(entry.memoryCue, 10)
+        XCTAssertEqual(entry.savedLoops.map(\.start), [30])
+        XCTAssertEqual(entry.savedLoops.first?.end, 34)
+        XCTAssertEqual(entry.savedLoops.first?.name, "Hook")
+        let grid = try XCTUnwrap(BeatGrid(markers: try XCTUnwrap(entry.tempoMarkers)))
+        XCTAssertTrue(grid.isVariable)
+        XCTAssertEqual(grid.bpm(at: 3), 104)
+        XCTAssertEqual(grid.beat(at: 2.9), 4, accuracy: 0.0001)
+        XCTAssertEqual(grid.beat(at: 5.2076), 8, accuracy: 0.0001)
     }
 }

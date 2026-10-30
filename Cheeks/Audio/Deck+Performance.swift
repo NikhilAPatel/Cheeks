@@ -33,6 +33,17 @@ extension Deck {
         if !isPlaying { play() }
     }
 
+    // MARK: Memory cues and saved loops
+
+    /// Adds a memory cue, unless there's already one here.
+    func saveMemoryCue(at time: Double) {
+        guard isLoaded, track?.memoryCues.contains(where: { abs($0.time - time) < 0.01 }) == false else { return }
+        updateTrack { t in
+            t.memoryCues.append(MemoryCue(time: time))
+            t.memoryCues.sort { $0.time < $1.time }
+        }
+    }
+
     // MARK: Loops
 
     func toggleBeatLoop(_ beats: Double) {
@@ -45,16 +56,16 @@ extension Deck {
 
     func setLoop(beats: Double, resizeExisting: Bool = true) {
         guard isLoaded, beatFrames > 0 else { return }
-        let length = beats * beatFrames
         let start: Double
         if resizeExisting && loopActive {
             start = renderer.loopStart
         } else if quantize {
-            let grid = min(beats, 1)
-            start = firstBeatFrame + (beatPosition(renderer.playhead) / grid).rounded(.down) * grid * beatFrames
+            let step = min(beats, 1)
+            start = frame(atBeat: (beatPosition(renderer.playhead) / step).rounded(.down) * step)
         } else {
             start = renderer.playhead
         }
+        let length = frame(atBeat: beatPosition(start) + beats) - start
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         renderer.setLoop(start: start, end: start + length, active: true)
         if renderer.playhead >= start + length || renderer.playhead < start {
@@ -78,7 +89,7 @@ extension Deck {
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true
-        if beatFrames > 0 { loopBeats = (end - renderer.loopStart) / beatFrames }
+        if beatFrames > 0 { loopBeats = beatPosition(end) - beatPosition(renderer.loopStart) }
     }
 
     func exitLoop() {
@@ -108,7 +119,8 @@ extension Deck {
     /// Jumps by a number of beats; an active loop moves with it.
     func beatJump(_ beats: Double) {
         guard isLoaded, beatFrames > 0 else { return }
-        let delta = beats * beatFrames
+        let here = renderer.playhead
+        let delta = frame(atBeat: beatPosition(here) + beats) - here
         if renderer.loopActive {
             renderer.setLoop(start: renderer.loopStart + delta, end: renderer.loopEnd + delta, active: true)
         }
@@ -143,10 +155,10 @@ extension Deck {
     func sliceBegin(_ slice: Int) {
         guard isLoaded, beatFrames > 0 else { return }
         if !isPlaying { play() }
-        let length = beatFrames / 2
-        let beat = beatPosition(renderer.playhead)
-        let barStart = firstBeatFrame + (beat / 4).rounded(.down) * 4 * beatFrames
-        let start = barStart + Double(slice) * length
+        // Bars count from the grid, so this works whatever the tempo's doing here.
+        let barStart = (beatPosition(renderer.playhead) / 4).rounded(.down) * 4
+        let start = frame(atBeat: barStart + Double(slice) / 2)
+        let length = frame(atBeat: barStart + Double(slice + 1) / 2) - start
         // A second pad while one's held plays that slice; the return point stays where it was.
         if heldMomentaryPads == 0 { renderer.engageSlip() }
         heldMomentaryPads += 1
@@ -355,11 +367,14 @@ extension Deck {
     /// Fixes half/double-time detection (multiplier 2 or 0.5).
     func scaleBPM(_ multiplier: Double) {
         guard let current = track?.bpm else { return }
-        updateTrack { $0.bpm = current * multiplier }
+        updateTrack { t in
+            t.bpm = current * multiplier
+            t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time, bpm: $0.bpm * multiplier, beatInBar: $0.beatInBar) }
+        }
     }
 
     func nudgeBPM(by delta: Double) {
-        guard let current = track?.bpm else { return }
+        guard let current = track?.bpm, track?.tempoMarkers == nil else { return }
         updateTrack { $0.bpm = max(40, ((current + delta) * 100).rounded() / 100) }
     }
 
@@ -369,17 +384,40 @@ extension Deck {
         let bar = barSeconds
         var moved = (first + milliseconds / 1000).truncatingRemainder(dividingBy: bar)
         if moved < 0 { moved += bar }
-        updateTrack { $0.firstBeat = moved }
+        updateTrack { t in
+            t.firstBeat = moved
+            t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time + milliseconds / 1000, bpm: $0.bpm, beatInBar: $0.beatInBar) }
+        }
     }
 
     /// Makes the playhead (snapped to the nearest beat when quantize is on) the first beat of a bar.
     func setDownbeatHere() {
         guard barSeconds > 0 else { return }
+        if track?.tempoMarkers != nil {
+            // The beats stay where they are; only which one counts as the "1" changes.
+            let offset = Int(beatPosition(snap(renderer.playhead)).rounded())
+            updateTrack { t in
+                t.tempoMarkers = t.tempoMarkers?.map { m in
+                    TempoMarker(time: m.time, bpm: m.bpm, beatInBar: ((m.beatInBar - offset) % 4 + 4) % 4)
+                }
+            }
+            return
+        }
         let bar = barSeconds
         let here = snap(renderer.playhead) / sampleRate
         var first = here.truncatingRemainder(dividingBy: bar)
         if first < 0 { first += bar }
         updateTrack { $0.firstBeat = first }
+    }
+
+    /// Replaces tempo changes with one steady tempo, for when the detected changes are wrong.
+    func flattenGrid() {
+        guard let first = grid?.seconds(atBeat: 0), let average = track?.bpm else { return }
+        updateTrack { t in
+            t.tempoMarkers = nil
+            t.firstBeat = first
+            t.bpm = average
+        }
     }
 
     // MARK: EQ / filter

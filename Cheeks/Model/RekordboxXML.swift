@@ -1,7 +1,7 @@
 import Foundation
 
 /// Reads a rekordbox collection export (File → Export Collection in xml format):
-/// beat grid, key, hot cues, memory cue and playlists per track.
+/// beat grid (with tempo changes), key, hot cues and hot loops, memory cues, saved loops and playlists per track.
 struct RekordboxCollection {
     struct Entry {
         var trackID: String
@@ -13,8 +13,26 @@ struct RekordboxCollection {
         var firstBeat: Double?
         /// Camelot code.
         var key: String?
+        /// Set when the grid has tempo changes in it.
+        var tempoMarkers: [TempoMarker]?
         var hotCues: [Int: Double] = [:]
-        var memoryCue: Double?
+        var hotCueInfo: [Int: HotCueInfo] = [:]
+        var memoryCues: [MemoryCue] = []
+        var savedLoops: [SavedLoop] = []
+        var memoryCue: Double? { memoryCues.map(\.time).min() }
+
+        /// Turns every grid marker read from the file into the track's grid.
+        fileprivate mutating func finishGrid(_ markers: [TempoMarker]) {
+            guard let first = markers.first else { return }
+            let beat = 60 / first.bpm
+            let downbeat = first.time + Double((4 - first.beatInBar) % 4) * beat
+            firstBeat = downbeat.truncatingRemainder(dividingBy: 4 * beat)
+            if bpm == nil { bpm = first.bpm }
+            // Plenty of tracks repeat one tempo over several markers; that's a steady grid.
+            let slowest = markers.map(\.bpm).min() ?? 0, fastest = markers.map(\.bpm).max() ?? 0
+            tempoMarkers = fastest - slowest > 0.005 ? markers : nil
+            if tempoMarkers != nil { firstBeat = first.time }
+        }
     }
 
     var entries: [Entry] = []
@@ -43,10 +61,18 @@ struct RekordboxCollection {
         return Camelot.code(pitchClass: pc, minor: isMinor)
     }
 
+    /// Type 0 is a cue, 3 a load point and 4 a loop. Num is the hot cue slot, or -1 for memory.
+    fileprivate static func color(_ a: [String: String]) -> CueColor? {
+        guard let r = a["Red"].flatMap({ Double($0) }), let g = a["Green"].flatMap({ Double($0) }),
+              let b = a["Blue"].flatMap({ Double($0) }) else { return nil }
+        return CueColor(red: r / 255, green: g / 255, blue: b / 255)
+    }
+
     private final class ParserDelegate: NSObject, XMLParserDelegate {
         var collection = RekordboxCollection()
         var sawRoot = false
         private var current: Entry?
+        private var markers: [TempoMarker] = []
         private var inCollection = false
         private var playlistStack: [(name: String, trackIDs: [String], isPlaylist: Bool)] = []
 
@@ -66,29 +92,40 @@ struct RekordboxCollection {
                                 artist: a["Artist"] ?? "",
                                 bpm: a["AverageBpm"].flatMap { Double($0) }.flatMap { $0 > 0 ? $0 : nil },
                                 key: a["Tonality"].flatMap(RekordboxCollection.camelot(fromTonality:)))
-            case "TEMPO" where current != nil && current?.firstBeat == nil:
-                // Only the first grid marker is used; Battito is that beat's position in the bar (1–4).
+            case "TEMPO" where current != nil:
+                // Battito is the position of this beat in the bar, 1 to 4.
                 guard let start = a["Inizio"].flatMap({ Double($0) }),
                       let bpm = a["Bpm"].flatMap({ Double($0) }), bpm > 0 else { break }
-                let beat = 60 / bpm
-                let beatInBar = Int(a["Battito"] ?? "1") ?? 1
-                var downbeat = start + Double((5 - beatInBar) % 4) * beat
-                downbeat = downbeat.truncatingRemainder(dividingBy: 4 * beat)
-                current?.firstBeat = downbeat
-                if current?.bpm == nil { current?.bpm = bpm }
+                markers.append(TempoMarker(time: start, bpm: bpm, beatInBar: ((Int(a["Battito"] ?? "1") ?? 1) - 1 + 4) % 4))
             case "POSITION_MARK" where current != nil:
-                guard a["Type"] == "0" || a["Type"] == nil,
-                      let start = a["Start"].flatMap({ Double($0) }),
-                      let num = a["Num"].flatMap({ Int($0) }) else { break }
-                if num < 0 {
-                    if current?.memoryCue == nil { current?.memoryCue = start }
-                } else if num < 8 {
-                    current?.hotCues[num] = start
-                }
+                addMark(a)
             case "NODE" where !inCollection:
                 playlistStack.append((a["Name"] ?? "Playlist", [], a["Type"] == "1"))
             case "TRACK" where !inCollection && !playlistStack.isEmpty:
                 if let key = a["Key"] { playlistStack[playlistStack.count - 1].trackIDs.append(key) }
+            default:
+                break
+            }
+        }
+
+        private func addMark(_ a: [String: String]) {
+            guard let start = a["Start"].flatMap({ Double($0) }),
+                  let num = a["Num"].flatMap({ Int($0) }) else { return }
+            let type = a["Type"] ?? "0"
+            let end = a["End"].flatMap { Double($0) }
+            let name = a["Name"] ?? ""
+            let color = RekordboxCollection.color(a)
+            switch (type, num) {
+            case ("0", 0..<8), ("4", 0..<8):
+                current?.hotCues[num] = start
+                let loopEnd = type == "4" ? end : nil
+                if !name.isEmpty || color != nil || loopEnd != nil {
+                    current?.hotCueInfo[num] = HotCueInfo(name: name, color: color, loopEnd: loopEnd)
+                }
+            case ("0", ..<0), ("3", ..<0):
+                current?.memoryCues.append(MemoryCue(time: start, name: name, color: color))
+            case ("4", ..<0):
+                if let end, end > start { current?.savedLoops.append(SavedLoop(start: start, end: end, name: name)) }
             default:
                 break
             }
@@ -99,8 +136,12 @@ struct RekordboxCollection {
             case "COLLECTION":
                 inCollection = false
             case "TRACK" where inCollection:
-                if let current { collection.entries.append(current) }
+                if var finished = current {
+                    finished.finishGrid(markers)
+                    collection.entries.append(finished)
+                }
                 current = nil
+                markers = []
             case "NODE" where !inCollection:
                 if let node = playlistStack.popLast(), node.isPlaylist {
                     collection.playlists.append((node.name, node.trackIDs))
@@ -136,10 +177,22 @@ extension Library {
             if !entry.title.isEmpty { t.title = entry.title }
             if !entry.artist.isEmpty { t.artist = entry.artist }
             if let bpm = entry.bpm { t.bpm = bpm }
-            if let first = entry.firstBeat { t.firstBeat = first }
+            if let first = entry.firstBeat {
+                t.firstBeat = first
+                t.tempoMarkers = entry.tempoMarkers
+            }
             if let key = entry.key { t.key = key }
-            for (slot, time) in entry.hotCues { t.hotCues[slot] = time }
-            if let memory = entry.memoryCue { t.memoryCue = memory }
+            for (slot, time) in entry.hotCues {
+                t.hotCues[slot] = time
+                t.hotCueInfo[slot] = entry.hotCueInfo[slot]
+            }
+            // Importing again adds what's new, without doubling up what's already there.
+            for cue in entry.memoryCues where !t.memoryCues.contains(where: { abs($0.time - cue.time) < 0.01 }) {
+                t.memoryCues.append(cue)
+            }
+            for loop in entry.savedLoops where !t.savedLoops.contains(where: { abs($0.start - loop.start) < 0.01 && abs($0.end - loop.end) < 0.01 }) {
+                t.savedLoops.append(loop)
+            }
             tracks[index] = t
         }
         for list in collection.playlists {

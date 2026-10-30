@@ -9,6 +9,7 @@
 #define WAVE_ROW_WIDTH 4096
 #define WAVE_LEVELS 6
 #define WAVE_MAX_CUES 10
+#define WAVE_MAX_SECTIONS 24
 
 typedef struct {
     simd_float2 size;           // drawable size in pixels
@@ -23,8 +24,8 @@ typedef struct {
     int levelRow[WAVE_LEVELS];  // first atlas row of each level
     int levelCount[WAVE_LEVELS];// bins in each level
 
-    float beatSeconds;          // 0 when there's no grid
-    float firstBeat;
+    int sectionCount;           // tempo sections on screen; 0 when there's no grid
+    float padding0;
     float position;             // track time at the playhead
     float duration;
 

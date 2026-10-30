@@ -69,6 +69,8 @@ struct StemWaveformData {
 struct AnalysisResult {
     var bpm: Double
     var firstBeat: Double
+    /// Tempo changes, for tracks that weren't played to a click.
+    var tempoMarkers: [TempoMarker]?
     var key: String?
     /// Integrated loudness in LUFS.
     var loudness: Double?
@@ -135,20 +137,22 @@ enum TrackAnalyzer {
             values.map { UInt8(min(255, ($0 / peak) * lift * 255)) }
         }
         let waveform = WaveformData(low: quantize(low), mid: quantize(mid, lift: 1.1), high: quantize(high, lift: 1.5))
-        let (bpm, firstBeat) = detectTempo(energyFull: energyFull, energyLow: energyLow, sampleRate: sr)
+        let onset = onsetEnvelope(energyFull: energyFull, energyLow: energyLow)
+        var (bpm, firstBeat) = detectTempo(onset: onset, sampleRate: sr)
+        let markers = TempoMapDetector.detect(onset: onset, fps: sr / Double(tempoHop), bpm: bpm)
+        if let markers, let first = markers.first {
+            bpm = TempoMapDetector.typicalBPM(markers)
+            firstBeat = first.time
+        }
         let key = KeyDetector.detect(signal: keySignal, rate: sr / Double(keyDecimation))
-        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, key: key, loudness: loudness.integrated, waveform: waveform)
+        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, tempoMarkers: markers, key: key, loudness: loudness.integrated, waveform: waveform)
     }
 
-    /// Onset-envelope tempo detection: autocorrelation picks the period,
-    /// then a comb search over the whole track refines BPM and finds the grid phase.
+    /// Onset strength: positive change in log energy, weighting the kick region.
     /// `energyFull`/`energyLow` are per-hop (512 frames) energies of the mono mix and its <150 Hz band.
-    static func detectTempo(energyFull: [Float], energyLow: [Float], sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
-        let fps = sampleRate / Double(tempoHop)
+    static func onsetEnvelope(energyFull: [Float], energyLow: [Float]) -> [Float] {
         let frames = energyFull.count
-        guard frames > 64 else { return (120, 0) }
-
-        // Onset strength: positive change in log energy, weighting the kick region.
+        guard frames > 0 else { return [] }
         var onset = [Float](repeating: 0, count: frames)
         var prevFull: Float = 0, prevLow: Float = 0
         for f in 0..<frames {
@@ -157,7 +161,15 @@ enum TrackAnalyzer {
             prevFull = lf; prevLow = ll
         }
         let mean = onset.reduce(0, +) / Float(frames)
-        onset = onset.map { max(0, $0 - mean) }
+        return onset.map { max(0, $0 - mean) }
+    }
+
+    /// Onset-envelope tempo detection: autocorrelation picks the period,
+    /// then a comb search over the whole track refines BPM and finds the grid phase.
+    static func detectTempo(onset: [Float], sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
+        let fps = sampleRate / Double(tempoHop)
+        let frames = onset.count
+        guard frames > 64 else { return (120, 0) }
 
         // Coarse: autocorrelation over 85–175 BPM.
         let minLag = Int(fps * 60 / 175), maxLag = Int(fps * 60 / 85) + 1

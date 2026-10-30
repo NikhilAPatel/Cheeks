@@ -76,7 +76,7 @@ final class Deck {
     @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
 
     // Track
-    var track: Track? { didSet { applyGrid() } }
+    var track: Track? { didSet { gridChanged() } }
     var waveform: WaveformData? { didSet { waveRevision += 1 } }
     /// Per-stem waveforms, available once the track has been split.
     var stemWaveform: StemWaveformData? { didSet { stemWaveRevision += 1 } }
@@ -86,6 +86,12 @@ final class Deck {
     @ObservationIgnored private(set) var stemWaveRevision = 0
     /// Seconds between the render callback and the speaker, for drawing what's actually being heard.
     @ObservationIgnored var outputLatency: Double = 0
+    /// Where the beats are, or nil without a grid.
+    @ObservationIgnored private(set) var grid: BeatGrid?
+    /// The section of a variable-tempo track that the audio core was last told about.
+    @ObservationIgnored private var gridSection = 0
+    /// The tempo at the playhead. Only changes during a track that has tempo changes in it.
+    private(set) var bpm: Double = 0
     /// Gain that brings this track to the target loudness, in dB, from its analysis.
     private(set) var autoGainDB: Float = 0
     private(set) var isLoading = false
@@ -151,7 +157,6 @@ final class Deck {
     // MARK: Derived values
 
     var sampleRate: Double { AudioConfig.sampleRate }
-    var bpm: Double { track?.bpm ?? 0 }
     var tempoRatio: Double { 1 + tempo / 100 }
     var effectiveBPM: Double { bpm * tempoRatio }
     var isLoaded: Bool { renderer.frameCount > 0 && !isLoading }
@@ -167,8 +172,12 @@ final class Deck {
     }
     var duration: Double { Double(renderer.frameCount) / sampleRate }
     var beatFrames: Double { bpm > 0 ? 60 / bpm * sampleRate : 0 }
-    var firstBeatFrame: Double { (track?.firstBeat ?? 0) * sampleRate }
-    var firstBeatSeconds: Double { track?.firstBeat ?? 0 }
+    /// Where beat 0 would be at the current tempo, counting back from the section being played.
+    var firstBeatFrame: Double {
+        guard let grid else { return (track?.firstBeat ?? 0) * sampleRate }
+        let section = grid.sections[gridSection]
+        return (section.time - section.beat * section.secondsPerBeat) * sampleRate
+    }
     /// The key being heard, after key shift (and tempo too, when key lock is off).
     var effectiveKey: String? {
         guard let key = track?.key else { return nil }
@@ -178,13 +187,18 @@ final class Deck {
     }
 
     func beatPosition(_ frame: Double) -> Double {
-        beatFrames > 0 ? (frame - firstBeatFrame) / beatFrames : 0
+        grid?.beat(at: frame / sampleRate) ?? 0
+    }
+
+    /// The frame a position on the beat grid falls on.
+    func frame(atBeat beat: Double) -> Double {
+        (grid?.seconds(atBeat: beat) ?? 0) * sampleRate
     }
 
     /// Nearest beat-grid frame when quantize is on.
     func snap(_ frame: Double) -> Double {
-        guard quantize, beatFrames > 0 else { return frame }
-        return firstBeatFrame + beatPosition(frame).rounded() * beatFrames
+        guard quantize, grid != nil else { return frame }
+        return self.frame(atBeat: beatPosition(frame).rounded())
     }
 
     // MARK: Loading
@@ -237,6 +251,7 @@ final class Deck {
             guard t.bpm == nil else { return }
             t.bpm = analysis.bpm
             t.firstBeat = analysis.firstBeat
+            t.tempoMarkers = analysis.tempoMarkers
             if t.key == nil { t.key = analysis.key }
         }
         library?.update(id) { $0.loudness = analysis.loudness }
@@ -357,8 +372,7 @@ final class Deck {
     }
 
     func saveMemoryCue() {
-        let time = cuePoint
-        updateTrack { $0.memoryCue = time }
+        saveMemoryCue(at: cuePoint)
     }
 
     /// Called by the slider: moving tempo by hand takes the deck out of sync.
@@ -374,8 +388,25 @@ final class Deck {
         onMixChange?()
     }
 
-    private func applyGrid() {
+    private func gridChanged() {
+        grid = track?.grid
+        gridSection = grid?.sectionIndex(at: position) ?? 0
+        applyLocalTempo()
+    }
+
+    /// Tells everything that works in single beats what the tempo is at the playhead.
+    private func applyLocalTempo() {
+        bpm = grid.map { $0.sections[gridSection].bpm } ?? 0
         renderer.setGrid(beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
+    }
+
+    /// A track with tempo changes hands over to its next section as the playhead reaches it.
+    private func followTempoMap() {
+        guard let grid, grid.isVariable else { return }
+        let section = grid.sectionIndex(at: position)
+        guard section != gridSection else { return }
+        gridSection = section
+        applyLocalTempo()
     }
 
     private func setReverse() {
@@ -386,6 +417,7 @@ final class Deck {
 
     /// Keeps observable state in step with the audio thread (end of track, brake, etc.).
     func tick() {
+        followTempoMap()
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if fxOn && (fxType == .brake || fxType == .backspin) && !renderer.braking { fxOn = false }
