@@ -95,7 +95,7 @@ private struct BarCounters: View {
                         .foregroundStyle(Theme.accent)
                         .shadow(color: .black, radius: 1.5)
                         .fixedSize()
-                        .position(x: x - 27, y: deck.index == 0 ? 14 + 1 + 8 : geo.size.height - 14 - 1 - waveHeight + 8)
+                        .position(x: x - 36, y: deck.index == 0 ? 14 + 1 + 8 : geo.size.height - 14 - 1 - waveHeight + 8)
                 }
             }
         }
@@ -104,7 +104,14 @@ private struct BarCounters: View {
 
     private func label(_ deck: Deck) -> String {
         guard deck.isLoaded, deck.bpm > 0 else { return "" }
-        let beats = deck.beatPosition(deck.renderer.playhead)
+        let here = deck.renderer.playhead
+        // With sections worked out, the count is within the section, which is what you're mixing by.
+        if let phrase = deck.phrase(atFrame: here) {
+            let start = (deck.beatPosition(phrase.start * deck.sampleRate) / 4).rounded() * 4
+            let beats = max(0, deck.beatPosition(here) - start)
+            return "\(phrase.kind.rawValue) \(Int(beats / 4) + 1).\(Int(beats.truncatingRemainder(dividingBy: 4)) + 1)"
+        }
+        let beats = deck.beatPosition(here)
         guard beats >= 0 else { return "" }
         return "\(Int(beats / 4) + 1).\(Int(beats.truncatingRemainder(dividingBy: 4)) + 1) BARS"
     }

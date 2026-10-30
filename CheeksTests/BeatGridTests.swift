@@ -193,6 +193,16 @@ final class BeatGridTests: XCTestCase {
         XCTAssertNil(TrackAnalyzer.analyze(track(beats: played, seconds: 90)).tempoMarkers)
     }
 
+    func testAStepChangeInTempoIsFollowed() throws {
+        // A song that changes tempo once, partway through: half a minute at 100, then at 112.
+        let played = beats(until: 100) { $0 < 50 ? 100 : 112 }
+        let result = TrackAnalyzer.analyze(track(beats: played, seconds: 100))
+        let markers = try XCTUnwrap(result.tempoMarkers, "A 12 BPM jump should be detected")
+        let grid = try XCTUnwrap(BeatGrid(markers: markers))
+        XCTAssertEqual(grid.bpm(at: 20), 100, accuracy: 1.5)
+        XCTAssertEqual(grid.bpm(at: 80), 112, accuracy: 1.5)
+    }
+
     func testATrackThatSpeedsUpGetsATempoMapThatFollowsIt() throws {
         // A band speeding up from 112 to 124 over two minutes, about what a live take does.
         let speed: (Double) -> Double = { 112 + 12 * $0 / 120 }
@@ -210,6 +220,7 @@ final class BeatGridTests: XCTestCase {
             worst = max(worst, abs(b - b.rounded()) * 60 / speed(beat))
         }
         print("TEMPO: speeding-up track, worst beat is \(Int(worst * 1000)) ms off the grid, \(markers.count) markers")
+        XCTAssertGreaterThan(markers.count, 8)
         XCTAssertLessThan(worst, 0.04)
     }
 }

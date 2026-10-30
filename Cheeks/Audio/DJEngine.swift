@@ -108,6 +108,9 @@ final class DJEngine {
         self.timer = timer
         LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
         sampler.loadSounds()
+        library.onAnalyzed = { [weak self] id in
+            self?.decks.filter { $0.track?.id == id }.forEach { $0.refreshTrack() }
+        }
         // Recordings interrupted by a crash or the app being killed get saved now.
         for caf in Recordings.unfinished() { finalize(caf, recovered: true) }
         nowPlaying = NowPlaying(engine: self)

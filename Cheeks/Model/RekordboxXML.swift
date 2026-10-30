@@ -180,6 +180,8 @@ extension Library {
             if let first = entry.firstBeat {
                 t.firstBeat = first
                 t.tempoMarkers = entry.tempoMarkers
+                // Phrases are counted in bars, so a new grid means counting them again.
+                t.phrases = nil
             }
             if let key = entry.key { t.key = key }
             for (slot, time) in entry.hotCues {
@@ -194,6 +196,7 @@ extension Library {
                 t.savedLoops.append(loop)
             }
             tracks[index] = t
+            if t.phrases == nil && !isMissing(t) { enqueueAnalysis(t.id) }
         }
         for list in collection.playlists {
             let ids = list.trackIDs.compactMap { idForRekordboxID[$0] }

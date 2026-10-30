@@ -10,6 +10,8 @@ final class Library {
     private(set) var analyzing: UUID?
     /// Tracks whose audio file has gone. They stay in the list, and come back when the file's imported.
     var missingFiles: Set<UUID> = []
+    /// Called when analysis has finished with a track, so a deck holding it can pick up the results.
+    @ObservationIgnored var onAnalyzed: (@MainActor (UUID) -> Void)?
     private var analysisQueue: [UUID] = []
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
@@ -22,7 +24,8 @@ final class Library {
         load()
         refreshMissingFiles()
         importInbox()
-        for track in tracks where !track.isAnalyzed && !isMissing(track) { enqueueAnalysis(track.id) }
+        // Tracks from before phrase analysis get theirs too, one at a time in the background.
+        for track in tracks where (!track.isAnalyzed || track.phrases == nil) && !isMissing(track) { enqueueAnalysis(track.id) }
     }
 
     // MARK: Persistence
@@ -170,7 +173,12 @@ final class Library {
     }
 
     func reanalyze(_ track: Track) {
-        update(track.id) { $0.bpm = nil; $0.key = nil }
+        update(track.id) { t in
+            t.bpm = nil
+            t.key = nil
+            t.tempoMarkers = nil
+            t.phrases = nil
+        }
         enqueueAnalysis(track.id)
     }
 
@@ -181,8 +189,9 @@ final class Library {
         guard let track = self.track(id) else { analyzeNext(); return }
         analyzing = id
         let url = self.url(for: track)
+        let knownGrid = track.grid
         Task.detached(priority: .utility) {
-            let result = (try? AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)).map(TrackAnalyzer.analyze)
+            let result = (try? AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)).map { TrackAnalyzer.analyze($0, knownGrid: knownGrid) }
             if let result {
                 try? result.waveform.encoded().write(to: LibraryFiles.waveformURL(id), options: .atomic)
             }
@@ -196,7 +205,11 @@ final class Library {
                         t.tempoMarkers = result.tempoMarkers
                         if t.key == nil { t.key = result.key }
                     }
-                    self.update(id) { $0.loudness = result.loudness }
+                    self.update(id) { t in
+                        t.loudness = result.loudness
+                        t.phrases = result.phrases ?? t.phrases ?? []
+                    }
+                    self.onAnalyzed?(id)
                 }
                 self.analyzing = nil
                 self.analyzeNext()

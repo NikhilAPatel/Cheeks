@@ -48,7 +48,7 @@ typedef struct {
     int colorStyle;             // 0 = 3-band, 1 = RGB
     float beatPulse;            // 1 on the beat, decaying
     float loaded;
-    float padding;
+    float hasPhrases;           // draws the strip of song sections along the bottom
 } WaveUniforms;
 
 typedef struct {
@@ -64,7 +64,7 @@ typedef struct {
     float cuePoint;
     int cueCount;
     float hover;                // 0...1, brightens while it's being touched
-    float padding;
+    float hasPhrases;           // draws the strip of song sections along the bottom
     simd_float4 lowColor;
     simd_float4 midColor;
     simd_float4 highColor;

@@ -56,8 +56,10 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
                                   constant float4 *marks [[buffer(3)]],
                                   texture2d<float, access::read> bands [[texture(0)]],
                                   texture2d<float, access::read> stems [[texture(1)]],
-                                  texture2d<float> letters [[texture(2)]]) {
+                                  texture2d<float> letters [[texture(2)]],
+                                  texture2d<float> phrases [[texture(3)]]) {
     constexpr sampler linear(filter::linear, address::clamp_to_edge);
+    constexpr sampler nearest(filter::nearest, address::clamp_to_edge);
     const float2 px = in.position.xy;
     const float t = u.startSeconds + px.x * u.secondsPerPixel;
     const float midY = u.size.y * 0.5;
@@ -175,8 +177,14 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
         color = mix(color, float3(1.0, 0.62, 0.12), edge * (u.loopActive > 0.5 ? 1.0 : 0.5));
     }
 
-    // Memory cue and the current cue point: triangles rising from the bottom edge.
+    // The song's sections, as a strip along the bottom edge.
     const float fromBottom = u.size.y - px.y;
+    if (u.hasPhrases > 0.5 && inTrack && fromBottom < 2.5 * u.scale) {
+        const float4 section = phrases.sample(nearest, float2(t / u.duration, 0.5));
+        if (section.a > 0.5) color = mix(color, section.rgb, 0.92);
+    }
+
+    // The current cue point: a triangle rising from the bottom edge.
     {
         const float dx = abs(t - u.cuePoint) / secondsPerPixelAbs;
         const float tri = 7.0 * u.scale;
@@ -246,8 +254,10 @@ fragment float4 overview_fragment(VOut in [[stage_in]],
                                   constant float4 *cues [[buffer(1)]],
                                   constant float4 *marks [[buffer(2)]],
                                   texture2d<float> columns [[texture(0)]],
-                                  texture2d<float> letters [[texture(1)]]) {
+                                  texture2d<float> letters [[texture(1)]],
+                                  texture2d<float> phrases [[texture(2)]]) {
     constexpr sampler smooth(filter::linear, address::clamp_to_edge);
+    constexpr sampler nearest(filter::nearest, address::clamp_to_edge);
     const float2 px = in.position.xy;
     const float x = px.x / u.size.x;
     float3 color = float3(0.012, 0.013, 0.016);
@@ -255,8 +265,10 @@ fragment float4 overview_fragment(VOut in [[stage_in]],
 
     const float4 v = columns.sample(smooth, float2(x, 0.5));
     const float flag = 7.0 * u.scale;
-    const float usable = u.size.y - 1.0 * u.scale;
-    const float h = (u.size.y - px.y) / usable; // 0 at the bottom, 1 at the top
+    // The sections take the bottom of the view, and the waveform stands on top of them.
+    const float strip = u.hasPhrases > 0.5 ? 3.0 * u.scale : 0.0;
+    const float usable = u.size.y - 1.0 * u.scale - strip;
+    const float h = (u.size.y - strip - px.y) / usable; // 0 at the bottom, 1 at the top
     const float aa = 1.0 / usable;
 
     const float low = pow(v.r, 0.8), mid = pow(v.g, 0.8) * 0.82, high = pow(v.b, 0.75) * 0.6;
@@ -270,6 +282,10 @@ fragment float4 overview_fragment(VOut in [[stage_in]],
         wave = mix(wave, float3(grey), 0.7) * 0.4;
     }
     color = wave + (u.hover * 0.04);
+    if (strip > 0 && u.size.y - px.y < strip) {
+        const float4 section = phrases.sample(nearest, float2(x, 0.5));
+        color = section.a > 0.5 ? section.rgb * (played ? 0.45 : 1.0) : float3(0.012, 0.013, 0.016);
+    }
 
     // The last thirty seconds are marked, and blink when the playhead gets there.
     if (u.duration > 30 && x > (u.duration - 30) / u.duration) {

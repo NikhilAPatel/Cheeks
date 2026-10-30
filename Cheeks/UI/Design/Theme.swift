@@ -49,6 +49,18 @@ enum Theme {
     ]
     static let hotCueLetters = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
+    /// Sections of a song, cool for the quiet parts and hot for the big ones.
+    static func phraseColor(_ kind: Phrase.Kind) -> Color {
+        switch kind {
+        case .intro: Color(red: 0.2, green: 0.55, blue: 0.95)
+        case .verse: Color(red: 0.14, green: 0.72, blue: 0.62)
+        case .up: Color(red: 0.98, green: 0.76, blue: 0.1)
+        case .chorus: Color(red: 0.98, green: 0.24, blue: 0.3)
+        case .down: Color(red: 0.55, green: 0.36, blue: 0.95)
+        case .outro: Color(red: 0.42, green: 0.48, blue: 0.62)
+        }
+    }
+
     /// Camelot wheel colours, the way key charts print them, so compatible keys sit near each other.
     static func keyColor(_ code: String?) -> Color {
         guard let code, let (number, minor) = Camelot.parse(code) else { return textSecondary }

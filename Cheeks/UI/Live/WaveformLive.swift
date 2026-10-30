@@ -83,6 +83,35 @@ struct WaveAtlas {
     }
 }
 
+/// A song's sections as a strip of colour along the track, for the shaders to look up.
+@MainActor
+enum PhraseStripTexture {
+    private static let width = 2048
+
+    static func make(phrases: [Phrase], duration: Double) -> MTLTexture? {
+        guard !phrases.isEmpty, duration > 0 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: width * 4)
+        for (i, phrase) in phrases.enumerated() {
+            let end = i + 1 < phrases.count ? phrases[i + 1].start : duration
+            let color = Theme.phraseColor(phrase.kind).simd
+            let from = max(0, Int(phrase.start / duration * Double(width)))
+            let to = min(width, Int((end / duration * Double(width)).rounded(.up)))
+            guard from < to else { continue }
+            for x in from..<to {
+                bytes[x * 4] = UInt8(color.x * 255)
+                bytes[x * 4 + 1] = UInt8(color.y * 255)
+                bytes[x * 4 + 2] = UInt8(color.z * 255)
+                bytes[x * 4 + 3] = 255
+            }
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: 1, mipmapped: false)
+        descriptor.usage = .shaderRead
+        let texture = LiveRenderer.shared.device.makeTexture(descriptor: descriptor)
+        texture?.replace(region: MTLRegionMake2D(0, 0, width, 1), mipmapLevel: 0, withBytes: bytes, bytesPerRow: width * 4)
+        return texture
+    }
+}
+
 extension Deck {
     /// Memory cues and saved loops for the shaders: start, and end for a loop or -1 for a cue.
     var liveMarks: [SIMD4<Float>] {
@@ -116,6 +145,8 @@ final class WaveformLiveView: LiveView {
     private var bands: WaveAtlas?
     private var stems: WaveAtlas?
     private var stemsOwner: Int = -1
+    private var phraseStrip: MTLTexture?
+    private var phrasesOwner: [Phrase]?
 
     private var revealStart: CFTimeInterval = 0
     private var stemBlend: Float = 0
@@ -169,9 +200,15 @@ final class WaveformLiveView: LiveView {
             stems = deck.stemWaveform.flatMap { WaveAtlas(channels: $0.levels) }
         }
 
+        if phrasesOwner != deck.track?.phrases {
+            phrasesOwner = deck.track?.phrases
+            phraseStrip = phrasesOwner.flatMap { PhraseStripTexture.make(phrases: $0, duration: deck.duration) }
+        }
+
         var u = uniforms
         u.size = drawablePixels
         u.scale = Float(metalLayer.contentsScale)
+        u.hasPhrases = phraseStrip == nil ? 0 : 1
         let loaded = bands != nil && deck.isLoaded
         u.loaded = loaded ? 1 : 0
         u.colorStyle = display.colorStyle
@@ -287,6 +324,7 @@ final class WaveformLiveView: LiveView {
         encoder.setFragmentTexture(bands?.texture ?? renderer.blackTexture, index: 0)
         encoder.setFragmentTexture(stems?.texture ?? renderer.blackTexture, index: 1)
         encoder.setFragmentTexture(renderer.cueLetters, index: 2)
+        encoder.setFragmentTexture(phraseStrip ?? renderer.blackTexture, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
@@ -367,6 +405,8 @@ final class OverviewLiveView: LiveView {
     private var needsDraw = true
     private var columns: MTLTexture?
     private var owner = -1
+    private var phraseStrip: MTLTexture?
+    private var phrasesOwner: [Phrase]?
     private var hover: Float = 0
     private var touching = false
 
@@ -411,7 +451,12 @@ final class OverviewLiveView: LiveView {
             owner = deck.waveRevision
             columns = deck.waveform.flatMap(makeColumns)
         }
+        if phrasesOwner != deck.track?.phrases {
+            phrasesOwner = deck.track?.phrases
+            phraseStrip = phrasesOwner.flatMap { PhraseStripTexture.make(phrases: $0, duration: deck.duration) }
+        }
         var u = uniforms
+        u.hasPhrases = phraseStrip == nil ? 0 : 1
         u.size = drawablePixels
         u.scale = Float(metalLayer.contentsScale)
         let loaded = columns != nil && deck.isLoaded
@@ -460,6 +505,7 @@ final class OverviewLiveView: LiveView {
         marks.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
         encoder.setFragmentTexture(columns ?? renderer.blackTexture, index: 0)
         encoder.setFragmentTexture(renderer.cueLetters, index: 1)
+        encoder.setFragmentTexture(phraseStrip ?? renderer.blackTexture, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 

@@ -255,13 +255,14 @@ final class Deck {
         let url = library.url(for: newTrack)
         let id = newTrack.id
         let needsAnalysis = !newTrack.isAnalyzed || newTrack.loudness == nil
+        let knownGrid = newTrack.grid
         Task.detached(priority: .userInitiated) {
             do {
                 let pcm = try AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)
                 var waveform = LibraryFiles.cachedWaveform(id)
                 var analysis: AnalysisResult?
                 if needsAnalysis || waveform == nil {
-                    let result = TrackAnalyzer.analyze(pcm)
+                    let result = TrackAnalyzer.analyze(pcm, knownGrid: knownGrid)
                     try? result.waveform.encoded().write(to: LibraryFiles.waveformURL(id), options: .atomic)
                     // A track with an existing grid (analysed or from rekordbox) only needs its waveform.
                     analysis = needsAnalysis ? result : nil
@@ -294,7 +295,10 @@ final class Deck {
             t.tempoMarkers = analysis.tempoMarkers
             if t.key == nil { t.key = analysis.key }
         }
-        library?.update(id) { $0.loudness = analysis.loudness }
+        library?.update(id) { t in
+            t.loudness = analysis.loudness
+            t.phrases = analysis.phrases ?? t.phrases ?? []
+        }
     }
 
     private func finishLoading(id: UUID, pcm: PCM16Stereo, waveform: WaveformData?, analysis: AnalysisResult?) {
@@ -348,6 +352,19 @@ final class Deck {
 
     /// Tracks are brought to about this loudness (LUFS), which leaves headroom for mixing two together.
     static let targetLoudness = -11.0
+
+    /// The section of the song at a position in the track, and when it started.
+    func phrase(atFrame frame: Double) -> Phrase? {
+        guard let phrases = track?.phrases, !phrases.isEmpty else { return nil }
+        let seconds = frame / sampleRate
+        return phrases.last { $0.start <= seconds } ?? phrases.first
+    }
+
+    /// Picks up what the library's learned about the track that's loaded.
+    func refreshTrack() {
+        guard let id = track?.id, let fresh = library?.track(id) else { return }
+        track = fresh
+    }
 
     func updateTrack(_ change: (inout Track) -> Void) {
         guard var current = track else { return }

@@ -71,6 +71,7 @@ struct AnalysisResult {
     var firstBeat: Double
     /// Tempo changes, for tracks that weren't played to a click.
     var tempoMarkers: [TempoMarker]?
+    var phrases: [Phrase]?
     var key: String?
     /// Integrated loudness in LUFS.
     var loudness: Double?
@@ -83,7 +84,8 @@ enum TrackAnalyzer {
 
     /// One streaming pass over the track collects the 3-band waveform, onset energies and a
     /// decimated signal for key detection, so analysis never holds a full-length Float copy.
-    static func analyze(_ pcm: PCM16Stereo) -> AnalysisResult {
+    /// A grid the track already has, say from rekordbox, is what its phrases get counted against.
+    static func analyze(_ pcm: PCM16Stereo, knownGrid: BeatGrid? = nil) -> AnalysisResult {
         let sr = AudioConfig.sampleRate
         let n = pcm.frames
         let binSize = max(1, Int(sr / WaveformData.binsPerSecond))
@@ -139,13 +141,18 @@ enum TrackAnalyzer {
         let waveform = WaveformData(low: quantize(low), mid: quantize(mid, lift: 1.1), high: quantize(high, lift: 1.5))
         let onset = onsetEnvelope(energyFull: energyFull, energyLow: energyLow)
         var (bpm, firstBeat) = detectTempo(onset: onset, sampleRate: sr)
-        let markers = TempoMapDetector.detect(onset: onset, fps: sr / Double(tempoHop), bpm: bpm)
+        let markers = TempoMapDetector.detect(onset: onset, fps: sr / Double(tempoHop), bpm: bpm, firstBeat: firstBeat)
         if let markers, let first = markers.first {
             bpm = TempoMapDetector.typicalBPM(markers)
             firstBeat = first.time
         }
         let key = KeyDetector.detect(signal: keySignal, rate: sr / Double(keyDecimation))
-        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, tempoMarkers: markers, key: key, loudness: loudness.integrated, waveform: waveform)
+        let grid = knownGrid ?? markers.flatMap { BeatGrid(markers: $0) } ?? BeatGrid(bpm: bpm, firstBeat: firstBeat)
+        let phrases = PhraseAnalyzer.analyze(PhraseAnalyzer.Input(energyFull: energyFull, energyLow: energyLow, onset: onset,
+                                                                  framesPerSecond: sr / Double(tempoHop), high: high,
+                                                                  highBinsPerSecond: WaveformData.binsPerSecond, signal: keySignal,
+                                                                  signalRate: sr / Double(keyDecimation), duration: Double(n) / sr), grid: grid)
+        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, tempoMarkers: markers, phrases: phrases, key: key, loudness: loudness.integrated, waveform: waveform)
     }
 
     /// Onset strength: positive change in log energy, weighting the kick region.
