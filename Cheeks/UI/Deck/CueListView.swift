@@ -45,6 +45,7 @@ struct CueListView: View {
         Section("Hot cues") {
             ForEach(hotSlots, id: \.self) { slot in
                 HStack(spacing: 10) {
+                    Color.clear.frame(width: 0).alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
                     Text(Theme.hotCueLetters[slot])
                         .font(Theme.silk(12))
                         .foregroundStyle(Color.black)
@@ -82,6 +83,7 @@ struct CueListView: View {
             Section("Memory cues") {
                 ForEach(cues) { cue in
                     HStack(spacing: 10) {
+                        Color.clear.frame(width: 0).alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
                         Image(systemName: "bookmark.fill").foregroundStyle(cue.color?.color ?? Theme.danger)
                         TextField("Name", text: Binding(
                             get: { deck.track?.memoryCues.first { $0.id == cue.id }?.name ?? "" },
@@ -111,6 +113,7 @@ struct CueListView: View {
             Section {
                 ForEach(loops) { loop in
                     HStack(spacing: 10) {
+                        Color.clear.frame(width: 0).alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
                         Image(systemName: "repeat").foregroundStyle(Theme.loop)
                         TextField("Name", text: Binding(
                             get: { deck.track?.savedLoops.first { $0.id == loop.id }?.name ?? "" },

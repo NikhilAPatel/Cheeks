@@ -10,7 +10,7 @@ enum PadMode: String, CaseIterable, Identifiable {
     case beatJump = "JUMP"
     case stems = "STEMS"
     case fx = "FX"
-    case sampler = "SAMPLER"
+    case sampler = "SAMPLE"
     var id: String { rawValue }
 }
 
@@ -321,8 +321,7 @@ final class Deck {
         syncOn = false
         reverse = false
         clearFX()
-        echoingOut = false
-        renderer.restoreSource()
+        endEchoOut()
         stemStatus = .unavailable
         stemsOn = [true, true, true, true]
         stemLevels = [1, 1, 1, 1]
@@ -398,6 +397,7 @@ final class Deck {
     func pause() {
         renderer.isPlaying = false
         isPlaying = false
+        endEchoOut()
     }
 
     func seek(to seconds: Double) {
@@ -481,5 +481,7 @@ final class Deck {
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
+        // A deck that's stopped itself, by reaching the end or by a brake, has finished its echo out too.
+        if echoingOut && !isPlaying { endEchoOut() }
     }
 }

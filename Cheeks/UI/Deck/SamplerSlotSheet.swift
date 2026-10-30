@@ -23,9 +23,9 @@ struct SamplerSlotSheet: View {
                 }
                 Section {
                     Button("Choose a File…", systemImage: "folder") { importing = true }
-                    ForEach(dj.decks, id: \.index) { deck in
+                    // Only decks with a loop set: there's nothing to grab from the others.
+                    ForEach(dj.decks.filter { $0.renderer.loopEnd > $0.renderer.loopStart }, id: \.index) { deck in
                         Button("Grab Deck \(deck.index + 1)'s Loop", systemImage: "repeat") { grab(deck) }
-                            .disabled(deck.renderer.loopEnd <= deck.renderer.loopStart)
                     }
                     Button("Record the Master", systemImage: "record.circle") {
                         Haptics.shared.confirm()

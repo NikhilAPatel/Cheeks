@@ -84,6 +84,8 @@ final class LayoutSnapshots: XCTestCase {
         library.tracks = saved
         try await snapAll("recordings", RecordingsView())
         try await snapAll("settings", SettingsView())
+        try await snapAll("cue-list", CueListView(deck: dj.decks[0]))
+        try await snapAll("sampler-slot", SamplerSlotSheet(slot: 0))
         // Leaves the realtime engine's state harmless for whatever test runs next.
         dj.decks.forEach { $0.pause() }
         LiveRenderer.shared.captureMode = false
@@ -160,7 +162,11 @@ final class LayoutSnapshots: XCTestCase {
         let first = audio == nil ? 0.1 : analysis.firstBeat
         let beat = 60 / realBPM
         deck.track = Track(id: UUID(), title: title, artist: artist, fileName: "none", duration: pcm.duration, bpm: realBPM, firstBeat: first,
-                           key: analysis.key ?? key, hotCues: [0: first, 1: first + 16 * beat, 3: first + 64 * beat, 5: first + 128 * beat])
+                           key: analysis.key ?? key, hotCues: [0: first, 1: first + 16 * beat, 3: first + 64 * beat, 5: first + 128 * beat],
+                           hotCueInfo: [1: HotCueInfo(name: "Vocal in"), 3: HotCueInfo(loopEnd: first + 72 * beat)],
+                           memoryCues: [MemoryCue(time: first + 32 * beat), MemoryCue(time: first + 96 * beat, name: "Break")],
+                           savedLoops: [SavedLoop(start: first + 48 * beat, end: first + 56 * beat, name: "Hook")],
+                           phrases: analysis.phrases)
         deck.seek(to: min(seconds, pcm.duration * 0.6))
         deck.cuePoint = first + 16 * beat
         if art { deck.artwork = Self.fixtureArtwork() }

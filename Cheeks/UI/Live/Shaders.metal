@@ -179,9 +179,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
 
     // The song's sections, as a strip along the bottom edge.
     const float fromBottom = u.size.y - px.y;
-    if (u.hasPhrases > 0.5 && inTrack && fromBottom < 2.5 * u.scale) {
+    if (u.hasPhrases > 0.5 && inTrack && fromBottom < 2.0 * u.scale) {
         const float4 section = phrases.sample(nearest, float2(t / u.duration, 0.5));
-        if (section.a > 0.5) color = mix(color, section.rgb, 0.92);
+        if (section.a > 0.5) color = mix(color, section.rgb, 0.6);
     }
 
     // The current cue point: a triangle rising from the bottom edge.
@@ -284,7 +284,7 @@ fragment float4 overview_fragment(VOut in [[stage_in]],
     color = wave + (u.hover * 0.04);
     if (strip > 0 && u.size.y - px.y < strip) {
         const float4 section = phrases.sample(nearest, float2(x, 0.5));
-        color = section.a > 0.5 ? section.rgb * (played ? 0.45 : 1.0) : float3(0.012, 0.013, 0.016);
+        color = section.a > 0.5 ? section.rgb * (played ? 0.3 : 0.65) : float3(0.012, 0.013, 0.016);
     }
 
     // The last thirty seconds are marked, and blink when the playhead gets there.

@@ -50,7 +50,13 @@ final class Sampler {
     var level: Float = 1 {
         didSet {
             cheeks_engine_set_sampler_level(core, level)
-            saveSettings()
+            // Written shortly after the last change: this moves on every frame of a drag.
+            pendingSave?.cancel()
+            pendingSave = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                self?.saveSettings()
+            }
         }
     }
     /// SET is lit: the next pad pressed opens its settings.
@@ -64,6 +70,7 @@ final class Sampler {
     @ObservationIgnored private var buffers = [PCM16Stereo?](repeating: nil, count: 8)
     @ObservationIgnored private var builtIn: [PCM16Stereo] = []
     @ObservationIgnored private var captureBuffer: PCM16Stereo?
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     init(core: OpaquePointer) {
         self.core = core

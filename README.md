@@ -12,16 +12,21 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 - **BEAT SYNC** matches BPM (including half or double time) and snaps phase. MASTER chooses which deck leads. Both decks render on one sample clock, so a synced pair can't drift.
 - **Waveforms are drawn in real time scale**, so beats line up on screen when decks are matched.
 - Quantize, slip mode, reverse, beat jump, and manual and automatic loops.
+- **Tracks that change tempo work properly:** live-played tracks get a tempo map, from analysis or from rekordbox, and loops, jumps, quantize, sync and the beat lines all follow it. If a map's wrong, the BPM menu has "Use one steady tempo".
 
 **Performance pads**
-- **CUE:** hot cues A–H, saved with each track. DEL then a pad removes one, with Undo.
+- **CUE:** hot cues A–H, saved with each track, with names, colours and hot loops. DEL then a pad removes one, with Undo.
+- **MEM:** memory cues and saved loops, called up with one tap. SAVE CUE, SAVE LOOP, and LIST for names, colours and which loop is waiting when the track loads.
 - **LOOP:** 1/4 to 32 beats.
 - **ROLL:** momentary loops from 1/16 to 8 beats. Playback resumes in time on release.
 - **SLICER:** play any of eight slices of the current bar, back in time on release.
 - **JUMP:** ±1 / 4 / 16 / 32 beats. A loop moves with the jump.
 - **STEMS:** see below.
 - **FX:** 12 Beat FX: echo, ping pong, spiral, reverb, flanger, phaser, filter, trans, crush, roll, brake, backspin. Hold for as long as you want, or tap to latch. While holding, slide up and down for depth and left and right for beat length. Effects stay on the beat at any tempo.
-- **SAMPLER:** eight one-shots, including an air horn.
+  - **Up to three at once**, as a chain. Press more pads; the longest-running makes way for a fourth.
+  - **With Q on, letting go lands on the beat**, and an echo's tail starts from there.
+  - **OUT ends a track on its own echo:** on the next beat the track cuts and only the repeats are left. Press it again to bring the track back.
+- **SAMPLE:** eight pads, starting with built-in sounds including an air horn. SET then a pad to put a file on it, grab a deck's loop as you're hearing it (mute the vocal first for an instrumental loop), or record the master. Each pad plays as a one shot, a gate or a loop. Q starts pads on the master deck's beat.
 
 **Stems**
 - Real AI source separation into **vocals, instruments, bass and drums** with HT-Demucs running on the device. See [Stems](#stems).
@@ -32,6 +37,7 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 
 **Mixer**
 - Trim, 3-band **isolator EQ** where fully left removes the band, and a one-knob resonant LPF/HPF filter per channel.
+- **Color FX on that knob:** the key in the middle of the mixer switches both channels between FILTER, DUB (echo), SPACE (reverb), NOISE, CRUSH and PITCH. Left is the dark side and right the bright side, and echoes ring on after the knob comes back.
 - Channel faders, LED meters with peak hold, master volume, and a crossfader with smooth or scratch curves. Knobs and faders have detents you can feel.
 - **Look-ahead limiter** on the master, so two hot decks can't clip the output or a recording.
 - **Loudness matching:** tracks are measured to BS.1770 and brought to a matched level.
@@ -44,13 +50,15 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 - **History:** a "History <date>" playlist logs what you played each day, recording or not.
 
 **Library**
-- Automatic analysis of BPM, beat grid, key (Camelot), loudness and waveform on import.
+- Automatic analysis of BPM, beat grid and tempo changes, key (Camelot), loudness and waveform on import.
+- **Phrase analysis:** each track's intro, verses, build-ups, choruses, breakdowns and outro, as a strip of colour on the waveforms. The bar counter counts within the section, so you can see how long's left in it.
 - Fix the grid from a deck's BPM: ×2 / ÷2, ±0.1 BPM, shift by 10 ms, or set the downbeat at the playhead.
 - Browser with playlists, search, tap-to-sort columns, artwork, tiny waveforms, and **IN KEY** and **±6% BPM** filters. Compatible keys are highlighted.
 - Load with the deck buttons, by swiping a row, or by dragging it onto a deck. A playing deck refuses a new track.
 - Tap a row's waveform to **preview** it: in the cue ear with a split cable, or quietly on the main output without one.
 - Import from the Files app, or drop files into the app's folder through Files or Finder.
-- **rekordbox library import:** in rekordbox, File → Export Collection in xml format, then Import → rekordbox library. Import your audio first; tracks are matched by file name, and bring over their beat grid, BPM, key, hot cues, memory cue and playlists.
+- **rekordbox library import:** in rekordbox, File → Export Collection in xml format, then Import → rekordbox library. Import your audio first; tracks are matched by file name, and bring over their beat grid including tempo changes, BPM, key, hot cues and hot loops with their names and colours, every memory cue, saved loops and playlists.
+- **Backup:** Settings saves your grids, cues, loops, keys and playlists to a file, and restores them, even on a fresh install. Cheeks also keeps a copy each day in the Files app. A track whose audio file has gone is marked, and gets its cues back when the file's imported again.
 
 **The small things**
 - Haptics designed per control. Keys that move like keys, pads that flare when struck.
@@ -85,6 +93,9 @@ Separation runs in the background, and swaps in without interrupting playback. W
 - isolator flatness and kills, filter sweeps, limiter ceiling
 - stem-targeted FX and tails, and every effect staying bounded
 - a 3-minute sync lock, and recording end to end
+- tempo maps, and two decks staying locked through a tempo change
+- phrase analysis on arrangements with known sections
+- cues and loops, the sampler, FX chains and Color FX, and backup and restore
 - real-time CPU headroom
 
 Run them with ⌘U in Xcode, or:
@@ -99,11 +110,11 @@ Hands-on testing is scripted in [docs/COMPUTER_USE_TEST.md](docs/COMPUTER_USE_TE
 
 | Folder | What's there |
 | --- | --- |
-| `DSP/` | The realtime engine in C++: decks, time-stretcher, isolator EQ, filter, FX, mixer, limiter |
+| `DSP/` | The realtime engine in C++: decks, time-stretcher, isolator EQ, filter, Beat FX, Color FX, mixer, limiter, sampler |
 | `Audio/` | Deck control, the mixer, recording, decoding, the sampler |
-| `Analysis/` | BPM and beat grid, key, loudness, 3-band waveform |
+| `Analysis/` | BPM, beat grid and tempo maps, key, phrases, loudness, 3-band waveform |
 | `Stems/` | Stem separators and their cache |
-| `Model/` | Tracks, playlists, library storage, artwork |
+| `Model/` | Tracks, beat grids, playlists, library storage and backup, artwork |
 | `UI/Live/` | Metal renderer and shaders for everything that moves |
 | `UI/Design/`, `UI/Controls/` | Theme, pre-rendered parts, touch, haptics, keys, pads, knobs, faders |
 | `UI/Deck/`, `UI/Mixer/`, `UI/Browser/`, `UI/Shell/` | The screens |

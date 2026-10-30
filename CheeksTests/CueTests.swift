@@ -72,6 +72,18 @@ final class CueTests: XCTestCase {
         XCTAssertLessThan(deck.position, 2.01, "And it holds there")
     }
 
+    func testALoopBehindTheCueDoesntPullTheDeckBack() {
+        let deck = makeDeck(at: 50)
+        deck.cuePoint = 50
+        deck.updateTrack { $0.savedLoops = [SavedLoop(start: 10, end: 12, activeOnLoad: true)] }
+        deck.armSavedLoops()
+        XCTAssertFalse(deck.loopActive, "The deck's past it, so the loop's left set but off")
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: Int(sr))
+        XCTAssertEqual(deck.position, 51, accuracy: 0.05, "and the deck carries on from where it loaded")
+        XCTAssertEqual(deck.renderer.loopStart / sr, 10, accuracy: 0.001, "RELOOP can still get to it")
+    }
+
     func testAHotLoopPadLoopsAndLetsGo() {
         let deck = makeDeck()
         deck.quantize = false
@@ -188,6 +200,16 @@ final class CueTests: XCTestCase {
         deck.toggleEchoOut()
         XCTAssertFalse(deck.echoingOut)
         XCTAssertFalse(deck.renderer.sourceCut)
+    }
+
+    func testStoppingTheDeckEndsAnEchoOut() {
+        let deck = makeDeck()
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.toggleEchoOut()
+        deck.pause()
+        XCTAssertFalse(deck.echoingOut)
+        XCTAssertFalse(deck.renderer.sourceCut, "Playing again mustn't come back silent")
     }
 
     func testEchoOutNeedsAPlayingDeck() {

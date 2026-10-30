@@ -169,8 +169,11 @@ extension Deck {
     /// A loop marked "on at load" is waiting when the track comes up, and holds the deck once it gets there.
     func armSavedLoops() {
         guard let loop = track?.savedLoops.first(where: \.activeOnLoad) else { return }
-        renderer.setLoop(start: loop.start * sampleRate, end: loop.end * sampleRate, active: true)
-        loopActive = true
+        // If the track loads past the loop, the deck would be pulled back into it. It's left set
+        // instead, for RELOOP.
+        let ahead = cuePoint < loop.end
+        renderer.setLoop(start: loop.start * sampleRate, end: loop.end * sampleRate, active: ahead)
+        loopActive = ahead
         if beatFrames > 0 { loopBeats = beatPosition(loop.end * sampleRate) - beatPosition(loop.start * sampleRate) }
     }
 
@@ -514,8 +517,7 @@ extension Deck {
     func toggleEchoOut() {
         guard isLoaded else { return }
         if echoingOut {
-            echoingOut = false
-            renderer.restoreSource()
+            endEchoOut()
             return
         }
         guard isPlaying, beatFrames > 0 else {
@@ -523,6 +525,8 @@ extension Deck {
             return
         }
         echoingOut = true
+        // The key's only on the FX page, and a silent deck needs explaining from anywhere else.
+        onMessage?("Echo out on deck \(index + 1). Press OUT again to bring it back.")
         let here = beatPosition(renderer.playhead)
         let cut = (here + 0.5).rounded(.up)
         // The echo's input closes on the same beat as the cut, so what's in the line rings out.
@@ -536,6 +540,12 @@ extension Deck {
             activeFX.remove(at: index)
             renderer.releaseFX(link: link, atBeat: cut)
         }
+    }
+
+    func endEchoOut() {
+        guard echoingOut else { return }
+        echoingOut = false
+        renderer.restoreSource()
     }
 
     /// Splits the loaded track into stems in the background, then swaps them in seamlessly. A track

@@ -48,7 +48,7 @@ Simulator screenshots may come out rotated 90°. That's only the framebuffer, no
 - **Top bar:** `cheeks` logo, `BROWSE`, `REC`, a waveform icon (Recordings), `MASTER n` with a tempo in the middle, the clock, a gear (Settings).
 - **Waveforms:** a thin overview, the big scrolling waveform for deck 1, a thin strip of beat blocks, the big waveform for deck 2, another overview.
 - **Decks** on the left and right, with the **mixer** between them.
-- **In each deck:** a black header (artwork, title, BPM, time); the tempo fader at the outer edge; the big jog wheel; a column of keys on the inner side (`BEAT SYNC`, `MASTER`, `BEAT JUMP`, `Q`, `SLIP`, `KEY`, `REV`, `−`/`+`, `KEY SYNC`); then `IN`/`OUT`/`RELOOP` and `‹ 4 ›`; a row of tabs (`CUE LOOP ROLL SLICER JUMP STEMS FX SAMPLER`); and eight pads. Round `CUE` and `PLAY` buttons sit in the bottom outer corner.
+- **In each deck:** a black header (artwork, title, BPM, time); the tempo fader at the outer edge; the big jog wheel; a column of keys on the inner side (`BEAT SYNC`, `MASTER`, `BEAT JUMP`, `Q`, `SLIP`, `KEY`, `REV`, `−`/`+`, `KEY SYNC`); then `IN`/`OUT`/`RELOOP` and `‹ 4 ›`; a row of tabs (`CUE MEM LOOP ROLL SLICER JUMP STEMS FX SAMPLE`); and eight pads. Round `CUE` and `PLAY` buttons sit in the bottom outer corner.
 
 ---
 
@@ -131,7 +131,7 @@ For each one, record PASS, FAIL or BLOCKED, what you actually saw, and any scree
 4. **Stem targeting:** with stems ready, turn off `V`, `I`, `B` and `D` one at a time. At least one always stays on.
 5. **`BRAKE` and `BACKSPIN`:** the deck should slow to a stop and the play button should go back to its stopped state.
 
-### K. Sampler (`SAMPLER` tab)
+### K. Sampler (`SAMPLE` tab)
 1. Tap all eight pads. Check that the master meters jump for each, including with no deck playing.
 
 ### L. Recording

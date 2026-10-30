@@ -195,6 +195,7 @@ struct CheeksDeck {
 
 private:
     static constexpr double kQuantizeForgiveness = 0.03;
+    static constexpr double kLongestBeatWait = 3;
 
     enum Ramp { RampNone, RampBrake, RampBackspin };
 
@@ -319,16 +320,23 @@ private:
 
     void updateFX() {
         const double beat = (position - relaxed(firstBeatFrame)) / gridBeat();
+        // A beat might never come: the deck could be in a short loop, in reverse or stopped. So
+        // anything waiting for one gives up after a few seconds and happens anyway.
+        const double patience = sampleRate * kLongestBeatWait;
         for (int l = 0; l < CHEEKS_FX_LINKS; ++l) {
             const double releaseAt = relaxed(fxReleaseBeat[l]);
-            if (!std::isnan(releaseAt) && beat >= releaseAt) {
+            if (std::isnan(releaseAt)) {
+                fxReleaseWaited[l] = 0;
+            } else if (beat >= releaseAt || (fxReleaseWaited[l] += kBlock) > patience) {
                 put(fxReleaseBeat[l], kNoSeek);
                 put(fxOn[l], false);
             }
             fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]));
         }
         const double cutAt = relaxed(cutAtBeat);
-        if (!std::isnan(cutAt) && beat >= cutAt) {
+        if (std::isnan(cutAt)) {
+            cutWaited = 0;
+        } else if (beat >= cutAt || (cutWaited += kBlock) > patience) {
             put(cutAtBeat, kNoSeek);
             put(sourceCut, true);
         }
@@ -661,6 +669,7 @@ private:
     bool inStretch = false, stretchDirty = true;
 
     BeatFX fx[CHEEKS_FX_LINKS];
+    double fxReleaseWaited[CHEEKS_FX_LINKS] = {}, cutWaited = 0;
     Declicker declick, feedDeclick;
     float peakFall = 0.99f;
 

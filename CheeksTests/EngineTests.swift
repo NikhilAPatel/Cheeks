@@ -400,6 +400,42 @@ final class EngineTests: XCTestCase {
         XCTAssertLessThan(used / (Double(blocks) * budget), 0.5)
     }
 
+    /// The most a mix can ask of the render thread: stems stretched on both decks, three effects
+    /// chained on each with both kinds of tail going, and a Color FX on each channel.
+    @MainActor
+    func testRealtimeHeadroomWithEverythingOn() {
+        let library = Library()
+        let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        for (i, deck) in dj.decks.enumerated() {
+            let stems = (0..<4).map { s -> PCM16Stereo in
+                PCM16Stereo(left: sine(110 * Double(s + 1 + i), seconds: 30, level: 0.2), right: sine(111 * Double(s + 1 + i), seconds: 30, level: 0.2))
+            }
+            deck.renderer.setSources(stems)
+            deck.renderer.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+            deck.renderer.setTempo(ratio: 1.04, keyLock: true, keyShift: 0)
+            deck.renderer.setFXLink(0, type: CheeksFXEcho, on: true, beats: 1, depth: 0.7)
+            deck.renderer.setFXLink(1, type: CheeksFXReverb, on: true, beats: 1, depth: 0.7)
+            deck.renderer.setFXLink(2, type: CheeksFXFlanger, on: true, beats: 1, depth: 0.7)
+            deck.renderer.setColor(i == 0 ? CheeksColorDubEcho : CheeksColorPitch, amount: 0.7)
+            deck.renderer.isPlaying = true
+        }
+        dj.decks.forEach { $0.fader = 1 }
+        let block = 256, blocks = Int(sr * 10) / block
+        let start = CFAbsoluteTimeGetCurrent()
+        var worst = 0.0
+        for _ in 0..<blocks {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            _ = dj.renderOffline(frames: block)
+            worst = max(worst, CFAbsoluteTimeGetCurrent() - t0)
+        }
+        let used = CFAbsoluteTimeGetCurrent() - start
+        let budget = Double(block) / sr
+        print(String(format: "DSP: average %.1f%% of realtime, worst callback %.1f%% (everything on: stems stretched, 3 FX and a Color FX per deck)",
+                     used / (Double(blocks) * budget) * 100, worst / budget * 100))
+        XCTAssertLessThan(used / (Double(blocks) * budget), 0.5)
+    }
+
     // MARK: Helpers
 
     /// Estimates pitch from upward zero crossings, which is plenty for a single steady tone.
@@ -454,6 +490,20 @@ final class EngineTests: XCTestCase {
         for i in stride(from: Int(sr * 2.1), to: Int(sr * 2.9), by: eighth / 4) {
             XCTAssertGreaterThan(rms(out[i..<(i + eighth / 4)]), 0.2, "The gate has let go after it")
         }
+    }
+
+    func testAQuantizedReleaseStillHappensInALoopThatNeverReachesItsBeat() {
+        let r = playingRenderer(20)
+        r.setLoop(start: sr, end: sr + 2000, active: true) // far shorter than a beat
+        r.playhead = sr
+        r.setFXLink(0, type: CheeksFXGate, on: true, beats: 0.25, depth: 1)
+        r.releaseFX(link: 0, atBeat: 400) // a beat this loop will never get to
+        _ = r.renderOffline(frames: Int(sr * 3.5))
+        let out = r.renderOffline(frames: Int(sr * 1)).left
+        // Without the gate, the loop's tone never drops away.
+        var quietest: Float = 1
+        for i in stride(from: 0, to: out.count - 1024, by: 512) { quietest = min(quietest, rms(out[i..<(i + 1024)])) }
+        XCTAssertGreaterThan(quietest, 0.1, "The effect gave up waiting and let go")
     }
 
     func testEchoOutCutsTheTrackAndLeavesTheTail() {

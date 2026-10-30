@@ -104,7 +104,7 @@ struct SettingsView: View {
         } header: {
             Text("Library")
         } footer: {
-            Text("A backup holds your beat grids, cues, loops, keys and playlists, but not the music. Cheeks keeps a copy each day in its Backups folder in the Files app, but deleting the app deletes those too, so save one to iCloud Drive or your Mac now and then.")
+            Text("A backup holds your beat grids, cues, loops, keys and playlists, but not the music or sampler sounds. Cheeks keeps a copy each day in its Backups folder in the Files app, but deleting the app deletes those too, so save one to iCloud Drive or your Mac now and then.")
         }
     }
 
@@ -117,6 +117,7 @@ struct SettingsView: View {
             return
         }
         Haptics.shared.confirm()
+        dj.decks.forEach { $0.refreshTrack() }
         var message = "Restored \(result.matched) tracks and \(result.playlists) playlists."
         if result.added > 0 {
             message += " \(result.added) tracks are waiting for their music: import the files and they'll get their cues back."

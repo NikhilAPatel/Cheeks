@@ -49,6 +49,10 @@ xcrun simctl io booted screenshot screenshot.png
 - **Signal chain:** stems → FX bus (ahead of the stretcher, so effects can target single stems and stay on the track's beat) → stretcher or direct read → isolator EQ → filter → trim → cue send and fader → program bus → limiter → recording ring → master. Everything renders in one callback on one sample clock.
 - **Main-actor control:** `Deck` and `DJEngine` are `@MainActor @Observable` and hold all control state.
   - The playhead and the meters are *not* observed. The live views read them directly from the audio core.
+- **Beats go through `BeatGrid`** (`Model/BeatGrid.swift`), never `bpm` and `firstBeat` sums, because a track can change tempo. `Deck.bpm`, `beatFrames` and `firstBeatFrame` describe the section at the playhead, and `Deck.tick` tells the core when that changes. Use `beatPosition(frame)` and `frame(atBeat:)` for anything spanning more than a beat.
+- **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
+- **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
+- **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
 - **Sample rate and memory:** internal audio is 44.1 kHz (`AudioConfig.sampleRate`).
   - Files decode straight into interleaved Int16 (`PCM16Stereo`). Analysis and stem separation stream over that buffer, so never materialise full-length Float copies.
   - Stems are stored at `stemHeadroom` (×0.5).

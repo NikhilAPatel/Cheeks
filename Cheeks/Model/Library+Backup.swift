@@ -101,13 +101,15 @@ extension Library {
         }
 
         var result = RestoreResult()
+        var localIndexByID: [UUID: Int] = [:]
         var localIndexByName: [String: Int] = [:]
         for (i, track) in tracks.enumerated() {
+            localIndexByID[track.id] = i
             if let original = track.originalFileName { localIndexByName[original.lowercased()] = i }
         }
         var localIDForBackupID: [UUID: UUID] = [:]
         for saved in backup.tracks {
-            let index = tracks.firstIndex { $0.id == saved.id } ?? saved.originalFileName.flatMap { localIndexByName[$0.lowercased()] }
+            let index = localIndexByID[saved.id] ?? saved.originalFileName.flatMap { localIndexByName[$0.lowercased()] }
             if let index {
                 let local = tracks[index]
                 let merged = Track(id: local.id, title: saved.title, artist: saved.artist, fileName: local.fileName,

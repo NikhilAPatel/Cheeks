@@ -221,6 +221,10 @@ struct TopBar: View {
         .frame(height: 26)
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }
+        // Here rather than on the pads, since both decks can be showing them at once.
+        .sheet(isPresented: Binding(get: { dj.sampler.slotBeingEdited != nil }, set: { if !$0 { dj.sampler.slotBeingEdited = nil } })) {
+            if let slot = dj.sampler.slotBeingEdited { SamplerSlotSheet(slot: slot).environment(dj) }
+        }
         .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
             // It may have stopped by itself (storage full) while this was open; don't start a new one.
             Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }

@@ -14,6 +14,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 - **Real AI stems:** HT-Demucs on Core ML, with the STFT and overlap-add in Swift. See `tools/stems/README.md` for the full numbers.
 
+**Added afterwards, same day, on the owner's request:** variable-tempo grids, memory cues and saved loops (MEM pads and the cue list), full rekordbox import, library backup and restore with missing-file handling, the sampler's own sounds, FX chains with quantized release and echo out, Color FX, and phrase analysis. See "How far to trust the new features" below.
+
 **Proven:**
 - All unit tests pass, including offline click detection, key lock pitch, instant hot cues under key lock, isolator kills, limiter ceiling, a 3-minute sync lock and end-to-end recording.
 - `TouchWiringTests` hit-tests the real screen the way UIKit does and presses every control, in every pad mode. So the controls are reachable and wired, but no real touch has gone through them.
@@ -22,6 +24,13 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - A 6-minute track takes 15.7 s on this M1 Pro's GPU, using about 575 MB beyond the audio buffers. A cached track comes back in about 0.02 s (12 s clip).
 
 **Not yet proven, because nothing here could touch or hear it:** real touch delivery, haptic tuning, how it sounds, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. `docs/COMPUTER_USE_TEST.md` covers touch. The owner covers the rest with TEST_PLAN §2.
+
+**How far to trust the new features:**
+- **Phrase analysis** gets the kinds and hard edges right on synthetic arrangements (`PhraseTests`). On real music it's only been run on two tracks, neither club music, with no ground truth to compare to: it came out coarse, with long CHORUS sections. Expect to tune `minimumSectionDifference` and the labelling once it's run on the owner's music. Build-ups fade in, so where an UP starts is approximate.
+- **Tempo maps:** a band-style speed-up lands within 8 ms of the kicks, and a step change is followed. The guard against false maps (`fitThreshold` in `TempoMapDetector`) rests on one real steady track that came out at a ratio of 1.17. No real live-played track has been tried. If a map's wrong, the BPM menu's "Use one steady tempo" undoes it, per track.
+- **Color FX, FX chains and sampler** are tested for being bounded, doing something, and timing (a quantized pad lands within 2 frames of the grid), but nobody has heard them. The pitch Color FX is a simple delay-line shifter and may sound watery.
+- **Library catch-up:** tracks analysed before phrases existed get re-analysed in the background, but only while no deck's playing and the phone isn't hot.
+- **Memory:** the three FX links and Color FX add about 16 MB in total. Worst case with everything on measures 2.4% of realtime on average and 25% in the worst callback on this M1 Pro.
 
 **Before distributing the app:** the Demucs code is MIT, and states no separate terms for its weights, but they were trained partly on MUSDB18, which is non-commercial. Personal use is fine. Get a real answer before anything commercial.
 
@@ -53,7 +62,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 | Area | Files | Notes |
 |---|---|---|
-| Realtime core | `DSP/Engine.cpp`, `Primitives.hpp`, `BeatFX.hpp`, `CheeksDSP.h` | Decks, stretcher, isolator EQ, filter, FX, mixer, limiter, recording ring, sampler, preview. One callback, one clock. |
+| Realtime core | `DSP/Engine.cpp`, `Primitives.hpp`, `BeatFX.hpp`, `ColorFX.hpp`, `CheeksDSP.h` | Decks, stretcher, isolator EQ, filter, FX chain, Color FX, mixer, limiter, recording ring, sampler with capture, preview. One callback, one clock. |
 | Deck control | `Audio/DeckRenderer.swift`, `Deck.swift`, `Deck+Performance.swift` | `DeckRenderer` is a facade over the core. `Deck` is `@MainActor @Observable`: load (generation-guarded), CDJ cue, tempo, hot cues, loops, rolls, slicer, jump, sync, stems, FX, grid editing. |
 | Mixer and engine | `Audio/DJEngine.swift` | Hosts the core in one `AVAudioSourceNode`. Mix controls, crossfader, master tracking, sync follower, on-air tracking, recording, preview. |
 | Recording | `Audio/SessionRecording.swift` | The render thread writes a lock-free ring; `RecordingDrain` moves it to a 24-bit CAF, converted to AAC or WAV on stop through a temp file. Crash leftovers are recovered on launch (with CAF header repair). Writes `.txt` and `.cue` tracklists. |

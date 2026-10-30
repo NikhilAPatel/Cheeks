@@ -71,6 +71,16 @@ Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] Crash test: start recording, play 2 minutes, force-quit the app, relaunch. The recording is recovered with its tracklist.
 - [ ] "History <today>" lists the tracks that were played out.
 
+### New: cues, sampler, FX and structure
+- [ ] **rekordbox import:** export your collection and import it. Are every memory cue, saved loop, hot loop, name and colour there? Does a track you know has a tempo drift follow it?
+- [ ] **Phrases:** load five tracks you know well. Are the intro, chorus, breakdown and outro roughly where they should be? Tell me which ones are wrong and how, that's what's needed to tune it.
+- [ ] **False tempo maps:** on anything played to a click, does the BPM stay still as it plays? If the number moves on a steady track, say which one.
+- [ ] **FX chain:** echo into flanger into reverb. Does it sound like what you'd expect, or a mess? Do quantized releases feel tight or late?
+- [ ] **Echo out:** end a track with OUT. Does the cut land right, and is the tail long enough?
+- [ ] **Color FX:** DUB, SPACE, NOISE, CRUSH, PITCH, each way round. Which ones would you actually use? PITCH is the one most likely to sound rough.
+- [ ] **Sampler:** grab a loop with the vocal muted, record the master onto a pad, and import a file. Does Q make pads feel locked in, or laggy?
+- [ ] **Backup:** save one to iCloud Drive, delete the app, reinstall, import a few tracks, and restore.
+
 ### Headphones (split cable)
 - [ ] With SPLIT on, the left ear has the master in mono and the right ear has the cued channels.
 - [ ] CUE·MST blends the master into the cue ear; PHONES sets its level.

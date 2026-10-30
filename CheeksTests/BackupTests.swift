@@ -132,4 +132,17 @@ final class BackupTests: XCTestCase {
         let files = try manager.contentsOfDirectory(at: Library.backupDirectory, includingPropertiesForKeys: nil)
         XCTAssertEqual(files.count, 14)
     }
+
+    func testCatchingUpOnAnalysisWaitsWhileTheDecksAreBusy() {
+        let library = emptyLibrary()
+        var busy = true
+        library.isBusy = { busy }
+        let track = Track(id: UUID(), title: "Old", artist: "", fileName: "none.mp3", bpm: 120)
+        library.tracks = [track]
+        library.enqueueCatchUp(track.id)
+        XCTAssertNil(library.analyzing, "It waits while a deck's playing")
+        busy = false
+        library.enqueueCatchUp(track.id)
+        XCTAssertEqual(library.analyzing, track.id, "And gets on with it when there isn't")
+    }
 }

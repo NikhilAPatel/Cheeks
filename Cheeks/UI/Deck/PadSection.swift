@@ -489,14 +489,7 @@ struct SamplerControlRow: View {
             Key("STOP", color: Theme.danger, size: 8, onPress: { sampler.stopAll() })
                 .frame(width: 36)
         }
-        .sheet(item: $sampler.slotBeingEdited) { slot in
-            SamplerSlotSheet(slot: slot).environment(dj)
-        }
     }
-}
-
-extension Int: @retroactive Identifiable {
-    public var id: Int { self }
 }
 
 // MARK: Beat FX

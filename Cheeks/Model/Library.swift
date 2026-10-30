@@ -13,6 +13,12 @@ final class Library {
     /// Called when analysis has finished with a track, so a deck holding it can pick up the results.
     @ObservationIgnored var onAnalyzed: (@MainActor (UUID) -> Void)?
     private var analysisQueue: [UUID] = []
+    /// Tracks that only need catching up with newer analysis. These wait while the decks are busy,
+    /// so a big library can't heat the phone up in the middle of a set.
+    private var catchUpQueue: [UUID] = []
+    private var catchUpRetry: Task<Void, Never>?
+    /// Whether a mix is going on right now.
+    @ObservationIgnored var isBusy: (@MainActor () -> Bool)?
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "caf", "alac"]
@@ -25,7 +31,13 @@ final class Library {
         refreshMissingFiles()
         importInbox()
         // Tracks from before phrase analysis get theirs too, one at a time in the background.
-        for track in tracks where (!track.isAnalyzed || track.phrases == nil) && !isMissing(track) { enqueueAnalysis(track.id) }
+        for track in tracks where !isMissing(track) {
+            if !track.isAnalyzed {
+                enqueueAnalysis(track.id)
+            } else if track.phrases == nil {
+                enqueueCatchUp(track.id)
+            }
+        }
     }
 
     // MARK: Persistence
@@ -160,6 +172,7 @@ final class Library {
         ArtworkStore.delete(track.id)
         StemCache.shared.remove(track.id)
         tracks.removeAll { $0.id == track.id }
+        missingFiles.remove(track.id)
         for i in playlists.indices { playlists[i].trackIDs.removeAll { $0 == track.id } }
         save()
     }
@@ -169,6 +182,11 @@ final class Library {
     func enqueueAnalysis(_ id: UUID) {
         guard !analysisQueue.contains(id), analyzing != id else { return }
         analysisQueue.append(id)
+        analyzeNext()
+    }
+
+    func enqueueCatchUp(_ id: UUID) {
+        if !catchUpQueue.contains(id), !analysisQueue.contains(id), analyzing != id { catchUpQueue.append(id) }
         analyzeNext()
     }
 
@@ -184,8 +202,20 @@ final class Library {
 
     /// Analyses one track at a time in the background so the deck stays responsive.
     private func analyzeNext() {
-        guard analyzing == nil, !analysisQueue.isEmpty else { return }
-        let id = analysisQueue.removeFirst()
+        guard analyzing == nil else { return }
+        let next: UUID
+        if !analysisQueue.isEmpty {
+            next = analysisQueue.removeFirst()
+        } else if !catchUpQueue.isEmpty {
+            guard isBusy?() != true else {
+                retryCatchUpLater()
+                return
+            }
+            next = catchUpQueue.removeFirst()
+        } else {
+            return
+        }
+        let id = next
         guard let track = self.track(id) else { analyzeNext(); return }
         analyzing = id
         let url = self.url(for: track)
@@ -214,6 +244,16 @@ final class Library {
                 self.analyzing = nil
                 self.analyzeNext()
             }
+        }
+    }
+
+    private func retryCatchUpLater() {
+        guard catchUpRetry == nil else { return }
+        catchUpRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            self?.catchUpRetry = nil
+            self?.analyzeNext()
         }
     }
 

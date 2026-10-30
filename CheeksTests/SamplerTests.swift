@@ -14,6 +14,12 @@ final class SamplerTests: XCTestCase {
         dj.sampler.level = 1
         dj.masterVolume = 1
         for slot in 0..<8 { dj.sampler.setMode(.oneShot, slot: slot) }
+        // The pads are saved to disk, so nothing here should leave its sounds behind.
+        addTeardownBlock { @MainActor in
+            for slot in 0..<8 where dj.sampler.hasOwnSound(slot) { dj.sampler.restoreOriginal(slot) }
+            for slot in 0..<8 { dj.sampler.setMode(.oneShot, slot: slot) }
+            dj.sampler.quantize = false
+        }
         return dj
     }
 

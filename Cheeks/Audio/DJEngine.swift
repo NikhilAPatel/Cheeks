@@ -108,6 +108,10 @@ final class DJEngine {
         self.timer = timer
         LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
         sampler.loadSounds()
+        library.isBusy = { [weak self] in
+            let thermal = ProcessInfo.processInfo.thermalState
+            return thermal == .serious || thermal == .critical || self?.decks.contains { $0.isPlaying } == true
+        }
         library.onAnalyzed = { [weak self] id in
             self?.decks.filter { $0.track?.id == id }.forEach { $0.refreshTrack() }
         }
@@ -249,7 +253,10 @@ final class DJEngine {
             return
         }
         stopPreview()
-        guard let library else { return }
+        guard let library, !library.isMissing(track) else {
+            Haptics.shared.deny()
+            return
+        }
         previewingTrack = track.id
         let id = track.id, url = library.url(for: track)
         Task.detached(priority: .userInitiated) {

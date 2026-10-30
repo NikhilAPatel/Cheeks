@@ -125,7 +125,8 @@ private:
     void runInline(float *left, float *right, int n, float size, bool dark, float amount) {
         const float mixTarget = size > 0 ? std::min(1.0f, size * 6) : 0;
         const float a = std::abs(amount);
-        if (noiseCounter++ % 4 == 0) {
+        noiseCounter = (noiseCounter + 1) % 4;
+        if (noiseCounter == 0) {
             // Noise opens up from the bass on the dark side, and comes down from the top on the bright side.
             const float frequency = dark ? 150 * std::pow(40.0f, a) : 12000 * std::pow(0.08f, a);
             const float g = std::tan(float(kPi) * std::min(frequency, float(sampleRate) * 0.45f) / float(sampleRate));

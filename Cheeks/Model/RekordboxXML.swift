@@ -196,7 +196,7 @@ extension Library {
                 t.savedLoops.append(loop)
             }
             tracks[index] = t
-            if t.phrases == nil && !isMissing(t) { enqueueAnalysis(t.id) }
+            if t.phrases == nil && !isMissing(t) { enqueueCatchUp(t.id) }
         }
         for list in collection.playlists {
             let ids = list.trackIDs.compactMap { idForRekordboxID[$0] }

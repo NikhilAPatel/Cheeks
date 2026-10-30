@@ -144,6 +144,7 @@ struct BrowserView: View {
                     return
                 }
                 let result = library.applyRekordbox(collection)
+                dj.decks.forEach { $0.refreshTrack() }
                 importMessage = "Matched \(result.matched) of \(result.total) rekordbox tracks and imported \(result.playlists) playlists. "
                     + "Tracks are matched by file name, so import the audio files first."
             }
