@@ -10,6 +10,7 @@
 #define WAVE_LEVELS 6
 #define WAVE_MAX_CUES 10
 #define WAVE_MAX_SECTIONS 24
+#define WAVE_MAX_MARKS 32
 
 typedef struct {
     simd_float2 size;           // drawable size in pixels
@@ -34,7 +35,7 @@ typedef struct {
     float loopActive;
     float cuePoint;
 
-    float memoryCue;            // < 0 when unset
+    int markCount;              // memory cues and saved loops
     int cueCount;
     float reveal;               // 0...1, the waveform opening out when a track loads
     float stemBlend;            // 0 = 3-band colours, 1 = stem colours
@@ -59,7 +60,7 @@ typedef struct {
     float loopStart;            // seconds, < 0 when none
     float loopEnd;
     float loopActive;
-    float memoryCue;
+    int markCount;              // memory cues and saved loops
     float cuePoint;
     int cueCount;
     float hover;                // 0...1, brightens while it's being touched

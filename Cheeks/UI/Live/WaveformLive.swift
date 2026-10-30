@@ -83,6 +83,22 @@ struct WaveAtlas {
     }
 }
 
+extension Deck {
+    /// Memory cues and saved loops for the shaders: start, and end for a loop or -1 for a cue.
+    var liveMarks: [SIMD4<Float>] {
+        guard let track else { return [.zero] }
+        var marks: [SIMD4<Float>] = []
+        for cue in track.memoryCues.prefix(Int(WAVE_MAX_MARKS) / 2) { marks.append(SIMD4(Float(cue.time), -1, 0, 0)) }
+        for loop in track.savedLoops.prefix(Int(WAVE_MAX_MARKS) / 2) { marks.append(SIMD4(Float(loop.start), Float(loop.end), 0, 0)) }
+        return marks.isEmpty ? [.zero] : marks
+    }
+
+    var liveMarkCount: Int32 {
+        guard let track else { return 0 }
+        return Int32(min(track.memoryCues.count, Int(WAVE_MAX_MARKS) / 2) + min(track.savedLoops.count, Int(WAVE_MAX_MARKS) / 2))
+    }
+}
+
 /// The scrolling waveform. Drag it to scratch through the track, pinch to zoom, double-tap to reset zoom.
 final class WaveformLiveView: LiveView {
     private let deck: Deck
@@ -92,6 +108,8 @@ final class WaveformLiveView: LiveView {
     private var cues: [SIMD4<Float>] = []
     private var sections: [SIMD4<Float>] = [.zero]
     private var lastSections: [SIMD4<Float>] = []
+    private var marks: [SIMD4<Float>] = [.zero]
+    private var lastMarks: [SIMD4<Float>] = []
     private var needsDraw = true
 
     private var atlasOwner: Int = -1
@@ -195,13 +213,14 @@ final class WaveformLiveView: LiveView {
         u.loopEnd = hasLoop ? Float(r.loopEnd / sr) : -1
         u.loopActive = r.loopActive ? 1 : 0
         u.cuePoint = Float(deck.cuePoint)
-        u.memoryCue = deck.track?.memoryCue.map { Float($0) } ?? -1
+        marks = deck.liveMarks
+        u.markCount = deck.liveMarkCount
 
         var newCues = [SIMD4<Float>](repeating: .zero, count: Int(WAVE_MAX_CUES) * 2)
         var count = 0
         if let hotCues = deck.track?.hotCues {
             for (slot, time) in hotCues.sorted(by: { $0.key < $1.key }) where count < Int(WAVE_MAX_CUES) {
-                let color = Theme.hotCueColors[slot % 8].simd
+                let color = deck.hotCueColor(slot).simd
                 newCues[count] = SIMD4(Float(time), color.x, color.y, color.z)
                 newCues[Int(WAVE_MAX_CUES) + count] = SIMD4(Float(slot % 8), 0, 0, 0)
                 count += 1
@@ -233,10 +252,11 @@ final class WaveformLiveView: LiveView {
 
         uniforms = u
         // Skip the draw if nothing changed: a paused deck costs no GPU time at all.
-        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues && sections == lastSections { return false }
+        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues && sections == lastSections && marks == lastMarks { return false }
         lastDrawn = u
         lastCues = cues
         lastSections = sections
+        lastMarks = marks
         needsDraw = false
         return true
     }
@@ -263,6 +283,7 @@ final class WaveformLiveView: LiveView {
         withUnsafeBytes(of: &uniforms) { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 0) }
         cues.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
         sections.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
+        marks.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 3) }
         encoder.setFragmentTexture(bands?.texture ?? renderer.blackTexture, index: 0)
         encoder.setFragmentTexture(stems?.texture ?? renderer.blackTexture, index: 1)
         encoder.setFragmentTexture(renderer.cueLetters, index: 2)
@@ -341,6 +362,8 @@ final class OverviewLiveView: LiveView {
     private var lastDrawn = OverviewUniforms()
     private var cues: [SIMD4<Float>] = []
     private var lastCues: [SIMD4<Float>] = []
+    private var marks: [SIMD4<Float>] = [.zero]
+    private var lastMarks: [SIMD4<Float>] = []
     private var needsDraw = true
     private var columns: MTLTexture?
     private var owner = -1
@@ -405,7 +428,8 @@ final class OverviewLiveView: LiveView {
         u.loopStart = hasLoop ? Float(r.loopStart / deck.sampleRate) : -1
         u.loopEnd = hasLoop ? Float(r.loopEnd / deck.sampleRate) : -1
         u.loopActive = r.loopActive ? 1 : 0
-        u.memoryCue = deck.track?.memoryCue.map { Float($0) } ?? -1
+        marks = deck.liveMarks
+        u.markCount = deck.liveMarkCount
         u.cuePoint = Float(deck.cuePoint)
         hover += ((touching ? 1 : 0) - hover) * 0.25
         if abs((touching ? 1 : 0) - hover) < 0.01 { hover = touching ? 1 : 0 }
@@ -413,16 +437,17 @@ final class OverviewLiveView: LiveView {
 
         var newCues: [SIMD4<Float>] = []
         for (slot, time) in (deck.track?.hotCues ?? [:]).sorted(by: { $0.key < $1.key }) {
-            let color = Theme.hotCueColors[slot % 8].simd
+            let color = deck.hotCueColor(slot).simd
             newCues.append(SIMD4(Float(time), color.x, color.y, color.z))
         }
         u.cueCount = Int32(newCues.count)
         if newCues.isEmpty { newCues = [.zero] }
         cues = newCues
         uniforms = u
-        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues { return false }
+        if !needsDraw && bytesEqual(u, lastDrawn) && cues == lastCues && marks == lastMarks { return false }
         lastDrawn = u
         lastCues = cues
+        lastMarks = marks
         needsDraw = false
         return true
     }
@@ -432,6 +457,7 @@ final class OverviewLiveView: LiveView {
         encoder.setRenderPipelineState(renderer.pipeline(fragment: "overview_fragment"))
         withUnsafeBytes(of: &uniforms) { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 0) }
         cues.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
+        marks.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
         encoder.setFragmentTexture(columns ?? renderer.blackTexture, index: 0)
         encoder.setFragmentTexture(renderer.cueLetters, index: 1)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)

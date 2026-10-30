@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftUI
 
 /// Hot cues, loops, beat jump, rolls, scratching, sync and stems.
 extension Deck {
@@ -9,9 +10,16 @@ extension Deck {
         if shift {
             shift = false
             guard let removed = track?.hotCues[slot] else { return }
-            updateTrack { $0.hotCues[slot] = nil }
+            let info = track?.hotCueInfo[slot]
+            updateTrack { t in
+                t.hotCues[slot] = nil
+                t.hotCueInfo[slot] = nil
+            }
             offerUndo?("Deleted hot cue \(Theme.hotCueLetters[slot])") { [weak self] in
-                self?.updateTrack { $0.hotCues[slot] = removed }
+                self?.updateTrack { t in
+                    t.hotCues[slot] = removed
+                    t.hotCueInfo[slot] = info
+                }
             }
             return
         }
@@ -20,17 +28,31 @@ extension Deck {
             updateTrack { $0.hotCues[slot] = time }
             return
         }
+        if let end = track?.hotCueInfo[slot]?.loopEnd, end > time {
+            toggleLoop(start: time, end: end)
+            return
+        }
+        jump(toSeconds: time)
+        if !isPlaying { play() }
+    }
+
+    /// Goes to a point in the track. While playing with quantize on, it keeps the current position
+    /// within the beat, measured on the audio thread, so the jump lands in time.
+    private func jump(toSeconds time: Double) {
         let target = time * sampleRate
         if renderer.loopActive && (target < renderer.loopStart || target >= renderer.loopEnd) {
             exitLoop()
         }
         if quantize && isPlaying && beatFrames > 0 {
-            // Keeps the current position within the beat, measured on the audio thread, so the jump lands in time.
             renderer.seekBeatLocked(target, beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
         } else {
             renderer.playhead = target
         }
-        if !isPlaying { play() }
+    }
+
+    /// The colour a hot cue shows in: its own, or the slot's.
+    func hotCueColor(_ slot: Int) -> Color {
+        track?.hotCueInfo[slot]?.color?.color ?? Theme.hotCueColors[slot % 8]
     }
 
     // MARK: Memory cues and saved loops
@@ -42,6 +64,114 @@ extension Deck {
             t.memoryCues.append(MemoryCue(time: time))
             t.memoryCues.sort { $0.time < $1.time }
         }
+    }
+
+    /// Everything saved on this track, in track order.
+    var memoryItems: [MemoryItem] {
+        guard let track else { return [] }
+        return (track.memoryCues.map(MemoryItem.cue) + track.savedLoops.map(MemoryItem.loop)).sorted { $0.time < $1.time }
+    }
+
+    static let memoryItemsPerPage = 8
+    var memoryPageCount: Int { max(1, (memoryItems.count + Self.memoryItemsPerPage - 1) / Self.memoryItemsPerPage) }
+
+    /// Saves the cue point, or where the playhead is if the deck's playing.
+    func saveMemoryCueHere() {
+        guard isLoaded else { return }
+        let time = isPlaying ? snap(renderer.playhead) / sampleRate : cuePoint
+        guard track?.memoryCues.contains(where: { abs($0.time - time) < 0.01 }) == false else {
+            Haptics.shared.deny()
+            onMessage?("There's already a memory cue here.")
+            return
+        }
+        saveMemoryCue(at: time)
+        Haptics.shared.confirm()
+    }
+
+    /// Saves the loop that's set, on or off.
+    func saveCurrentLoop() {
+        guard isLoaded, renderer.loopEnd > renderer.loopStart + sampleRate * 0.01 else {
+            Haptics.shared.deny()
+            onMessage?("Set a loop first, then save it.")
+            return
+        }
+        let start = renderer.loopStart / sampleRate, end = renderer.loopEnd / sampleRate
+        guard track?.savedLoops.contains(where: { abs($0.start - start) < 0.01 && abs($0.end - end) < 0.01 }) == false else {
+            Haptics.shared.deny()
+            onMessage?("This loop's already saved.")
+            return
+        }
+        updateTrack { $0.savedLoops.append(SavedLoop(start: start, end: end)) }
+        Haptics.shared.confirm()
+    }
+
+    /// Calls up a memory cue: it becomes the cue point and the deck goes there, as on a CDJ.
+    func recall(_ cue: MemoryCue) {
+        guard isLoaded else { return }
+        cuePoint = cue.time
+        jump(toSeconds: cue.time)
+    }
+
+    /// Calls up a saved loop, and leaves it again if it's already on.
+    func recall(_ loop: SavedLoop) {
+        guard isLoaded else { return }
+        toggleLoop(start: loop.start, end: loop.end)
+    }
+
+    func isCurrentLoop(start: Double, end: Double) -> Bool {
+        loopActive && abs(renderer.loopStart / sampleRate - start) < 0.01 && abs(renderer.loopEnd / sampleRate - end) < 0.01
+    }
+
+    private func toggleLoop(start: Double, end: Double) {
+        if isCurrentLoop(start: start, end: end) {
+            exitLoop()
+            return
+        }
+        let startFrame = start * sampleRate, endFrame = end * sampleRate
+        let here = renderer.playhead
+        if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
+        if here < startFrame || here >= endFrame {
+            // Leave any other loop first, so the jump isn't caught by it.
+            renderer.loopActive = false
+            jump(toSeconds: start)
+        }
+        renderer.setLoop(start: startFrame, end: endFrame, active: true)
+        loopActive = true
+        if beatFrames > 0 { loopBeats = beatPosition(endFrame) - beatPosition(startFrame) }
+        if !isPlaying { play() }
+    }
+
+    func delete(_ item: MemoryItem) {
+        switch item {
+        case .cue(let cue):
+            updateTrack { $0.memoryCues.removeAll { $0.id == cue.id } }
+            offerUndo?("Deleted memory cue") { [weak self] in self?.updateTrack { $0.memoryCues.append(cue) } }
+        case .loop(let loop):
+            updateTrack { $0.savedLoops.removeAll { $0.id == loop.id } }
+            offerUndo?("Deleted saved loop") { [weak self] in self?.updateTrack { $0.savedLoops.append(loop) } }
+        }
+        memoryPage = min(memoryPage, memoryPageCount - 1)
+    }
+
+    /// A pad on the MEM page: calls up what's saved there, or deletes it after DEL.
+    func pressMemory(_ item: MemoryItem) {
+        if shift {
+            shift = false
+            delete(item)
+            return
+        }
+        switch item {
+        case .cue(let cue): recall(cue)
+        case .loop(let loop): recall(loop)
+        }
+    }
+
+    /// A loop marked "on at load" is waiting when the track comes up, and holds the deck once it gets there.
+    func armSavedLoops() {
+        guard let loop = track?.savedLoops.first(where: \.activeOnLoad) else { return }
+        renderer.setLoop(start: loop.start * sampleRate, end: loop.end * sampleRate, active: true)
+        loopActive = true
+        if beatFrames > 0 { loopBeats = beatPosition(loop.end * sampleRate) - beatPosition(loop.start * sampleRate) }
     }
 
     // MARK: Loops

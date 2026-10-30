@@ -53,6 +53,7 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
                                   constant WaveUniforms &u [[buffer(0)]],
                                   constant float4 *cues [[buffer(1)]],
                                   constant float4 *sections [[buffer(2)]],
+                                  constant float4 *marks [[buffer(3)]],
                                   texture2d<float, access::read> bands [[texture(0)]],
                                   texture2d<float, access::read> stems [[texture(1)]],
                                   texture2d<float> letters [[texture(2)]]) {
@@ -183,12 +184,21 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
         const float mark = 1.0 - smoothstep(width - 0.8, width + 0.8, dx);
         if (fromBottom < tri) color = mix(color, float3(1.0, 0.62, 0.1), mark);
     }
-    if (u.memoryCue >= 0) {
-        const float dx = abs(t - u.memoryCue) / secondsPerPixelAbs;
-        const float tri = 6.0 * u.scale;
-        const float width = saturate1(1.0 - px.y / tri) * 4.5 * u.scale;
-        const float mark = 1.0 - smoothstep(width - 0.8, width + 0.8, dx);
-        if (px.y < tri) color = mix(color, float3(1.0, 0.2, 0.2), mark);
+    // Memory cues hang from the top edge in red; saved loops are an orange bar along it.
+    if (px.y < 6.0 * u.scale) {
+        for (int i = 0; i < u.markCount; ++i) {
+            const float4 mark = marks[i];
+            if (mark.y >= 0) {
+                const bool inside = t >= mark.x && t <= mark.y;
+                if (inside && px.y < 2.5 * u.scale) color = float3(1.0, 0.62, 0.12);
+            } else {
+                const float dx = abs(t - mark.x) / secondsPerPixelAbs;
+                const float tri = 6.0 * u.scale;
+                const float width = saturate1(1.0 - px.y / tri) * 4.5 * u.scale;
+                const float hit = 1.0 - smoothstep(width - 0.8, width + 0.8, dx);
+                color = mix(color, float3(1.0, 0.2, 0.2), hit);
+            }
+        }
     }
 
     // Hot cues: a line through the wave with a lettered flag at the top.
@@ -234,6 +244,7 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
 fragment float4 overview_fragment(VOut in [[stage_in]],
                                   constant OverviewUniforms &u [[buffer(0)]],
                                   constant float4 *cues [[buffer(1)]],
+                                  constant float4 *marks [[buffer(2)]],
                                   texture2d<float> columns [[texture(0)]],
                                   texture2d<float> letters [[texture(1)]]) {
     constexpr sampler smooth(filter::linear, address::clamp_to_edge);
@@ -280,11 +291,18 @@ fragment float4 overview_fragment(VOut in [[stage_in]],
         if (abs(dx) < 1.0 * u.scale) color = mix(color, cue.yzw, 0.85);
         if (dx >= 0 && dx < flag && px.y < flag) color = cue.yzw;
     }
-    if (u.memoryCue >= 0) {
-        const float dx = abs(px.x - u.memoryCue / u.duration * u.size.x);
-        const float tri = 4.0 * u.scale;
-        const float width = saturate1(1.0 - px.y / tri) * 3.0 * u.scale;
-        if (px.y < tri && dx < width) color = float3(1, 0.22, 0.2);
+    if (px.y < 4.0 * u.scale) {
+        for (int i = 0; i < u.markCount; ++i) {
+            const float4 mark = marks[i];
+            if (mark.y >= 0) {
+                const float a = mark.x / u.duration, b = mark.y / u.duration;
+                if (x >= a && x <= max(b, a + 2.0 * u.scale / u.size.x) && px.y < 2.0 * u.scale) color = float3(1.0, 0.62, 0.12);
+            } else {
+                const float dx = abs(px.x - mark.x / u.duration * u.size.x);
+                const float width = saturate1(1.0 - px.y / (4.0 * u.scale)) * 3.0 * u.scale;
+                if (dx < width) color = float3(1, 0.22, 0.2);
+            }
+        }
     }
     {
         const float dx = abs(px.x - u.cuePoint / u.duration * u.size.x);

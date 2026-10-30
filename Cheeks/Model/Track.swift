@@ -100,6 +100,33 @@ struct SavedLoop: Identifiable, Codable, Hashable {
     var activeOnLoad = false
 }
 
+/// A saved cue or loop, for the MEM pads and the list.
+enum MemoryItem: Identifiable, Hashable {
+    case cue(MemoryCue)
+    case loop(SavedLoop)
+
+    var id: UUID {
+        switch self {
+        case .cue(let cue): cue.id
+        case .loop(let loop): loop.id
+        }
+    }
+
+    var time: Double {
+        switch self {
+        case .cue(let cue): cue.time
+        case .loop(let loop): loop.start
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .cue(let cue): cue.name
+        case .loop(let loop): loop.name
+        }
+    }
+}
+
 /// A section of the song, from the phrase analysis.
 struct Phrase: Codable, Hashable {
     enum Kind: String, Codable, CaseIterable {

@@ -29,6 +29,7 @@ struct PadSection: View {
     @ViewBuilder
     private var controlRow: some View {
         switch deck.padMode {
+        case .memory: MemoryControlRow(deck: deck)
         case .stems: StemControlRow(deck: deck)
         case .fx: FXControlRow(deck: deck)
         default: LoopRow(deck: deck)
@@ -105,8 +106,8 @@ struct PadTabs: View {
             }
             Key("DEL", color: Theme.danger, lit: deck.shift, size: 8, feel: .toggle, onPress: { deck.shift.toggle() })
                 .frame(width: 30)
-                .opacity(deck.padMode == .hotCue ? 1 : 0.0)
-                .allowsHitTesting(deck.padMode == .hotCue)
+                .opacity(deck.padMode == .hotCue || deck.padMode == .memory ? 1 : 0.0)
+                .allowsHitTesting(deck.padMode == .hotCue || deck.padMode == .memory)
         }
     }
 }
@@ -138,6 +139,7 @@ struct PadBank: View {
     private func pad(_ i: Int) -> some View {
         switch deck.padMode {
         case .hotCue: HotCuePad(deck: deck, slot: i)
+        case .memory: MemoryPad(deck: deck, index: i)
         case .beatLoop:
             let size = loopSizes[i]
             sizePad(Format.beats(size), color: Theme.loop, lit: deck.loopActive && abs(deck.loopBeats - size) < 0.0001, name: "\(Format.beats(size)) beat loop") {
@@ -195,25 +197,37 @@ struct HotCuePad: View {
 
     var body: some View {
         let time = deck.track?.hotCues[slot]
-        let color = Theme.hotCueColors[slot]
+        let info = deck.track?.hotCueInfo[slot]
+        let color = deck.hotCueColor(slot)
+        let loopEnd = info?.loopEnd
+        let looping = time.flatMap { start in loopEnd.map { deck.isCurrentLoop(start: start, end: $0) } } ?? false
         Pad(color: color, lit: time != nil, dimmed: time == nil,
-            accessibilityName: time == nil ? "Set hot cue \(Theme.hotCueLetters[slot])" : "Hot cue \(Theme.hotCueLetters[slot])",
+            accessibilityName: time == nil ? "Set hot cue \(Theme.hotCueLetters[slot])" : "Hot cue \(Theme.hotCueLetters[slot])" + (info?.name.isEmpty == false ? ", \(info!.name)" : ""),
             onPress: { deck.hotCue(slot) }) {
             ZStack(alignment: .topLeading) {
                 Color.clear
-                Text(Theme.hotCueLetters[slot])
-                    .font(Theme.silk(12))
-                    .padding(.leading, 6)
-                    .padding(.top, 4)
+                HStack(spacing: 3) {
+                    Text(Theme.hotCueLetters[slot])
+                        .font(Theme.silk(12))
+                    if loopEnd != nil {
+                        Image(systemName: "repeat").font(.system(size: 8, weight: .bold))
+                            .opacity(looping ? 1 : 0.7)
+                    }
+                }
+                .padding(.leading, 6)
+                .padding(.top, 4)
                 if let time {
                     VStack {
                         Spacer(minLength: 0)
                         HStack {
                             Spacer(minLength: 0)
-                            Text(time.clockString)
-                                .font(Theme.digits(10))
+                            // A name says more than a time does, once you've gone to the trouble.
+                            Text(info?.name.isEmpty == false ? info!.name : time.clockString)
+                                .font(info?.name.isEmpty == false ? Theme.silk(9) : Theme.digits(10))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                                 .foregroundStyle(Color.white.opacity(0.92))
-                                .padding(.trailing, 6)
+                                .padding(.horizontal, 6)
                                 .padding(.bottom, 4)
                         }
                     }
@@ -221,6 +235,96 @@ struct HotCuePad: View {
                 }
             }
         }
+    }
+}
+
+// MARK: Memory
+
+/// A saved cue or loop, called up with one tap. Red for cues and orange for loops, like the marks
+/// they make on the waveform.
+struct MemoryPad: View {
+    @Bindable var deck: Deck
+    let index: Int
+
+    var body: some View {
+        let items = deck.memoryItems
+        let position = deck.memoryPage * Deck.memoryItemsPerPage + index
+        if position < items.count {
+            let item = items[position]
+            Pad(color: color(item), lit: isOn(item), accessibilityName: description(item), onPress: { deck.pressMemory(item) }) {
+                VStack(spacing: 1) {
+                    Image(systemName: icon(item)).font(.system(size: 10, weight: .semibold))
+                    Text(item.name.isEmpty ? item.time.clockString : item.name)
+                        .font(item.name.isEmpty ? Theme.digits(10) : Theme.silk(9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 3)
+                }
+            }
+        } else {
+            Pad(color: Theme.textTertiary, dimmed: true, accessibilityName: "Empty", onPress: {}) { Color.clear }
+        }
+    }
+
+    private func isOn(_ item: MemoryItem) -> Bool {
+        switch item {
+        case .cue(let cue): abs(deck.cuePoint - cue.time) < 0.01
+        case .loop(let loop): deck.isCurrentLoop(start: loop.start, end: loop.end)
+        }
+    }
+
+    private func color(_ item: MemoryItem) -> Color {
+        switch item {
+        case .cue(let cue): cue.color?.color ?? Theme.danger
+        case .loop: Theme.loop
+        }
+    }
+
+    private func icon(_ item: MemoryItem) -> String {
+        switch item {
+        case .cue: "bookmark.fill"
+        case .loop(let loop): loop.activeOnLoad ? "repeat.circle.fill" : "repeat"
+        }
+    }
+
+    private func description(_ item: MemoryItem) -> String {
+        let name = item.name.isEmpty ? item.time.clockString : item.name
+        switch item {
+        case .cue: return "Memory cue, \(name)"
+        case .loop: return "Saved loop, \(name)"
+        }
+    }
+}
+
+/// Saving, paging through what's saved, and the full list.
+struct MemoryControlRow: View {
+    @Bindable var deck: Deck
+    @State private var showList = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Key("SAVE CUE", color: Theme.danger, size: 8, onPress: deck.saveMemoryCueHere)
+            Key("SAVE LOOP", color: Theme.loop, size: 8, onPress: deck.saveCurrentLoop)
+            Key(color: Theme.accent, accessibilityName: "Previous page", onPress: { page(-1) }) {
+                Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
+            }
+            .frame(width: 20)
+            Text("\(deck.memoryPage + 1)/\(deck.memoryPageCount)")
+                .font(Theme.digits(10))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 24)
+            Key(color: Theme.accent, accessibilityName: "Next page", onPress: { page(1) }) {
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+            }
+            .frame(width: 20)
+            Key("LIST", color: Theme.accent, size: 8, onPress: { showList = true })
+                .frame(width: 30)
+        }
+        .sheet(isPresented: $showList) { CueListView(deck: deck) }
+    }
+
+    private func page(_ step: Int) {
+        deck.memoryPage = min(deck.memoryPageCount - 1, max(0, deck.memoryPage + step))
     }
 }
 

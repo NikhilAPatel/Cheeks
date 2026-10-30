@@ -41,6 +41,7 @@ final class TouchWiringTests: XCTestCase {
             out[d + "jumpBeats"] = "\(deck.jumpBeats)"
             out[d + "keyShift"] = "\(deck.keyShift)"
             out[d + "hotCues"] = "\(deck.track?.hotCues.count ?? 0)"
+            out[d + "memory"] = "\(deck.memoryItems.count)"
             out[d + "fxOn"] = "\(deck.fxOn)"
             out[d + "fxDepth"] = "\(deck.fxDepth)"
             out[d + "stems"] = "\(deck.stemsOn)"
@@ -161,6 +162,7 @@ final class TouchWiringTests: XCTestCase {
             if !deck.isPlaying { deck.play() }
             switch mode {
             case .hotCue: XCTAssertTrue(changed.contains("deck0.hotCues"), "Hot cue pads set no cues")
+            case .memory: XCTAssertTrue(changed.contains("deck0.memory"), "Save keys saved nothing")
             case .beatLoop: XCTAssertTrue(changed.contains("deck0.loopActive"), "Loop pads set no loop")
             case .beatJump: XCTAssertTrue(changed.contains("deck0.position"), "Jump pads didn't move the deck")
             case .stems: XCTAssertTrue(changed.contains("deck0.stems") || changed.contains("deck0.stemLevels"), "Stem pads did nothing")

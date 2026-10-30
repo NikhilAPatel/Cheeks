@@ -3,6 +3,7 @@ import Observation
 
 enum PadMode: String, CaseIterable, Identifiable {
     case hotCue = "CUE"
+    case memory = "MEM"
     case beatLoop = "LOOP"
     case roll = "ROLL"
     case slicer = "SLICER"
@@ -116,6 +117,8 @@ final class Deck {
 
     // Performance
     var padMode: PadMode = .hotCue
+    /// Which page of the saved cues and loops is on the pads.
+    var memoryPage = 0
     /// Roll and slicer pads being held, so letting go of one doesn't end the other.
     @ObservationIgnored var heldMomentaryPads = 0
     var shift = false
@@ -293,6 +296,8 @@ final class Deck {
         }
         cuePoint = track?.memoryCue ?? track?.firstBeat ?? 0
         seek(to: cuePoint)
+        memoryPage = 0
+        armSavedLoops()
         isLoading = false
         // Without the model, stems are only a rough filter split: not worth their memory until asked for.
         // When the phone's hot, leave the GPU alone until they're asked for too.

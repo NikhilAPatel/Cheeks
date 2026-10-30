@@ -261,6 +261,7 @@ struct JogReadout: View {
 struct DeckHeader: View {
     @Environment(\.openBrowser) private var openBrowser
     @Bindable var deck: Deck
+    @State private var showCueList = false
 
     var body: some View {
         HStack(spacing: 7) {
@@ -290,6 +291,7 @@ struct DeckHeader: View {
             Haptics.shared.key()
             openBrowser()
         }
+        .sheet(isPresented: $showCueList) { CueListView(deck: deck) }
     }
 
     private var subtitle: String {
@@ -304,13 +306,18 @@ struct DeckHeader: View {
             Section("Beat grid") {
                 Button("Double BPM", systemImage: "multiply") { deck.scaleBPM(2) }
                 Button("Halve BPM", systemImage: "divide") { deck.scaleBPM(0.5) }
-                Button("BPM + 0.1", systemImage: "plus") { deck.nudgeBPM(by: 0.1) }
-                Button("BPM − 0.1", systemImage: "minus") { deck.nudgeBPM(by: -0.1) }
+                if deck.grid?.isVariable == true {
+                    Button("Use one steady tempo", systemImage: "metronome") { deck.flattenGrid() }
+                } else {
+                    Button("BPM + 0.1", systemImage: "plus") { deck.nudgeBPM(by: 0.1) }
+                    Button("BPM − 0.1", systemImage: "minus") { deck.nudgeBPM(by: -0.1) }
+                }
                 Button("Grid 10 ms earlier", systemImage: "arrow.left") { deck.shiftGrid(milliseconds: -10) }
                 Button("Grid 10 ms later", systemImage: "arrow.right") { deck.shiftGrid(milliseconds: 10) }
                 Button("Set downbeat here", systemImage: "scope") { deck.setDownbeatHere() }
             }
             Button("Save cue as memory cue", systemImage: "bookmark") { deck.saveMemoryCue() }
+            Button("Cues and loops…", systemImage: "list.bullet") { showCueList = true }
         } label: {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "–")
