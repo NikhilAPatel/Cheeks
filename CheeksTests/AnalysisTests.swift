@@ -15,6 +15,30 @@ final class AnalysisTests: XCTestCase {
         }
     }
 
+    /// A track whose bars have a real "1": a loud hit every four beats on top of the kicks.
+    func testGridStartsOnTheDownbeat() {
+        let bpm = 126.0, offset = 0.2
+        let sr = Synth.sampleRate
+        var x = [Float](repeating: 0, count: Int(sr * 40))
+        let beat = 60 / bpm
+        var i = 0
+        while offset + Double(i) * beat < 39.5 {
+            let start = Int((offset + Double(i) * beat) * sr)
+            let accent: Float = i % 4 == 3 ? 1 : 0.3 // the 4th beat from the start is the bar's "1"
+            for k in 0..<Int(0.1 * sr) {
+                x[start + k] += accent * Float(sin(2 * .pi * 70 * Double(k) / sr) * exp(-Double(k) / sr * 30))
+            }
+            i += 1
+        }
+        let result = TrackAnalyzer.analyze(PCM16Stereo(left: x, right: x))
+        XCTAssertEqual(result.bpm, bpm, accuracy: 0.05)
+        let bar = 4 * beat
+        var error = (result.firstBeat - (offset + 3 * beat)).truncatingRemainder(dividingBy: bar)
+        if error > bar / 2 { error -= bar }
+        if error < -bar / 2 { error += bar }
+        XCTAssertLessThan(abs(error), 0.015, "bar 1 is off by \(error * 1000) ms")
+    }
+
     func testKeyDetection() {
         let cases: [([[Int]], String)] = [(Synth.aMinor, "8A"), (Synth.dMajor, "10B"), (Synth.fMinor, "4A")]
         for (chords, expected) in cases {

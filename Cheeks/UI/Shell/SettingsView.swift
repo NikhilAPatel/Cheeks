@@ -57,6 +57,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        .tint(Theme.accent)
         .preferredColorScheme(.dark)
     }
 }

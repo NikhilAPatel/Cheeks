@@ -192,12 +192,48 @@ enum TrackAnalyzer {
             candidate += 0.02
         }
 
+        /// How well a tempo lines up with the onsets, at its best phase.
+        func combScore(_ candidate: Double) -> (score: Float, phase: Double) {
+            let period = 60 * fps / candidate
+            var top = (score: Float(-1), phase: 0.0)
+            for p in 0..<max(1, Int(period)) {
+                var s: Float = 0
+                var pos = Double(p)
+                while pos < Double(frames - 1) {
+                    s += onset[Int(pos.rounded())]
+                    pos += period
+                }
+                if s > top.score { top = (s, Double(p)) }
+            }
+            return top
+        }
+
         var bpm = (best.bpm * 100).rounded() / 100
-        if abs(bpm - bpm.rounded()) < 0.08 { bpm = bpm.rounded() }
-        let beatLength = 60 / bpm
-        var firstBeat = best.phase / fps
-        while firstBeat >= beatLength { firstBeat -= beatLength }
-        return (bpm, firstBeat)
+        var phase = best.phase
+        // Almost all produced music sits on a whole number, so take one if it fits nearly as well.
+        // A slightly wrong tempo drifts off the grid over a whole track, so this matters.
+        let whole = bpm.rounded()
+        if abs(whole - bpm) < 0.7 {
+            let fit = combScore(whole)
+            if abs(whole - bpm) < 0.08 || fit.score >= best.score * 0.97 {
+                bpm = whole
+                phase = fit.phase
+            }
+        }
+
+        // Which of the four beats is the "1": bars start where the biggest changes land.
+        let period = 60 * fps / bpm
+        var strongest = (score: Float(-1), beat: 0)
+        for beat in 0..<4 {
+            var s: Float = 0
+            var pos = phase + Double(beat) * period
+            while pos < Double(frames - 1) {
+                s += onset[Int(pos.rounded())]
+                pos += period * 4
+            }
+            if s > strongest.score { strongest = (s, beat) }
+        }
+        return (bpm, (phase + Double(strongest.beat) * period) / fps)
     }
 }
 
