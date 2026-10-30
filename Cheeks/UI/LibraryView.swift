@@ -51,26 +51,28 @@ struct LibraryView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar.frame(width: 190)
-            Divider().overlay(Theme.stroke)
+            sidebar.frame(width: 180)
+            Rectangle().fill(Color.black).frame(width: 2)
             VStack(spacing: 0) {
                 toolbar
                 columnHeader
                 if tracks.isEmpty {
                     emptyState
                 } else {
-                    List(tracks) { track in
+                    // rekordbox's track table: alternating row shading, thin separators
+                    List(Array(tracks.enumerated()), id: \.element.id) { row, track in
                         TrackRow(track: track, referenceDeck: referenceDeck, playlistID: playlistID)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                            .listRowBackground(row % 2 == 0 ? Theme.panel : Color(white: 0.11))
+                            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 8))
+                            .listRowSeparatorTint(Color.black.opacity(0.6))
                     }
                     .listStyle(.plain)
+                    .environment(\.defaultMinListRowHeight, 34)
                     .scrollContentBackground(.hidden)
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Theme.panel)
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: importKind == .audio ? [.audio] : [.xml],
                       allowsMultipleSelection: importKind == .audio) { result in
@@ -118,8 +120,10 @@ struct LibraryView: View {
 
     private var sidebar: some View {
         List {
-            Section("Collection") {
+            Section {
                 sidebarRow("All Tracks", icon: "music.note.list", count: library.tracks.count, tag: .all)
+            } header: {
+                sidebarHeader("Collection")
             }
             Section {
                 ForEach(library.playlists) { playlist in
@@ -133,27 +137,37 @@ struct LibraryView: View {
                         }
                 }
                 Button { showNewPlaylist = true } label: {
-                    Label("New Playlist", systemImage: "plus").font(.system(size: 13))
+                    Label("New Playlist", systemImage: "plus").font(.system(size: 12)).foregroundStyle(Theme.dim)
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             } header: {
-                Text("Playlists")
+                sidebarHeader("Playlists")
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 32)
         .scrollContentBackground(.hidden)
+        .background(Color(white: 0.06))
+    }
+
+    private func sidebarHeader(_ title: String) -> some View {
+        Text(title.uppercased()).font(Theme.legend(10, .semibold)).foregroundStyle(Theme.dim)
     }
 
     private func sidebarRow(_ title: String, icon: String, count: Int, tag: Source) -> some View {
         Button { source = tag } label: {
-            HStack {
-                Label(title, systemImage: icon).lineLimit(1)
+            HStack(spacing: 7) {
+                Image(systemName: icon).font(.system(size: 11)).frame(width: 16)
+                Text(title).lineLimit(1)
                 Spacer()
-                Text("\(count)").foregroundStyle(Theme.dim)
+                Text("\(count)").font(Theme.readout(11)).foregroundStyle(Theme.dim)
             }
-            .font(.system(size: 13, weight: source == tag ? .bold : .regular))
-            .foregroundStyle(source == tag ? Color.white : Color.white.opacity(0.75))
+            .font(.system(size: 12, weight: source == tag ? .semibold : .regular))
+            .foregroundStyle(source == tag ? Color.white : Color.white.opacity(0.8))
         }
-        .listRowBackground(source == tag ? Color.white.opacity(0.1) : Color.clear)
+        .listRowBackground(source == tag ? Theme.accent.opacity(0.35) : Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private var toolbar: some View {
@@ -164,15 +178,19 @@ struct LibraryView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
-            .padding(6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.raised))
+            .font(.system(size: 13))
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
 
             Menu {
                 Picker("Sort", selection: $sort) {
                     ForEach(SortKey.allCases) { Text($0.rawValue).tag($0) }
                 }
             } label: {
-                Label(sort.rawValue, systemImage: "arrow.up.arrow.down").font(.system(size: 12, weight: .semibold))
+                Label(sort.rawValue, systemImage: "arrow.up.arrow.down")
+                    .font(Theme.legend(12))
+                    .foregroundStyle(Theme.dim)
             }
 
             if let analyzing = library.analyzing, let t = library.track(analyzing) {
@@ -193,13 +211,15 @@ struct LibraryView: View {
                     importing = true
                 }
             } label: {
-                Label("Import", systemImage: "square.and.arrow.down").font(.system(size: 12, weight: .bold))
+                Label("Import", systemImage: "square.and.arrow.down")
+                    .font(Theme.legend(12, .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.accent))
             }
-            .menuStyle(.button)
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.deckColors[0])
         }
-        .padding(8)
+        .padding(6)
         .alert("rekordbox import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -209,16 +229,18 @@ struct LibraryView: View {
 
     private var columnHeader: some View {
         HStack(spacing: 8) {
-            Text("TITLE / ARTIST").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Title").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Artist").frame(maxWidth: .infinity, alignment: .leading)
             Text("BPM").frame(width: 50, alignment: .trailing)
-            Text("KEY").frame(width: 38)
-            Text("TIME").frame(width: 42, alignment: .trailing)
-            Text("LOAD").frame(width: 76)
+            Text("Key").frame(width: 38)
+            Text("Time").frame(width: 42, alignment: .trailing)
+            Text("Load").frame(width: 76)
         }
-        .font(.system(size: 9, weight: .bold))
+        .font(.system(size: 11, weight: .medium))
         .foregroundStyle(Theme.dim)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(Color(white: 0.14))
     }
 
     private var emptyState: some View {
@@ -246,36 +268,35 @@ struct TrackRow: View {
         let compatible = referenceDeck?.track?.id != track.id && Camelot.isCompatible(track.key, referenceDeck?.track?.key)
         let loadedOn = dj.decks.first { $0.track?.id == track.id }
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(track.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(loadedOn.map { Theme.deckColors[$0.index] } ?? .white)
-                    .lineLimit(1)
-                Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Text(track.bpm.map { String(format: "%.1f", $0) } ?? "…")
-                .font(.system(size: 12, design: .monospaced))
+            Text(track.title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(loadedOn != nil ? Theme.play : .white)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
+                .font(.system(size: 12))
+                .foregroundStyle(loadedOn != nil ? Theme.play : Theme.dim)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(track.bpm.map { String(format: "%.2f", $0) } ?? "…")
+                .font(Theme.readout(12))
                 .frame(width: 50, alignment: .trailing)
             Text(track.key ?? "…")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(Theme.readout(12, .semibold))
                 .foregroundStyle(compatible ? Color.green : Color.white.opacity(0.8))
                 .frame(width: 38)
             Text(track.duration > 0 ? track.duration.clockString : "")
-                .font(.system(size: 12, design: .monospaced))
+                .font(Theme.readout(12))
                 .foregroundStyle(Theme.dim)
                 .frame(width: 42, alignment: .trailing)
             HStack(spacing: 4) {
                 ForEach(dj.decks, id: \.index) { deck in
                     Button { deck.load(track) } label: {
                         Text("\(deck.index + 1)")
-                            .font(.system(size: 13, weight: .heavy, design: .rounded))
-                            .frame(width: 34, height: 26)
-                            .foregroundStyle(.black)
-                            .background(RoundedRectangle(cornerRadius: 5).fill(Theme.deckColors[deck.index].opacity(deck.isPlaying ? 0.25 : 1)))
+                            .font(Theme.legend(12, .semibold))
+                            .frame(width: 34, height: 24)
+                            .foregroundStyle(deck.isPlaying ? Theme.faint : .white)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(deck.isPlaying ? Theme.raised : Theme.accent))
                     }
                     .buttonStyle(.plain)
                     .disabled(deck.isPlaying) // never replace a playing track mid-set
@@ -283,7 +304,6 @@ struct TrackRow: View {
             }
             .frame(width: 76)
         }
-        .padding(.vertical, 3)
         .contentShape(Rectangle())
         .contextMenu {
             if !library.playlists.isEmpty {

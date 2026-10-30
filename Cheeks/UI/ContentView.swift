@@ -1,52 +1,60 @@
 import SwiftUI
 
-/// Landscape performance layout: waveforms on top, then deck · mixer · deck (or the browser).
+/// Landscape performance layout after rekordbox: top bar with the FX unit, both zoomed waveforms,
+/// then deck · mixer · deck (or the browser), and the headphone/crossfader/master row.
 struct ContentView: View {
     @Environment(DJEngine.self) private var dj
-    @State private var showLibrary = false
+    @State var showLibrary = false
 
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: 6) {
+            let mixerWidth = min(150, max(108, geo.size.width * 0.125))
+            VStack(spacing: 3) {
                 TopBar(showLibrary: $showLibrary)
-                VStack(spacing: 4) {
+                VStack(spacing: 2) {
                     ForEach(dj.decks, id: \.index) { deck in
                         WaveformStrip(deck: deck)
                     }
                 }
-                .frame(height: geo.size.height * (showLibrary ? 0.22 : 0.27))
+                .frame(height: max(90, geo.size.height * 0.16))
 
                 if showLibrary {
+                    HStack(spacing: 3) {
+                        DeckInfo(deck: dj.decks[0])
+                        DeckInfo(deck: dj.decks[1])
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                     LibraryView()
                 } else {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 3) {
                         DeckView(deck: dj.decks[0])
                         MixerView()
-                            .frame(width: min(300, geo.size.width * 0.25))
+                            .frame(width: mixerWidth)
                         DeckView(deck: dj.decks[1])
                     }
                 }
+                BottomBar(crossfaderWidth: min(260, geo.size.width * 0.25))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
         }
         .background(Theme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
     }
 }
 
+/// A zoomed waveform, rekordbox style: edge to edge, deck number in the corner.
 struct WaveformStrip: View {
     let deck: Deck
 
     var body: some View {
-        HStack(spacing: 4) {
-            Rectangle().fill(Theme.deckColors[deck.index]).frame(width: 3)
-            VStack(spacing: 2) {
-                ScrollingWaveform(deck: deck)
-                OverviewWaveform(deck: deck).frame(height: 16)
+        ScrollingWaveform(deck: deck)
+            .overlay(alignment: .topLeading) {
+                Text("\(deck.index + 1)")
+                    .font(Theme.legend(10, .semibold))
+                    .foregroundStyle(Theme.dim)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .allowsHitTesting(false)
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -54,21 +62,31 @@ struct TopBar: View {
     @Environment(DJEngine.self) private var dj
     @Binding var showLibrary: Bool
     @State private var showRecordings = false
-    @State private var confirmStopRecording = false
 
     var body: some View {
         @Bindable var dj = dj
-        HStack(spacing: 10) {
-            Button { withAnimation(.snappy) { showLibrary.toggle() } } label: {
-                Label(showLibrary ? "DECKS" : "BROWSE", systemImage: showLibrary ? "dial.medium" : "music.note.list")
-                    .font(.system(size: 12, weight: .bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Theme.raised))
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "smallcircle.filled.circle").font(.system(size: 14, weight: .semibold))
+                Text("cheeks").font(.system(size: 15, weight: .semibold))
             }
-            .buttonStyle(.plain)
+            .padding(.trailing, 6)
 
-            Text("CHEEKS").font(.system(size: 13, weight: .black, design: .rounded)).foregroundStyle(Theme.dim)
+            iconButton("list.bullet.rectangle", on: showLibrary) { withAnimation(.snappy) { showLibrary.toggle() } }
+            iconButton("waveform.badge.mic", on: false) { showRecordings = true }
+            Menu {
+                Picker("Crossfader curve", selection: $dj.crossfaderCurve) {
+                    ForEach(CrossfaderCurve.allCases) { Text($0.rawValue.capitalized).tag($0) }
+                }
+                Picker("Recording format", selection: $dj.recordingFormat) {
+                    ForEach(RecordingFormat.allCases) { Text($0.rawValue).tag($0) }
+                }
+            } label: {
+                iconLabel("gearshape", on: false)
+            }
+
+            Rectangle().fill(Theme.stroke).frame(width: 1, height: 20).padding(.horizontal, 4)
+            FXUnit()
 
             if let error = dj.engineError {
                 Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
@@ -79,62 +97,35 @@ struct TopBar: View {
                 ProgressView().controlSize(.mini)
                 Text("Saving mix…").font(.caption2).foregroundStyle(Theme.dim)
             }
-            Spacer()
-
-            Menu {
-                Picker("Crossfader curve", selection: $dj.crossfaderCurve) {
-                    ForEach(CrossfaderCurve.allCases) { Text($0.rawValue.capitalized).tag($0) }
-                }
-                Picker("Recording format", selection: $dj.recordingFormat) {
-                    ForEach(RecordingFormat.allCases) { Text($0.rawValue).tag($0) }
-                }
-            } label: {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
-            }
-
-            Button { showRecordings = true } label: {
-                Image(systemName: "waveform.badge.mic").font(.system(size: 14, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-
-            // Stopping asks first, so a stray tap can't end a set's recording.
-            Button {
-                if dj.isRecording { confirmStopRecording = true } else { dj.toggleRecording() }
-            } label: {
-                HStack(spacing: 5) {
-                    Circle().fill(dj.isRecording ? Color.red : Color.red.opacity(0.4)).frame(width: 9, height: 9)
-                    if let started = dj.recordingStarted {
-                        Text(started, style: .timer).font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        if !dj.setlist.isEmpty {
-                            Text("· \(dj.setlist.count) tracks").font(.system(size: 10)).foregroundStyle(Theme.dim)
-                        }
-                    } else {
-                        Text("REC").font(.system(size: 11, weight: .bold))
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Theme.raised))
-            }
-            .buttonStyle(.plain)
-            .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
-                // It may have stopped by itself (storage full) while this was open; don't start a new one.
-                Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
-                Button("Keep recording", role: .cancel) {}
-            }
+            Spacer(minLength: 4)
 
             TimelineView(.everyMinute) { context in
                 Text(context.date, style: .time)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.dim)
+                    .font(Theme.readout(13, .medium))
             }
         }
-        .frame(height: 30)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(Theme.panel)
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .task(id: dj.statusMessage) { [dj] in
             guard dj.statusMessage != nil else { return }
             try? await Task.sleep(for: .seconds(6))
             if !Task.isCancelled { dj.statusMessage = nil }
         }
+    }
+
+    private func iconButton(_ symbol: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) { iconLabel(symbol, on: on) }
+            .buttonStyle(.plain)
+    }
+
+    /// rekordbox's square toolbar icons: blue when the view they open is showing.
+    private func iconLabel(_ symbol: String, on: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .medium))
+            .frame(width: 32, height: 26)
+            .foregroundStyle(on ? Color.white : Theme.dim)
+            .background(RoundedRectangle(cornerRadius: 3).fill(on ? Theme.accent : Theme.raised))
     }
 }

@@ -4,10 +4,12 @@ The app was written without a compiler. This is the order for bringing it up on 
 
 ## 1. Mac bring-up (Claude can do all of this)
 
+Status on 2026-10-29: steps 2, 3 and 6 pass. Step 4 is done for the iPhone Duo and 13-inch iPad sizes through `CheeksTests/LayoutSnapshots`, apart from the beat-grid menu. Step 5 found that the folded Duo cover screen doesn't fit. Step 7 waits on the signing team. Commands are in CLAUDE.md.
+
 1. **Prerequisites:** Xcode 16+ with an iOS 17+ simulator runtime, with the repo cloned on `master`.
 2. **Compile:** `xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'generic/platform=iOS Simulator' build`. Fix errors minimally; expect a handful.
 3. **Unit tests:** `xcodebuild test … -destination 'platform=iOS Simulator,name=<iPad>'`. All of `CheeksTests` should pass. Their expected values were cross-checked against a numpy port of the analysis code.
-4. **Simulator UI pass:** launch on a large iPad in landscape, the closest stand-in for an unfolded foldable. Take screenshots of:
+4. **Simulator UI pass:** render the screens at the iPhone Duo's unfolded size (951×669 pt) with the snapshot test, and on a large iPad. Take screenshots of:
    - the decks screen, empty and with two tracks loaded
    - the browser and an empty library
    - each pad mode
@@ -16,9 +18,9 @@ The app was written without a compiler. This is the order for bringing it up on 
 
    Check nothing is clipped or overlapping, and that controls are at least ~30 pt.
 5. **Smaller widths:** repeat on a smaller iPad and on the largest iPhone in landscape. Note any layout that breaks.
-6. **Profile in the simulator** (Instruments → Allocations). Load a 6-minute track on both decks, then separate stems:
-   - each loaded deck should add about 65 MB
-   - stems should add about 250 MB per 6-minute track
+6. **Profile in the simulator** (Instruments → Allocations, or the `MemoryFootprint` test). Load a 6-minute track on both decks, then separate stems:
+   - each loaded deck should add about 65 MB (measured: 60.6 MB)
+   - stems should add about 250 MB per 6-minute track (measured: 242 MB)
 7. **On the phone:** pick a signing team in Xcode once (the owner does this), plug in the phone, and run.
 
 ## 2. On-device checklist (owner: ears and fingers)

@@ -1,43 +1,59 @@
 import SwiftUI
 
+/// One deck, laid out like rekordbox's deck panel with the jog display made the main control:
+/// track info and overview on top, then tempo fader and CUE/PLAY on the outer edge (under the
+/// thumbs), the big jog, and the pads below. Deck 2 is mirrored so its controls are on the right.
 struct DeckView: View {
-    @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
 
-    private var color: Color { Theme.deckColors[deck.index] }
+    private var mirrored: Bool { deck.index == 1 }
 
     var body: some View {
-        VStack(spacing: 6) {
-            DeckHeader(deck: deck)
-            HStack(spacing: 8) {
-                VStack(spacing: 8) {
-                    JogWheel(deck: deck)
-                    HStack(spacing: 10) {
-                        PadButton(color: Theme.cue, lit: !deck.isPlaying && deck.isLoaded, cornerRadius: 22,
-                                  onPress: deck.cueDown, onRelease: deck.cueUp) {
-                            Text("CUE").font(.system(size: 13, weight: .heavy, design: .rounded))
-                        }
-                        PadButton(color: Theme.play, lit: deck.isPlaying, cornerRadius: 22, onPress: deck.togglePlay) {
-                            Image(systemName: "playpause.fill").font(.system(size: 16, weight: .bold))
+        VStack(spacing: 0) {
+            DeckInfo(deck: deck)
+            GeometryReader { geo in
+                let edge = min(76, max(48, geo.size.width * 0.14))
+                let bottom = min(210, max(96, geo.size.height * 0.28))
+                VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        if mirrored {
+                            JogArea(deck: deck, mirrored: true)
+                            TransportButtons(deck: deck).frame(width: edge)
+                            TempoColumn(deck: deck).frame(width: 34)
+                        } else {
+                            TempoColumn(deck: deck).frame(width: 34)
+                            TransportButtons(deck: deck).frame(width: edge)
+                            JogArea(deck: deck, mirrored: false)
                         }
                     }
-                    .frame(height: 44)
+                    VStack(spacing: 4) {
+                        HStack(spacing: 3) {
+                            if mirrored {
+                                LoopRow(deck: deck)
+                                Spacer(minLength: 6)
+                                PadModeMenu(deck: deck)
+                            } else {
+                                PadModeMenu(deck: deck)
+                                Spacer(minLength: 6)
+                                LoopRow(deck: deck)
+                            }
+                        }
+                        .frame(height: 26)
+                        PerformancePads(deck: deck)
+                    }
+                    .frame(height: bottom)
                 }
-                TempoColumn(deck: deck)
-                    .frame(width: 70)
+                .padding(6)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            LoopRow(deck: deck)
-            PerformancePads(deck: deck)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.25), lineWidth: 1))
+        .background(Theme.panel)
         .overlay {
             if deck.isLoading {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.6))
+                    Color.black.opacity(0.6)
                     VStack(spacing: 8) {
-                        ProgressView().tint(color)
+                        ProgressView().tint(Theme.accent)
                         Text("Loading & analysing…").font(.caption).foregroundStyle(Theme.dim)
                     }
                 }
@@ -46,96 +62,160 @@ struct DeckView: View {
     }
 }
 
-struct DeckHeader: View {
-    let deck: Deck
+/// The jog display with Q, SLIP and MT (key lock) tucked into the corners around it.
+struct JogArea: View {
+    @Bindable var deck: Deck
+    var mirrored: Bool
 
     var body: some View {
-        let color = Theme.deckColors[deck.index]
-        HStack(alignment: .top, spacing: 8) {
-            Text("\(deck.index + 1)")
-                .font(.system(size: 20, weight: .black, design: .rounded))
-                .frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 6).fill(color))
-                .foregroundStyle(.black)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(deck.track?.title ?? "No track loaded")
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                Text(deck.track?.artist.isEmpty == false ? deck.track!.artist : (deck.loadError ?? " "))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                    .lineLimit(1)
+        JogWheel(deck: deck)
+            .overlay(alignment: mirrored ? .topTrailing : .topLeading) {
+                ToggleChip(title: "Q", isOn: deck.quantize) { deck.quantize.toggle() }
             }
-            Spacer(minLength: 4)
-            if let key = deck.track?.key {
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(key + (deck.keyShift != 0 ? String(format: " %+d", deck.keyShift) : ""))
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color(red: 0.5, green: 1, blue: 0.6))
-                    Text(Camelot.musicalName(key)).font(.system(size: 10)).foregroundStyle(Theme.dim)
-                }
+            .overlay(alignment: mirrored ? .topLeading : .topTrailing) {
+                ToggleChip(title: "SLIP", isOn: deck.slipMode) { deck.slipMode.toggle() }
             }
-            // Tap the BPM to fix the beat grid.
-            Menu {
-                Section("Beat grid") {
-                    Button("Double BPM (×2)") { deck.scaleBPM(2) }
-                    Button("Halve BPM (÷2)") { deck.scaleBPM(0.5) }
-                    Button("BPM +0.1") { deck.nudgeBPM(by: 0.1) }
-                    Button("BPM −0.1") { deck.nudgeBPM(by: -0.1) }
-                    Button("Grid earlier 10 ms") { deck.shiftGrid(milliseconds: -10) }
-                    Button("Grid later 10 ms") { deck.shiftGrid(milliseconds: 10) }
-                    Button("Set downbeat here") { deck.setDownbeatHere() }
-                }
-                Button("Save cue as memory cue") { deck.saveMemoryCue() }
-            } label: {
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "--.--")
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                        .foregroundStyle(deck.syncOn ? Theme.sync : .white)
-                    Text(String(format: "%+.2f%%", deck.tempoRatioPercent))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.dim)
-                }
+            .overlay(alignment: mirrored ? .bottomLeading : .bottomTrailing) {
+                ToggleChip(title: "MT", isOn: deck.keyLock) { deck.keyLock.toggle() }
             }
-            .disabled(!deck.isLoaded)
-        }
     }
 }
 
-struct TempoColumn: View {
+/// rekordbox-style deck header: title, artist, BPM and key, times, BEAT SYNC, key shift, overview.
+struct DeckInfo: View {
     @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
 
     var body: some View {
-        VStack(spacing: 5) {
-            ToggleChip(title: "SYNC", isOn: deck.syncOn, color: Theme.sync) { dj.toggleSync(deck) }
-            ToggleChip(title: "KEY", isOn: deck.keyLock, color: .green) { deck.keyLock.toggle() }
-            HStack(spacing: 2) {
-                Button { deck.keyShift = max(-12, deck.keyShift - 1) } label: { Image(systemName: "minus") }
-                Text(deck.keyShift == 0 ? "♮" : String(format: "%+d", deck.keyShift))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                    .onTapGesture(count: 2) { deck.keyShift = 0 }
-                Button { deck.keyShift = min(12, deck.keyShift + 1) } label: { Image(systemName: "plus") }
+        VStack(spacing: 4) {
+            HStack(alignment: .top, spacing: 7) {
+                Text("\(deck.index + 1)")
+                    .font(Theme.legend(12, .semibold))
+                    .foregroundStyle(Theme.dim)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(deck.track?.title ?? "No track loaded")
+                        .font(.system(size: 14, weight: .medium))
+                        .lineLimit(1)
+                    HStack(spacing: 10) {
+                        Text(deck.track?.artist.isEmpty == false ? deck.track!.artist : (deck.loadError ?? " "))
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.dim)
+                            .lineLimit(1)
+                        gridMenu
+                    }
+                }
+                Spacer(minLength: 4)
+                VStack(alignment: .trailing, spacing: 3) {
+                    ToggleChip(title: "BEAT SYNC", isOn: deck.syncOn, height: 22) { dj.toggleSync(deck) }
+                    HStack(spacing: 8) {
+                        times
+                        keyShift
+                    }
+                }
             }
-            .font(.system(size: 10, weight: .bold))
-            .buttonStyle(.plain)
+            OverviewWaveform(deck: deck)
+                .frame(height: 28)
+        }
+        .padding(.horizontal, 7)
+        .padding(.top, 5)
+        .padding(.bottom, 4)
+        .background(Theme.panel)
+    }
+
+    /// Tap the BPM to fix the beat grid.
+    private var gridMenu: some View {
+        Menu {
+            Section("Beat grid") {
+                Button("Double BPM (×2)") { deck.scaleBPM(2) }
+                Button("Halve BPM (÷2)") { deck.scaleBPM(0.5) }
+                Button("BPM +0.1") { deck.nudgeBPM(by: 0.1) }
+                Button("BPM −0.1") { deck.nudgeBPM(by: -0.1) }
+                Button("Grid earlier 10 ms") { deck.shiftGrid(milliseconds: -10) }
+                Button("Grid later 10 ms") { deck.shiftGrid(milliseconds: 10) }
+                Button("Set downbeat here") { deck.setDownbeatHere() }
+            }
+            Button("Save cue as memory cue") { deck.saveMemoryCue() }
+        } label: {
+            HStack(spacing: 6) {
+                Text(deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "--.--")
+                Text(deck.track?.key.map(Camelot.musicalName) ?? "")
+            }
+            .font(Theme.readout(12))
             .foregroundStyle(.white)
-            TempoSlider(deck: deck)
+            .fixedSize()
+        }
+        .disabled(!deck.isLoaded)
+    }
+
+    /// Remaining time large, elapsed small. The playhead isn't observed, so poll it.
+    private var times: some View {
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            let remaining = deck.duration - deck.position
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(deck.isLoaded ? "-" + Self.tenths(remaining) : "--:--.-")
+                    .font(Theme.readout(17))
+                    .foregroundStyle(deck.isLoaded && remaining < 30 ? Color.red : Color.white)
+                Text(deck.isLoaded ? Self.tenths(deck.position) : "")
+                    .font(Theme.readout(11))
+                    .foregroundStyle(Theme.dim)
+            }
+            .fixedSize()
+        }
+    }
+
+    /// `‹ 8A ±0 ›`: the key after shifting, and the shift. Double-tap to reset.
+    private var keyShift: some View {
+        HStack(spacing: 2) {
+            Button { deck.keyShift = max(-12, deck.keyShift - 1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22) }
+            VStack(spacing: 0) {
+                Text(deck.track?.key.map { Self.shifted($0, by: deck.keyShift) } ?? "--")
+                    .font(Theme.readout(12, .medium))
+                Text(deck.keyShift == 0 ? "±0" : String(format: "%+d", deck.keyShift))
+                    .font(Theme.readout(9))
+                    .foregroundStyle(deck.keyShift == 0 ? Theme.dim : Theme.accent)
+            }
+            .frame(minWidth: 30)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { deck.keyShift = 0 }
+            Button { deck.keyShift = min(12, deck.keyShift + 1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22) }
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+    }
+
+    static func tenths(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "--:--.-" }
+        let t = Int(max(0, seconds) * 10)
+        return String(format: "%02d:%02d.%d", t / 600, t / 10 % 60, t % 10)
+    }
+
+    /// Each semitone up is seven steps round the Camelot wheel.
+    static func shifted(_ key: String, by semitones: Int) -> String {
+        guard let parsed = Camelot.parse(key) else { return key }
+        let (number, minor) = parsed
+        return "\(((number - 1 + 7 * semitones) % 12 + 12) % 12 + 1)\(minor ? "A" : "B")"
+    }
+}
+
+/// Outer-edge strip: tempo range above a full-height pitch fader.
+struct TempoColumn: View {
+    @Bindable var deck: Deck
+
+    var body: some View {
+        VStack(spacing: 4) {
             Button {
                 let ranges: [Double] = [6, 10, 16, 100]
                 deck.tempoRange = ranges[((ranges.firstIndex(of: deck.tempoRange) ?? 0) + 1) % ranges.count]
             } label: {
-                Text(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                Text(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))")
+                    .font(Theme.legend(10, .semibold))
                     .foregroundStyle(Theme.dim)
+                    .frame(maxWidth: .infinity, minHeight: 24)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
             }
             .buttonStyle(.plain)
-            HStack(spacing: 3) {
-                ToggleChip(title: "Q", isOn: deck.quantize, color: .red) { deck.quantize.toggle() }
-                ToggleChip(title: "SLIP", isOn: deck.slipMode, color: .purple) { deck.slipMode.toggle() }
-            }
-            .scaleEffect(0.85)
+            TempoSlider(deck: deck)
         }
     }
 }
@@ -148,22 +228,22 @@ struct TempoSlider: View {
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
+            let capH: CGFloat = 16
             let fraction = (deck.tempoRatioPercent / deck.tempoRange + 1) / 2 // 0 top … 1 bottom
             ZStack(alignment: .top) {
-                Capsule().fill(Color.black.opacity(0.6)).frame(width: 6).frame(maxWidth: .infinity)
-                Rectangle().fill(Color.green.opacity(0.7)).frame(width: 22, height: 1).offset(y: h / 2)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LinearGradient(colors: [Color(white: 0.75), Color(white: 0.45)], startPoint: .top, endPoint: .bottom))
-                    .overlay(Rectangle().fill(deck.syncOn ? Theme.sync : .white).frame(height: 2))
-                    .frame(width: 40, height: 22)
-                    .offset(y: CGFloat(min(1, max(0, fraction))) * (h - 22))
+                FaderScale(ticks: 10, inset: capH / 2, vertical: true)
+                Rectangle().fill(Color.white.opacity(0.3)).frame(width: 2).frame(maxWidth: .infinity)
+                Rectangle().fill(Theme.play).frame(width: 18, height: 2).offset(y: h / 2 - 1)
+                FaderCap(color: deck.syncOn ? Theme.accent : .black, vertical: true)
+                    .frame(width: min(28, geo.size.width), height: capH)
+                    .offset(y: CGFloat(min(1, max(0, fraction))) * (h - capH))
             }
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { g in
                         if dragStart == nil { dragStart = deck.tempoRatioPercent }
-                        let delta = Double(g.translation.height / (h - 22)) * deck.tempoRange * 2
+                        let delta = Double(g.translation.height / (h - capH)) * deck.tempoRange * 2
                         deck.setTempoManually(min(deck.tempoRange, max(-deck.tempoRange, dragStart! + delta)))
                     }
                     .onEnded { _ in dragStart = nil }
@@ -173,23 +253,44 @@ struct TempoSlider: View {
     }
 }
 
+/// rekordbox's round CUE and PLAY buttons, at the bottom of the edge column where the thumb rests.
+struct TransportButtons: View {
+    let deck: Deck
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Spacer(minLength: 0)
+            RoundButton(color: Theme.cue, lit: !deck.isPlaying && deck.isLoaded, onPress: deck.cueDown, onRelease: deck.cueUp) {
+                Text("CUE").font(Theme.legend(13, .semibold))
+            }
+            RoundButton(color: Theme.play, lit: deck.isPlaying, onPress: deck.togglePlay) {
+                Image(systemName: deck.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 18))
+            }
+        }
+    }
+}
+
+/// Loop controls, as in rekordbox's deck: IN, OUT, RELOOP, then ‹ beat-loop size ›.
 struct LoopRow: View {
     let deck: Deck
 
     var body: some View {
-        HStack(spacing: 4) {
-            PadButton("IN", color: Theme.loop, onPress: deck.loopIn)
-            PadButton("OUT", color: Theme.loop, onPress: deck.loopOut)
+        HStack(spacing: 3) {
+            PadButton("IN", color: Theme.loop, onPress: deck.loopIn).frame(width: 34)
+            PadButton("OUT", color: Theme.loop, onPress: deck.loopOut).frame(width: 38)
             PadButton(deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive) {
                 deck.loopActive ? deck.exitLoop() : deck.reloop()
             }
-            PadButton("½", color: .white, onPress: deck.halveLoop)
-            PadButton(color: Theme.loop, lit: deck.loopActive, onPress: { deck.toggleBeatLoop(deck.loopBeats) }) {
-                Text(beatLabel(deck.loopBeats)).font(.system(size: 13, weight: .heavy, design: .monospaced))
+            .frame(width: 54)
+            PadButton(color: .white, onPress: deck.halveLoop) { Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)) }
+                .frame(width: 26)
+            PadButton(color: .white, lit: deck.loopActive, onPress: { deck.toggleBeatLoop(deck.loopBeats) }) {
+                Text(beatLabel(deck.loopBeats)).font(Theme.readout(14, .medium))
             }
-            PadButton("×2", color: .white, onPress: deck.doubleLoop)
+            .frame(width: 38)
+            PadButton(color: .white, onPress: deck.doubleLoop) { Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)) }
+                .frame(width: 26)
         }
-        .frame(height: 30)
     }
 }
 

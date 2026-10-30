@@ -89,7 +89,7 @@ Separation runs in the background when you first touch a stem pad, then swaps in
 Run them with ⌘U in Xcode, or:
 
 ```sh
-xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)'
+xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
 ## Code map

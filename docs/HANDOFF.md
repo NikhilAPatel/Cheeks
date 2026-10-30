@@ -4,10 +4,40 @@ You're picking up **Cheeks**, a standalone iOS DJ app. Until now it was written 
 
 Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features), `docs/TEST_PLAN.md` (what to do now) and `docs/ROADMAP.md` (what comes after).
 
+## Status after the first Mac session (2026-10-29)
+
+**Proven on the Mac:**
+- It compiled on the first try, with no errors and no Swift warnings (Xcode 27.2).
+- All 21 unit tests pass. No expected values needed changing.
+- It launches in the simulator with no AVAudioEngine assertions; the fan-out graph starts cleanly.
+- Memory for a 6-minute track, measured with `CheeksTests/MemoryFootprint`:
+  - decoding onto a deck adds 60.6 MB (exactly the Int16 PCM)
+  - analysis adds 0.2 MB
+  - four stems add 242 MB
+  - the process peak equals the final figure, so there are no hidden spikes
+- **The UI was redesigned at the owner's request to look like rekordbox**, with big jog displays as the centre of each deck (see CLAUDE.md → UI style).
+  - The owner rejected the first layout as "very ugly", a glossier hardware look as "still ugly", and a flat version as "low quality / lacking detail".
+  - What they want is rekordbox's density: thin lines, small type, lots of small real indicators. Don't drift back to big, flat, empty shapes.
+
+**Still open:**
+- **Install on the phone** once the owner picks a signing team, then hand them TEST_PLAN §2.
+- **The folded cover screen** (678×466 pt) overflows. The fixed-width toolbars don't fit, and it needs its own compact layout. Ask the owner whether they ever use it folded before building one.
+- **Not yet checked:** the beat-grid menu (menus can't be snapshotted), audio playback by ear, two real tracks loaded through the UI, and the in-app Allocations instrument. These need the simulator panel (`sudo xcode-select -s …`, see CLAUDE.md) or the phone.
+- **Log warnings at launch, harmless for now:**
+  - `AVAudioSession` "Hang Risk": `setActive` runs on the main thread. Move to the async activation API.
+  - iOS 27 says `UIRequiresFullScreen` "will soon be ignored" and that all orientations will soon be required. A landscape-only app may be forced to handle portrait or resizing in a later iOS.
+
+**Surprises worth knowing:**
+- The iPhone Duo is a real simulator here (iOS 27.2).
+  - Inner screen: 2007×2853 px @3x, which is **669×951 pt (951×669 landscape)**.
+  - Cover screen: 466×678 pt.
+  - It boots folded and `simctl` can't unfold it, so the layout snapshot test is the way to see the unfolded size.
+- Xcode 27 ships no standalone Simulator.app.
+
 ---
 
 ## 1. The owner and what they want
-- **Device:** an "iPhone duo" (their name for it), used **unfolded, in landscape**. The app is designed for a wide landscape screen. Confirm the real screen size: check whether Xcode has a simulator for it. If not, use a large iPad in landscape as the stand-in and ask the owner for the device's resolution.
+- **Device:** an iPhone Duo, used **unfolded, in landscape**: 951×669 pt (see Status above). Design for that size first; the 13-inch iPad is a larger check.
 - **Goal:** a **fully functional, pro-level DJ app in the style of rekordbox**, used **entirely on the phone with no controller**, with pro features like stems. The name "rekordbox" is trademarked, so the app is called Cheeks after the repo.
 - **Out of scope by the owner's choice:** hardware (MIDI/controllers, audio interfaces, CDJ link, DVS) and streaming services.
 - **Called out as important:** recording a session, including the tracklist.
@@ -64,7 +94,7 @@ Reviewers judged these fine but flagged them as worth a look:
 
 **Fix minimally, in the style of the surrounding code.** Note anything surprising in this file for the next person.
 
-## 6. Your first session (definition of done)
+## 6. The first session's checklist (items 1–4 and 6 done; see Status)
 Follow `docs/TEST_PLAN.md` §1:
 1. **Clean build** for the simulator.
 2. **All `CheeksTests` pass.** If an expected value is wrong, check it against the Python ports before changing it.
@@ -87,6 +117,6 @@ Work through `docs/ROADMAP.md` Phase 1 in order. The biggest gap is **real AI st
 - **Keep the docs current:** `README.md`, `docs/TEST_PLAN.md`, `docs/ROADMAP.md`, and this file.
 
 ## 9. Open questions for the owner
-- The exact device ("iPhone duo") and its unfolded resolution. Does it also need to work folded?
+- Does the app need to work folded, on the 678×466 cover screen? It currently doesn't fit there.
 - Which roadmap items they want first after bring-up. AI stems is the recommendation.
 - How they'll import music (Files, iCloud Drive, a rekordbox XML export), so you can test that path first.

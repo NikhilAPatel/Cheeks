@@ -1,37 +1,22 @@
 import SwiftUI
 
-/// Two-channel DJ mixer: trim, 3-band EQ with kill, filter, faders, meters, crossfader and Beat FX.
+/// The two-channel mixer column between the decks, as in rekordbox: trim, 3-band EQ, filter,
+/// headphone CUE and the channel faders, with the level meters between them.
 struct MixerView: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
-        @Bindable var dj = dj
         GeometryReader { geo in
-            let knob = min(40, max(24, geo.size.height / 15))
-            VStack(spacing: 6) {
-                HStack(alignment: .top, spacing: 4) {
-                    ChannelStrip(deck: dj.decks[0], knobSize: knob)
-                    VStack(spacing: 6) {
-                        Text("MASTER").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.dim)
-                        LevelMeter(level: dj.masterLevel).frame(width: 8)
-                        Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "VOL", size: knob * 0.8)
-                    }
-                    .frame(width: 34)
-                    ChannelStrip(deck: dj.decks[1], knobSize: knob)
-                }
-                HStack(spacing: 8) {
-                    ToggleChip(title: "SPLIT", isOn: dj.splitCue, color: .orange) { dj.splitCue.toggle() }
-                    Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE·MST", color: .orange, size: 24)
-                    Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "PHONES", color: .orange, size: 24)
-                }
-                BeatFXPanel()
-                Crossfader(value: $dj.crossfader)
-                    .frame(height: 34)
+            let knob = min(38, max(24, geo.size.height / 16))
+            HStack(alignment: .top, spacing: 2) {
+                ChannelStrip(deck: dj.decks[0], knobSize: knob)
+                ChannelStrip(deck: dj.decks[1], knobSize: knob)
             }
-            .padding(8)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
             .frame(width: geo.size.width, height: geo.size.height)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
         }
+        .background(Theme.panel)
     }
 }
 
@@ -40,80 +25,159 @@ struct ChannelStrip: View {
     var knobSize: CGFloat
 
     var body: some View {
-        let color = Theme.deckColors[deck.index]
         VStack(spacing: 4) {
-            Knob(value: $deck.trim, label: "TRIM", color: .gray, size: knobSize * 0.8)
-            Knob(value: $deck.eqHigh, label: "HI", color: color, size: knobSize)
-            Knob(value: $deck.eqMid, label: "MID", color: color, size: knobSize)
-            Knob(value: $deck.eqLow, label: "LOW", color: color, size: knobSize)
-            Knob(value: $deck.filter, label: "FILTER", color: .yellow, size: knobSize)
+            Knob(value: $deck.trim, label: "TRIM", color: Theme.dim, size: knobSize * 0.85)
+            Knob(value: $deck.eqHigh, label: "HIGH", size: knobSize)
+            Knob(value: $deck.eqMid, label: "MID", size: knobSize)
+            Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
+            Knob(value: $deck.filter, label: "FILTER", size: knobSize)
             Button { deck.headphoneCue.toggle() } label: {
-                Image(systemName: "headphones")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 38, height: 22)
-                    .foregroundStyle(deck.headphoneCue ? Color.black : Color.orange)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(deck.headphoneCue ? Color.orange : Theme.raised))
+                Text("CUE")
+                    .font(Theme.legend(11, .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 26)
+                    .foregroundStyle(deck.headphoneCue ? Color.white : Theme.dim)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(deck.headphoneCue ? Theme.accent : Theme.raised))
             }
             .buttonStyle(.plain)
+            // Meters sit between the two faders.
             HStack(spacing: 4) {
-                LevelMeter(level: deck.level).frame(width: 6)
-                VerticalFader(value: $deck.fader, color: color)
+                if deck.index == 0 {
+                    VerticalFader(value: $deck.fader)
+                    LevelMeter(level: deck.level).frame(width: 5)
+                } else {
+                    LevelMeter(level: deck.level).frame(width: 5)
+                    VerticalFader(value: $deck.fader)
+                }
             }
+            .padding(.top, 2)
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity)
     }
 }
 
-struct BeatFXPanel: View {
+/// rekordbox's FX unit in Beat FX mode: channel assign, level, effect, beat length, on.
+struct FXUnit: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
         @Bindable var dj = dj
-        VStack(spacing: 4) {
-            HStack(spacing: 3) {
-                ForEach(BeatFX.allCases) { fx in
-                    Button { dj.fxType = fx } label: {
-                        Text(fx.rawValue)
-                            .font(.system(size: 8, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(maxWidth: .infinity, minHeight: 18)
-                            .foregroundStyle(dj.fxType == fx ? Color.black : Theme.dim)
-                            .background(RoundedRectangle(cornerRadius: 4).fill(dj.fxType == fx ? Color.white : Theme.raised))
+        HStack(spacing: 5) {
+            Text("FX").font(Theme.legend(12, .semibold)).foregroundStyle(Theme.dim)
+            HStack(spacing: 2) {
+                // 0 = deck 1, 1 = deck 2, 2 = both (rekordbox's M, for master)
+                ForEach(0..<3, id: \.self) { target in
+                    Button { dj.fxTarget = target } label: {
+                        Text(["1", "2", "M"][target])
+                            .font(Theme.legend(11, .semibold))
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(dj.fxTarget == target ? Color.white : Theme.dim)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(dj.fxTarget == target ? Theme.accent : Theme.raised))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            HStack(spacing: 4) {
-                Button { step(-1) } label: { Image(systemName: "chevron.left") }
-                Text(beatLabel(dj.fxBeats))
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                Button { step(1) } label: { Image(systemName: "chevron.right") }
-                Picker("Channel", selection: $dj.fxTarget) {
-                    Text("1").tag(0)
-                    Text("2").tag(1)
-                    Text("1+2").tag(2)
+            Knob(value: $dj.fxLevel, range: 0...1, defaultValue: 0.5, label: "", size: 24)
+            Menu {
+                Picker("Effect", selection: $dj.fxType) {
+                    ForEach(BeatFX.allCases) { Text($0.rawValue).tag($0) }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 84)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(dj.fxType.rawValue).font(Theme.legend(11, .semibold))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .frame(width: 84, height: 24)
+                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
             }
+            HStack(spacing: 0) {
+                Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 24) }
+                Text(beatLabel(dj.fxBeats))
+                    .font(Theme.readout(12, .medium))
+                    .frame(minWidth: 30)
+                Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 24) }
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
             .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .bold))
-            HStack(spacing: 6) {
-                Knob(value: $dj.fxLevel, range: 0...1, defaultValue: 0.5, label: "LEVEL", color: .pink, size: 28)
-                PadButton(dj.fxOn ? "FX ON" : "FX OFF", color: .pink, lit: dj.fxOn, onPress: { dj.fxOn.toggle() })
-                    .frame(height: 34)
-            }
+            ToggleChip(title: "ON", isOn: dj.fxOn, height: 24) { dj.fxOn.toggle() }
         }
-        .padding(6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
+        .fixedSize()
     }
 
     private func step(_ direction: Int) {
         let choices = DJEngine.fxBeatChoices
         let i = choices.firstIndex(of: dj.fxBeats) ?? 2
         dj.fxBeats = choices[min(choices.count - 1, max(0, i + direction))]
+    }
+}
+
+/// rekordbox's bottom row: headphones on the left, the crossfader under the mixer,
+/// master level and recording on the right.
+struct BottomBar: View {
+    @Environment(DJEngine.self) private var dj
+    var crossfaderWidth: CGFloat
+    @State private var confirmStopRecording = false
+
+    var body: some View {
+        @Bindable var dj = dj
+        HStack(spacing: 8) {
+            Image(systemName: "headphones").font(.system(size: 14)).foregroundStyle(Theme.dim)
+            Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "", size: 24)
+            legend("MIX")
+            Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "", size: 24)
+            legend("LEVEL")
+            ToggleChip(title: "SPLIT", isOn: dj.splitCue, height: 24) { dj.splitCue.toggle() }
+            Spacer(minLength: crossfaderWidth + 40)
+            legend("MASTER")
+            Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "", size: 24)
+            LevelMeter(level: dj.masterLevel, horizontal: true).frame(width: 80, height: 7)
+            recordButton
+        }
+        .overlay {
+            HStack(spacing: 6) {
+                legend("1")
+                Crossfader(value: $dj.crossfader).frame(width: crossfaderWidth)
+                legend("2")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(Theme.panel)
+    }
+
+    private func legend(_ text: String) -> some View {
+        Text(text).font(Theme.legend(10)).foregroundStyle(Theme.dim)
+    }
+
+    /// Stopping asks first, so a stray tap can't end a set's recording.
+    private var recordButton: some View {
+        Button {
+            if dj.isRecording { confirmStopRecording = true } else { dj.toggleRecording() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle().fill(dj.isRecording ? Color.red : Color.red.opacity(0.45)).frame(width: 12, height: 12)
+                if let started = dj.recordingStarted {
+                    Text(started, style: .timer).font(Theme.readout(12))
+                    if !dj.setlist.isEmpty {
+                        Text("· \(dj.setlist.count) tracks").font(Theme.legend(10)).foregroundStyle(Theme.dim)
+                    }
+                } else {
+                    Text("REC").font(Theme.legend(11, .semibold))
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(minHeight: 26)
+            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+        }
+        .buttonStyle(.plain)
+        .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
+            // It may have stopped by itself (storage full) while this was open; don't start a new one.
+            Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
+            Button("Keep recording", role: .cancel) {}
+        }
     }
 }

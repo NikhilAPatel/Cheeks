@@ -9,40 +9,34 @@ struct PerformancePads: View {
     private let jumpSizes: [Double] = [1, 4, 16, 32]
 
     var body: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 4) {
-                ForEach(PadMode.allCases) { mode in
-                    Button { deck.padMode = mode } label: {
-                        Text(mode.rawValue)
-                            .font(.system(size: 9, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                            .frame(maxWidth: .infinity, minHeight: 20)
-                            .foregroundStyle(deck.padMode == mode ? Color.black : Theme.dim)
-                            .background(RoundedRectangle(cornerRadius: 4).fill(deck.padMode == mode ? Color.white : Theme.raised))
-                    }
-                    .buttonStyle(.plain)
-                }
-                ToggleChip(title: "SHIFT", isOn: deck.shift, color: .yellow) { deck.shift.toggle() }
-            }
-            Grid(horizontalSpacing: 5, verticalSpacing: 5) {
-                GridRow { ForEach(0..<4, id: \.self) { pad($0) } }
-                GridRow { ForEach(4..<8, id: \.self) { pad($0) } }
-            }
-            .overlay(alignment: .center) { stemStatusOverlay }
+        Grid(horizontalSpacing: 3, verticalSpacing: 3) {
+            GridRow { ForEach(0..<4, id: \.self) { pad($0) } }
+            GridRow { ForEach(4..<8, id: \.self) { pad($0) } }
         }
+        .overlay(alignment: .center) { stemStatusOverlay }
     }
 
     @ViewBuilder
     private func pad(_ i: Int) -> some View {
         switch deck.padMode {
         case .hotCue:
+            // rekordbox's hot cue list: a coloured letter tag, then the cue's time.
             let time = deck.track?.hotCues[i]
-            PadButton(color: Theme.hotCueColors[i], lit: time != nil, onPress: { deck.hotCue(i) }) {
-                VStack(spacing: 0) {
-                    Text(Theme.hotCueLetters[i]).font(.system(size: 15, weight: .heavy, design: .rounded))
-                    if let time { Text(time.clockString).font(.system(size: 8, design: .monospaced)) }
+            let color = Theme.hotCueColors[i]
+            PadButton(color: color, onPress: { deck.hotCue(i) }) {
+                HStack(spacing: 6) {
+                    Text(Theme.hotCueLetters[i])
+                        .font(Theme.legend(11, .bold))
+                        .foregroundStyle(time != nil ? Color.white : color)
+                        .frame(width: 17, height: 17)
+                        .background(RoundedRectangle(cornerRadius: 2).fill(time != nil ? color : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(color.opacity(time != nil ? 0 : 0.6), lineWidth: 1))
+                    Text(time.map(\.clockString) ?? "")
+                        .font(Theme.readout(12))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 6)
             }
         case .beatLoop:
             let size = loopSizes[i]
@@ -93,5 +87,31 @@ struct PerformancePads: View {
                 EmptyView()
             }
         }
+    }
+}
+
+/// rekordbox's pad mode dropdown ("HOT CUE ▾"), plus SHIFT for deleting cues.
+struct PadModeMenu: View {
+    @Bindable var deck: Deck
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Menu {
+                Picker("Pad mode", selection: $deck.padMode) {
+                    ForEach(PadMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(deck.padMode.rawValue).font(Theme.legend(11, .semibold))
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .frame(minWidth: 84, minHeight: 26)
+                .background(RoundedRectangle(cornerRadius: 3).fill(Theme.raised))
+            }
+            ToggleChip(title: "SHIFT", isOn: deck.shift, color: Theme.cue) { deck.shift.toggle() }
+        }
+        .fixedSize()
     }
 }

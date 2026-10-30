@@ -47,7 +47,7 @@ struct ScrollingWaveform: View {
 
     private func draw(_ context: inout GraphicsContext, size: CGSize) {
         let w = size.width, h = size.height, midY = h / 2
-        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.panel))
+        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.well))
         guard let wave = deck.waveform, deck.isLoaded else { return }
 
         let sr = deck.sampleRate
@@ -63,39 +63,53 @@ struct ScrollingWaveform: View {
             context.fill(Path(CGRect(x: x0, y: 0, width: x1 - x0, height: h)), with: .color(Theme.loop.opacity(0.18)))
         }
 
-        // Waveform: low (blue) outermost, mid (amber), high (white) innermost
+        // Waveform: low (blue) outermost, mid (amber), high (white) innermost, each a smooth
+        // mirrored envelope through the bin peaks rather than blocky bars
         let bps = WaveformData.binsPerSecond
         let firstBin = max(0, Int(start * bps))
-        let lastBin = min(wave.count - 1, Int((start + secondsVisible) * bps))
-        if firstBin <= lastBin {
-            var low = Path(), mid = Path(), high = Path()
-            let binWidth = max(1, pxPerSecond / bps)
-            for b in firstBin...lastBin {
-                let bx = x(Double(b) / bps)
-                let l = CGFloat(wave.low[b]) / 255 * midY
-                let m = CGFloat(wave.mid[b]) / 255 * midY
-                let hi = CGFloat(wave.high[b]) / 255 * midY
-                low.addRect(CGRect(x: bx, y: midY - l, width: binWidth, height: l * 2))
-                mid.addRect(CGRect(x: bx, y: midY - m * 0.8, width: binWidth, height: m * 1.6))
-                high.addRect(CGRect(x: bx, y: midY - hi * 0.6, width: binWidth, height: hi * 1.2))
+        let lastBin = min(wave.count - 1, Int((start + secondsVisible) * bps) + 1)
+        if firstBin < lastBin {
+            func envelope(_ values: [UInt8], _ scale: CGFloat) -> Path {
+                var top: [CGPoint] = [], bottom: [CGPoint] = []
+                top.reserveCapacity(lastBin - firstBin + 1)
+                bottom.reserveCapacity(lastBin - firstBin + 1)
+                for b in firstBin...lastBin {
+                    let bx = x(Double(b) / bps)
+                    let v = CGFloat(values[b]) / 255 * (midY - 1) * scale
+                    top.append(CGPoint(x: bx, y: midY - v))
+                    bottom.append(CGPoint(x: bx, y: midY + v))
+                }
+                var path = Path()
+                path.addLines(top + bottom.reversed())
+                path.closeSubpath()
+                return path
             }
-            context.fill(low, with: .color(Theme.waveLow))
-            context.fill(mid, with: .color(Theme.waveMid))
-            context.fill(high, with: .color(Theme.waveHigh.opacity(0.9)))
+            context.fill(envelope(wave.low, 1), with: .color(Theme.waveLow))
+            context.fill(envelope(wave.mid, 0.8), with: .color(Theme.waveMid))
+            context.fill(envelope(wave.high, 0.55), with: .color(Theme.waveHigh))
         }
 
-        // Beat grid (bar lines in red every 4 beats)
+        // Beat grid as rekordbox draws it: faint lines on every beat, red marks top and bottom on each bar
         if deck.bpm > 0 {
             let beat = 60 / deck.bpm
             let first = deck.track?.firstBeat ?? 0
             var k = ((start - first) / beat).rounded(.up)
+            var beats = Path(), bars = Path()
             while first + k * beat < start + secondsVisible {
                 let bx = x(first + k * beat)
-                let isBar = (Int(k) % 4 + 4) % 4 == 0
-                context.fill(Path(CGRect(x: bx, y: 0, width: isBar ? 1.5 : 1, height: isBar ? h : h * 0.12)),
-                             with: .color(isBar ? .red.opacity(0.8) : .white.opacity(0.5)))
+                beats.addRect(CGRect(x: bx, y: 0, width: 1, height: h))
+                if (Int(k) % 4 + 4) % 4 == 0 {
+                    bars.move(to: CGPoint(x: bx - 4, y: 0))
+                    bars.addLine(to: CGPoint(x: bx + 4, y: 0))
+                    bars.addLine(to: CGPoint(x: bx, y: 6))
+                    bars.move(to: CGPoint(x: bx - 4, y: h))
+                    bars.addLine(to: CGPoint(x: bx + 4, y: h))
+                    bars.addLine(to: CGPoint(x: bx, y: h - 6))
+                }
                 k += 1
             }
+            context.fill(beats, with: .color(.white.opacity(0.22)))
+            context.fill(bars, with: .color(.red))
         }
 
         // Hot cues and cue point
@@ -115,8 +129,16 @@ struct ScrollingWaveform: View {
         tri.addLine(to: CGPoint(x: cueX, y: h - 8))
         context.fill(tri, with: .color(Theme.cue))
 
-        // Playhead
+        // Playhead, with the bar and beat it's on (rekordbox shows its bar count in blue here)
         context.fill(Path(CGRect(x: w / 2 - 1, y: 0, width: 2, height: h)), with: .color(.white))
+        if deck.bpm > 0 {
+            let beats = (pos - (deck.track?.firstBeat ?? 0)) / (60 / deck.bpm)
+            if beats >= 0 {
+                let label = "\(Int(beats / 4) + 1).\(Int(beats.truncatingRemainder(dividingBy: 4)) + 1) Bars"
+                context.draw(Text(label).font(Theme.readout(10, .semibold)).foregroundStyle(Theme.accent),
+                             at: CGPoint(x: w / 2 - 4, y: 8), anchor: .trailing)
+            }
+        }
     }
 }
 
@@ -140,33 +162,61 @@ struct OverviewWaveform: View {
         }
     }
 
+    /// rekordbox's overview: a one-sided 3-band waveform, grey where it has played,
+    /// with lettered hot cue flags along the top and the memory cue as a red marker.
     private func draw(_ context: inout GraphicsContext, size: CGSize) {
-        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color.black.opacity(0.5)))
+        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.well))
         guard let wave = deck.waveform, deck.isLoaded, wave.count > 0 else { return }
-        let columns = max(1, Int(size.width / 2))
+        let flag: CGFloat = 10
+        let base = size.height, height = size.height - flag
+        let columns = max(1, Int(size.width))
         let binsPerColumn = max(1, wave.count / columns)
         let progress = deck.position / max(deck.duration, 0.001)
-        let midY = size.height / 2
-        var played = Path(), upcoming = Path()
+        var played = Path(), low = Path(), mid = Path(), high = Path()
+        func bar(_ x: CGFloat, _ value: UInt8, _ scale: CGFloat) -> CGRect {
+            let hgt = max(1, CGFloat(value) / 255 * height * scale)
+            return CGRect(x: x, y: base - hgt, width: 1, height: hgt)
+        }
         for c in 0..<columns {
             let start = c * binsPerColumn
             guard start < wave.count else { break }
-            var peak: UInt8 = 0
+            var l: UInt8 = 0, m: UInt8 = 0, hi: UInt8 = 0
             for b in start..<min(start + binsPerColumn, wave.count) {
-                peak = max(peak, wave.low[b], wave.mid[b], wave.high[b])
+                l = max(l, wave.low[b])
+                m = max(m, wave.mid[b])
+                hi = max(hi, wave.high[b])
             }
-            let hgt = CGFloat(peak) / 255 * midY
-            let rect = CGRect(x: CGFloat(c) * 2, y: midY - hgt, width: 1.5, height: max(1, hgt * 2))
-            if Double(c) / Double(columns) < progress { played.addRect(rect) } else { upcoming.addRect(rect) }
+            let x = CGFloat(c)
+            if Double(c) / Double(columns) < progress {
+                played.addRect(bar(x, max(l, m, hi), 1))
+            } else {
+                low.addRect(bar(x, l, 1))
+                mid.addRect(bar(x, m, 0.8))
+                high.addRect(bar(x, hi, 0.55))
+            }
         }
-        context.fill(played, with: .color(Color.white.opacity(0.3)))
-        context.fill(upcoming, with: .color(Theme.deckColors[deck.index].opacity(0.85)))
+        context.fill(played, with: .color(Color(white: 0.4)))
+        context.fill(low, with: .color(Theme.waveLow))
+        context.fill(mid, with: .color(Theme.waveMid))
+        context.fill(high, with: .color(Theme.waveHigh))
 
         for (slot, time) in deck.track?.hotCues ?? [:] {
             let cx = CGFloat(time / deck.duration) * size.width
-            context.fill(Path(CGRect(x: cx, y: 0, width: 2, height: size.height)), with: .color(Theme.hotCueColors[slot % 8]))
+            let color = Theme.hotCueColors[slot % 8]
+            context.fill(Path(CGRect(x: cx, y: 0, width: 1, height: size.height)), with: .color(color))
+            context.fill(Path(CGRect(x: cx, y: 0, width: 10, height: flag)), with: .color(color))
+            context.draw(Text(Theme.hotCueLetters[slot % 8]).font(.system(size: 8, weight: .bold)).foregroundStyle(.white),
+                         at: CGPoint(x: cx + 5, y: flag / 2))
         }
-        let px = CGFloat(progress) * size.width
-        context.fill(Path(CGRect(x: px - 1, y: 0, width: 2, height: size.height)), with: .color(.red))
+        if let memory = deck.track?.memoryCue {
+            let mx = CGFloat(memory / deck.duration) * size.width
+            var tri = Path()
+            tri.move(to: CGPoint(x: mx - 4, y: 0))
+            tri.addLine(to: CGPoint(x: mx + 4, y: 0))
+            tri.addLine(to: CGPoint(x: mx, y: 6))
+            context.fill(tri, with: .color(.red))
+        }
+        let px = CGFloat(min(1, progress)) * size.width
+        context.fill(Path(CGRect(x: px - 1, y: 0, width: 2, height: size.height)), with: .color(.white))
     }
 }
