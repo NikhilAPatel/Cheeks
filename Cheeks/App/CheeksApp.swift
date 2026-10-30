@@ -26,8 +26,10 @@ struct CheeksApp: App {
             if phase == .active {
                 library.importInbox() // pick up files added through the Files app
                 dj.startAudio()
+                Haptics.shared.start()
             } else if phase == .background {
                 library.saveNow()
+                Haptics.shared.stop()
             }
         }
     }

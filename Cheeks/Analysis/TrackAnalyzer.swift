@@ -2,7 +2,9 @@ import Foundation
 
 /// rekordbox-style 3-band waveform: per bin peak level of low / mid / high frequencies.
 struct WaveformData {
-    static let binsPerSecond = 150.0
+    static let binsPerSecond = 300.0
+    /// Bumped when the format or its contents change, so stale caches get recomputed.
+    private static let magic: UInt32 = 0x4348_5732
     var low: [UInt8]
     var mid: [UInt8]
     var high: [UInt8]
@@ -10,8 +12,8 @@ struct WaveformData {
 
     func encoded() -> Data {
         var data = Data()
-        var n = UInt32(count)
-        withUnsafeBytes(of: &n) { data.append(contentsOf: $0) }
+        var header = [Self.magic, UInt32(count)]
+        header.withUnsafeBytes { data.append(contentsOf: $0) }
         data.append(contentsOf: low)
         data.append(contentsOf: mid)
         data.append(contentsOf: high)
@@ -23,13 +25,44 @@ struct WaveformData {
     }
 
     init?(data: Data) {
-        guard data.count >= 4 else { return nil }
-        let n = Int(data.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) })
-        guard data.count == 4 + n * 3 else { return nil }
-        let bytes = [UInt8](data.dropFirst(4))
+        guard data.count >= 8 else { return nil }
+        let (magic, count) = data.withUnsafeBytes { ($0.loadUnaligned(fromByteOffset: 0, as: UInt32.self), $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
+        let n = Int(count)
+        guard magic == Self.magic, data.count == 8 + n * 3 else { return nil }
+        let bytes = [UInt8](data.dropFirst(8))
         low = Array(bytes[0..<n])
         mid = Array(bytes[n..<(2 * n)])
         high = Array(bytes[(2 * n)..<(3 * n)])
+    }
+}
+
+/// A waveform per stem, in `Stem.allCases` order, computed once a track has been split.
+struct StemWaveformData {
+    var levels: [[UInt8]]
+    var count: Int { levels.first?.count ?? 0 }
+
+    /// Peak level per bin of each stem, all on one scale, so their relative sizes mean something.
+    init(stems: [PCM16Stereo]) {
+        let binSize = max(1, Int(AudioConfig.sampleRate / WaveformData.binsPerSecond))
+        var peaks: [[Int32]] = []
+        var overall: Int32 = 1
+        for stem in stems {
+            let bins = stem.frames / binSize
+            var values = [Int32](repeating: 0, count: bins)
+            let data = stem.data
+            values.withUnsafeMutableBufferPointer { out in
+                for b in 0..<bins {
+                    var high: Int32 = 0
+                    for i in (b * binSize)..<((b + 1) * binSize) {
+                        high = max(high, abs(Int32(data[i * 2])), abs(Int32(data[i * 2 + 1])))
+                    }
+                    out[b] = high
+                }
+            }
+            overall = max(overall, values.max() ?? 0)
+            peaks.append(values)
+        }
+        levels = peaks.map { values in values.map { UInt8(min(255, $0 * 255 / overall)) } }
     }
 }
 
@@ -37,6 +70,8 @@ struct AnalysisResult {
     var bpm: Double
     var firstBeat: Double
     var key: String?
+    /// Integrated loudness in LUFS.
+    var loudness: Double?
     var waveform: WaveformData
 }
 
@@ -61,6 +96,8 @@ enum TrackAnalyzer {
         var energyLow = [Float](repeating: 0, count: hops)
         var keySignal = [Float](repeating: 0, count: keyCount)
 
+        var loudness = LoudnessMeter(sampleRate: sr)
+
         // 4th-order filters are two cascaded biquads.
         let wl = Biquad.lowpass(200, sampleRate: sr), wh = Biquad.highpass(2500, sampleRate: sr)
         let tl = Biquad.lowpass(150, sampleRate: sr)
@@ -68,7 +105,9 @@ enum TrackAnalyzer {
         var keyLow = Biquad.lowpass(2500, sampleRate: sr)
 
         for i in 0..<n {
-            let m = (pcm.left(i) + pcm.right(i)) * 0.5
+            let left = pcm.left(i), right = pcm.right(i)
+            loudness.add(left, right)
+            let m = (left + right) * 0.5
             let b = i / binSize
             if b < bins {
                 let l = waveLow.1.process(waveLow.0.process(m))
@@ -90,13 +129,15 @@ enum TrackAnalyzer {
         }
 
         let peak = max(low.max() ?? 0, mid.max() ?? 0, high.max() ?? 0, 0.0001)
-        func quantize(_ values: [Float]) -> [UInt8] {
-            values.map { UInt8(min(255, ($0 / peak) * 255)) }
+        // Highs are always small next to bass; lifting them makes them readable on screen, as
+        // rekordbox does.
+        func quantize(_ values: [Float], lift: Float = 1) -> [UInt8] {
+            values.map { UInt8(min(255, ($0 / peak) * lift * 255)) }
         }
-        let waveform = WaveformData(low: quantize(low), mid: quantize(mid), high: quantize(high))
+        let waveform = WaveformData(low: quantize(low), mid: quantize(mid, lift: 1.1), high: quantize(high, lift: 1.5))
         let (bpm, firstBeat) = detectTempo(energyFull: energyFull, energyLow: energyLow, sampleRate: sr)
         let key = KeyDetector.detect(signal: keySignal, rate: sr / Double(keyDecimation))
-        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, key: key, waveform: waveform)
+        return AnalysisResult(bpm: bpm, firstBeat: firstBeat, key: key, loudness: loudness.integrated, waveform: waveform)
     }
 
     /// Onset-envelope tempo detection: autocorrelation picks the period,
@@ -154,5 +195,51 @@ enum TrackAnalyzer {
         var firstBeat = best.phase / fps
         while firstBeat >= beatLength { firstBeat -= beatLength }
         return (bpm, firstBeat)
+    }
+}
+
+/// Integrated loudness per ITU-R BS.1770: K-weighting, 400 ms blocks with 75% overlap, and both gates.
+struct LoudnessMeter {
+    private var shelf: (Biquad, Biquad)
+    private var highPass: (Biquad, Biquad)
+    private let hop: Int
+    private var hopEnergy: Float = 0
+    private var hopCount = 0
+    private var recent: [Float] = [0, 0, 0, 0]
+    private var filled = 0
+    private var blocks: [Float] = []
+
+    init(sampleRate: Double) {
+        // The standard's two stages, designed for this sample rate.
+        let shelfFilter = Biquad.highShelf(1681.97, gainDB: 3.99984, q: 0.70717, sampleRate: sampleRate)
+        let high = Biquad.highpass(38.1355, sampleRate: sampleRate, q: 0.50033)
+        shelf = (shelfFilter, shelfFilter)
+        highPass = (high, high)
+        hop = Int(sampleRate * 0.1)
+    }
+
+    mutating func add(_ left: Float, _ right: Float) {
+        let l = highPass.0.process(shelf.0.process(left))
+        let r = highPass.1.process(shelf.1.process(right))
+        hopEnergy += l * l + r * r
+        hopCount += 1
+        guard hopCount == hop else { return }
+        recent.removeFirst()
+        recent.append(hopEnergy / Float(hop))
+        hopEnergy = 0
+        hopCount = 0
+        filled += 1
+        if filled >= 4 { blocks.append(recent.reduce(0, +) / 4) }
+    }
+
+    var integrated: Double? {
+        func lufs(_ energy: Double) -> Double { -0.691 + 10 * log10(max(energy, 1e-12)) }
+        let audible = blocks.filter { lufs(Double($0)) > -70 }
+        guard !audible.isEmpty else { return nil }
+        let mean = audible.reduce(0.0) { $0 + Double($1) } / Double(audible.count)
+        let threshold = lufs(mean) - 10
+        let gated = audible.filter { lufs(Double($0)) > threshold }
+        guard !gated.isEmpty else { return nil }
+        return lufs(gated.reduce(0.0) { $0 + Double($1) } / Double(gated.count))
     }
 }

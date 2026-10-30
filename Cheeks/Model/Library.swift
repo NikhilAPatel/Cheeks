@@ -131,6 +131,7 @@ final class Library {
                 if item.commonKey == .commonKeyArtist { artist = try? await item.load(.stringValue) }
             }
         }
+        await ArtworkStore.extract(from: asset, id: id)
         let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
         update(id) { t in
             if let title, !title.isEmpty { t.title = title }
@@ -142,6 +143,7 @@ final class Library {
     func delete(_ track: Track) {
         try? FileManager.default.removeItem(at: url(for: track))
         try? FileManager.default.removeItem(at: LibraryFiles.waveformURL(track.id))
+        ArtworkStore.delete(track.id)
         tracks.removeAll { $0.id == track.id }
         for i in playlists.indices { playlists[i].trackIDs.removeAll { $0 == track.id } }
         save()
@@ -181,6 +183,7 @@ final class Library {
                         t.firstBeat = result.firstBeat
                         if t.key == nil { t.key = result.key }
                     }
+                    self.update(id) { $0.loudness = result.loudness }
                 }
                 self.analyzing = nil
                 self.analyzeNext()

@@ -18,7 +18,7 @@ struct RecordingsView: View {
             List {
                 if recordings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "record.circle",
-                                           description: Text("Tap REC at the bottom right to record your mix. Recordings also appear in the Files app under Cheeks › Recordings, with a tracklist next to each one."))
+                                           description: Text("Tap REC at the top of the screen to record your mix. Recordings also appear in the Files app under Cheeks › Recordings, with a tracklist next to each one."))
                 }
                 ForEach(recordings, id: \.self) { url in
                     row(url)

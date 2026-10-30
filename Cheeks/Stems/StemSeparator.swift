@@ -14,12 +14,31 @@ enum Stem: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// One or two letters, for tight spaces.
+    var short: String {
+        switch self {
+        case .vocals: "V"
+        case .melody: "I"
+        case .bass: "B"
+        case .drums: "D"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .vocals: "mic.fill"
+        case .melody: "pianokeys"
+        case .bass: "speaker.wave.2.fill"
+        case .drums: "circle.circle.fill"
+        }
+    }
+
     var color: Color {
         switch self {
-        case .vocals: Color(red: 0.95, green: 0.3, blue: 0.55)
-        case .melody: Color(red: 0.3, green: 0.85, blue: 0.6)
-        case .bass: Color(red: 0.35, green: 0.5, blue: 1.0)
-        case .drums: Color(red: 1.0, green: 0.75, blue: 0.2)
+        case .vocals: Color(red: 0.98, green: 0.26, blue: 0.56)
+        case .melody: Color(red: 0.16, green: 0.86, blue: 0.62)
+        case .bass: Color(red: 0.24, green: 0.48, blue: 1.0)
+        case .drums: Color(red: 1.0, green: 0.74, blue: 0.14)
         }
     }
 }

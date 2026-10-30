@@ -288,6 +288,43 @@ final class EngineTests: XCTestCase {
         XCTAssertLessThan(worst, 1.0 / 1000)
     }
 
+    // MARK: Performance
+
+    /// The heaviest realistic load: both decks on four stems, stretched, with an echo and a reverb
+    /// running. Prints how much of the available time one audio callback takes on this machine.
+    @MainActor
+    func testRealtimeHeadroom() {
+        let library = Library()
+        let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        let n = Int(sr * 30)
+        for (i, deck) in dj.decks.enumerated() {
+            let stems = (0..<4).map { s -> PCM16Stereo in
+                PCM16Stereo(left: sine(110 * Double(s + 1 + i), seconds: 30, level: 0.2), right: sine(111 * Double(s + 1 + i), seconds: 30, level: 0.2))
+            }
+            XCTAssertEqual(stems[0].frames, n)
+            deck.renderer.setSources(stems)
+            deck.renderer.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+            deck.renderer.setTempo(ratio: 1.04, keyLock: true, keyShift: 0)
+            deck.renderer.setFX(i == 0 ? CheeksFXEcho : CheeksFXReverb, on: true, beats: 1, depth: 0.7, stemMask: 0xF)
+            deck.renderer.isPlaying = true
+        }
+        dj.decks.forEach { $0.fader = 1 }
+        let block = 256, blocks = Int(sr * 10) / block
+        let start = CFAbsoluteTimeGetCurrent()
+        var worst = 0.0
+        for _ in 0..<blocks {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            _ = dj.renderOffline(frames: block)
+            worst = max(worst, CFAbsoluteTimeGetCurrent() - t0)
+        }
+        let used = CFAbsoluteTimeGetCurrent() - start
+        let budget = Double(block) / sr
+        print(String(format: "DSP: average %.1f%% of realtime, worst callback %.1f%% (2 decks, 4 stems each, stretched, FX on)",
+                     used / (Double(blocks) * budget) * 100, worst / budget * 100))
+        XCTAssertLessThan(used / (Double(blocks) * budget), 0.5)
+    }
+
     // MARK: Helpers
 
     /// Estimates pitch from upward zero crossings, which is plenty for a single steady tone.

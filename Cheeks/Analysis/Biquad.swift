@@ -22,6 +22,13 @@ struct Biquad {
         return Biquad(b0: (1 + c) / 2, b1: -(1 + c), b2: (1 + c) / 2, a0: 1 + alpha, a1: -2 * c, a2: 1 - alpha)
     }
 
+    static func highShelf(_ frequency: Double, gainDB: Double, q: Double, sampleRate: Double) -> Biquad {
+        let w = 2 * Double.pi * frequency / sampleRate
+        let A = pow(10, gainDB / 40), alpha = sin(w) / (2 * q), c = cos(w), root = 2 * A.squareRoot() * alpha
+        return Biquad(b0: A * ((A + 1) + (A - 1) * c + root), b1: -2 * A * ((A - 1) + (A + 1) * c), b2: A * ((A + 1) + (A - 1) * c - root),
+                      a0: (A + 1) - (A - 1) * c + root, a1: 2 * ((A - 1) - (A + 1) * c), a2: (A + 1) - (A - 1) * c - root)
+    }
+
     @inline(__always) mutating func process(_ x: Float) -> Float {
         let y = b0 * x + z1
         z1 = b1 * x - a1 * y + z2

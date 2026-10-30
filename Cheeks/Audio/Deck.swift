@@ -57,12 +57,6 @@ enum StemStatus: Equatable {
     case tooLong
 }
 
-/// A waveform per stem, in `Stem.allCases` order, computed once a track has been split.
-struct StemWaveformData {
-    var levels: [[UInt8]]
-    var count: Int { levels.first?.count ?? 0 }
-}
-
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
 /// Realtime audio lives in `renderer`; this class is the main-thread control surface.
 @MainActor
@@ -78,10 +72,17 @@ final class Deck {
 
     // Track
     var track: Track? { didSet { applyGrid() } }
-    var waveform: WaveformData?
+    var waveform: WaveformData? { didSet { waveRevision += 1 } }
     /// Per-stem waveforms, available once the track has been split.
-    var stemWaveform: StemWaveformData?
+    var stemWaveform: StemWaveformData? { didSet { stemWaveRevision += 1 } }
     var artwork: CGImage?
+    /// Bumped when a waveform changes, so the live views know to rebuild their textures.
+    @ObservationIgnored private(set) var waveRevision = 0
+    @ObservationIgnored private(set) var stemWaveRevision = 0
+    /// Seconds between the render callback and the speaker, for drawing what's actually being heard.
+    @ObservationIgnored var outputLatency: Double = 0
+    /// Gain that brings this track to the target loudness, in dB, from its analysis.
+    private(set) var autoGainDB: Float = 0
     private(set) var isLoading = false
     /// Bumped on every load so a slow, superseded load can't replace a newer one.
     @ObservationIgnored private(set) var loadGeneration = 0
@@ -159,6 +160,14 @@ final class Deck {
     var duration: Double { Double(renderer.frameCount) / sampleRate }
     var beatFrames: Double { bpm > 0 ? 60 / bpm * sampleRate : 0 }
     var firstBeatFrame: Double { (track?.firstBeat ?? 0) * sampleRate }
+    var firstBeatSeconds: Double { track?.firstBeat ?? 0 }
+    /// The key being heard, after key shift (and tempo too, when key lock is off).
+    var effectiveKey: String? {
+        guard let key = track?.key else { return nil }
+        var semitones = keyShift
+        if !keyLock { semitones += Int((12 * log2(tempoRatio)).rounded()) }
+        return Camelot.shifted(key, by: semitones)
+    }
 
     func beatPosition(_ frame: Double) -> Double {
         beatFrames > 0 ? (frame - firstBeatFrame) / beatFrames : 0
@@ -220,6 +229,7 @@ final class Deck {
             t.firstBeat = analysis.firstBeat
             if t.key == nil { t.key = analysis.key }
         }
+        library?.update(id) { $0.loudness = analysis.loudness }
     }
 
     private func finishLoading(id: UUID, pcm: PCM16Stereo, waveform: WaveformData?, analysis: AnalysisResult?) {
@@ -247,10 +257,23 @@ final class Deck {
         stemsOn = [true, true, true, true]
         stemLevels = [1, 1, 1, 1]
         stemsBeforeSolo = nil
+        keyShift = 0
+        autoGainDB = track?.loudness.map { Float(Self.targetLoudness - $0) } ?? 0
+        autoGainDB = max(-12, min(9, autoGainDB))
+        onMixChange?()
+        Task { [weak self] in
+            let image = await ArtworkStore.image(id)
+            guard let self, self.track?.id == id else { return }
+            self.artwork = image
+        }
         cuePoint = track?.memoryCue ?? track?.firstBeat ?? 0
         seek(to: cuePoint)
         isLoading = false
+        if UserDefaults.standard.object(forKey: "prepareStemsOnLoad") as? Bool ?? true { prepareStems() }
     }
+
+    /// Tracks are brought to about this loudness (LUFS), which leaves headroom for mixing two together.
+    static let targetLoudness = -11.0
 
     func updateTrack(_ change: (inout Track) -> Void) {
         guard var current = track else { return }

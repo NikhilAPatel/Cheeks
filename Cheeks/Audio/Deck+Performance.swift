@@ -125,6 +125,40 @@ extension Deck {
         renderer.releaseSlip()
     }
 
+    // MARK: Slicer
+
+    /// Plays one eighth of the current bar for as long as it's held; the track keeps running
+    /// underneath and comes back in time on release.
+    func sliceBegin(_ slice: Int) {
+        guard isLoaded, beatFrames > 0 else { return }
+        if !isPlaying { play() }
+        let length = beatFrames / 2
+        let beat = beatPosition(renderer.playhead)
+        let barStart = firstBeatFrame + (beat / 4).rounded(.down) * 4 * beatFrames
+        let start = barStart + Double(slice) * length
+        renderer.engageSlip()
+        renderer.setLoop(start: start, end: start + length, active: true)
+        renderer.playhead = start
+        loopActive = true
+    }
+
+    func sliceEnd() {
+        renderer.loopActive = false
+        loopActive = false
+        renderer.releaseSlip()
+    }
+
+    // MARK: Key sync
+
+    /// Shifts this deck by the smallest step that puts it in a key compatible with `master`.
+    func keySync(to master: Deck) {
+        guard let mine = track?.key, let theirs = master.effectiveKey else { return }
+        let candidates = (-6...6).sorted { abs($0) < abs($1) }
+        guard let shift = candidates.first(where: { Camelot.isCompatible(Camelot.shifted(mine, by: $0), theirs) }) else { return }
+        keyShift = shift
+        Haptics.shared.confirm()
+    }
+
     // MARK: Jog wheel / waveform touch
 
     func scratchBegin() {
@@ -277,10 +311,12 @@ extension Deck {
                 let separator = StemSeparation.makeSeparator()
                 let label = separator.isMachineLearning ? "AI" : "≈EQ"
                 let stems = try separator.separate(mix)
+                let waves = StemWaveformData(stems: stems)
                 await MainActor.run {
                     guard self.loadGeneration == generation, self.track?.id == id else { return }
                     self.renderer.setSources(stems)
                     self.applyStemGains()
+                    self.stemWaveform = waves
                     self.stemStatus = .ready(label)
                 }
             } catch {

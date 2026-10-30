@@ -17,37 +17,60 @@ final class LayoutSnapshots: XCTestCase {
 
     /// Landscape sizes in points. The Duo's insets are guesses until it's seen on the device.
     static let screens = [
-        Screen(name: "duo", size: CGSize(width: 951, height: 669), insets: UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0)),
-        Screen(name: "ipad13", size: CGSize(width: 1376, height: 1032), insets: UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0), scale: 2),
+        Screen(name: "duo", size: CGSize(width: 951, height: 669), insets: .zero),
+        Screen(name: "ipad13", size: CGSize(width: 1376, height: 1032), insets: .zero, scale: 2),
     ]
 
     func testSnapshots() async throws {
-        guard let path = ProcessInfo.processInfo.environment["CHEEKS_SNAPSHOT_DIR"] else {
+        let env = ProcessInfo.processInfo.environment
+        guard let path = env["CHEEKS_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set TEST_RUNNER_CHEEKS_SNAPSHOT_DIR to write layout snapshots")
         }
         let dir = URL(fileURLWithPath: path)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let library = Library()
         let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        LiveRenderer.shared.captureMode = true
+        // Optional: only write some screens, to keep iterating on one quick.
+        let only = env["CHEEKS_SNAPSHOT_ONLY"]?.split(separator: ",").map(String.init)
+        let onlyScreen = env["CHEEKS_SNAPSHOT_SCREEN"]
 
-        func snapAll(_ name: String, _ view: some View) async throws {
-            for screen in Self.screens {
-                try await snap(view.environment(library).environment(dj), screen, to: dir.appending(path: "\(screen.name)-\(name).png"))
+        func snapAll(_ name: String, _ view: @autoclosure () -> some View) async throws {
+            if let only, !only.contains(name) { return }
+            for screen in Self.screens where onlyScreen == nil || screen.name == onlyScreen {
+                try await snap(view().environment(library).environment(dj), screen, to: dir.appending(path: "\(screen.name)-\(name).png"))
             }
         }
 
         try await snapAll("empty", ContentView())
 
-        loadFixture(dj.decks[0], title: "Midnight Drive (Extended Mix)", artist: "Synth Test", bpm: 124, key: "8A", chords: Synth.aMinor, at: 31)
-        loadFixture(dj.decks[1], title: "Second Wind", artist: "Synth Test feat. Someone", bpm: 128, key: "10B", chords: Synth.dMajor, at: 62)
-        dj.decks[1].syncOn = true
+        // Real music, if the caller points at some (see CLAUDE.md); otherwise a synthetic arrangement.
+        loadFixture(dj.decks[0], audio: env["CHEEKS_FIXTURE_A"], title: "Midnight Drive (Extended Mix)", artist: "Synth Test", bpm: 124, key: "8A", chords: Synth.aMinor, at: 61, art: true)
+        loadFixture(dj.decks[1], audio: env["CHEEKS_FIXTURE_B"], title: "Second Wind", artist: "Synth Test feat. Someone", bpm: 128, key: "10B", chords: Synth.dMajor, at: 92, art: false)
+        dj.setMaster(dj.decks[0])
+        dj.decks[1].sync(to: dj.decks[0])
+        for deck in dj.decks {
+            // Rendered once with the audio thread stopped, so positions and meters are settled.
+            deck.renderer.isPlaying = true
+            deck.isPlaying = true
+        }
+        _ = dj.renderOffline(frames: 2048)
+        dj.decks[0].setLoop(beats: 4, resizeExisting: false)
         for mode in PadMode.allCases {
             dj.decks.forEach { $0.padMode = mode }
             if mode == .stems {
-                dj.decks[0].stemStatus = .separating(0.42)
-                dj.decks[1].stemStatus = .ready("APPROX")
+                let stems = try FrequencySplitSeparator().separate(dj.decks[0].renderer.mixSource ?? PCM16Stereo(frames: 1))
+                dj.decks[0].renderer.setSources(stems)
+                dj.decks[0].stemWaveform = StemWaveformData(stems: stems)
+                dj.decks[0].stemStatus = .ready("AI")
+                dj.decks[0].stemsOn = [false, true, true, true]
+                dj.decks[1].stemStatus = .separating(0.42)
+                _ = dj.renderOffline(frames: 2048)
             }
+            if mode == .fx { dj.decks[0].fxEngage(.echo) }
             try await snapAll("decks-\(mode.id.lowercased().replacingOccurrences(of: " ", with: "-"))", ContentView())
+            if mode == .fx { dj.decks[0].fxRelease() }
         }
         dj.decks.forEach { $0.padMode = .hotCue }
 
@@ -57,6 +80,10 @@ final class LayoutSnapshots: XCTestCase {
         try await snapAll("browser", ContentView(showLibrary: true))
         library.tracks = saved
         try await snapAll("recordings", RecordingsView())
+        try await snapAll("settings", SettingsView())
+        // Leaves the realtime engine's state harmless for whatever test runs next.
+        dj.decks.forEach { $0.pause() }
+        LiveRenderer.shared.captureMode = false
     }
 
     static let libraryFixture: [Track] = [
@@ -72,14 +99,37 @@ final class LayoutSnapshots: XCTestCase {
         Track(id: UUID(), title: title, artist: artist, fileName: "none", duration: duration, bpm: bpm, key: key)
     }
 
-    private func loadFixture(_ deck: Deck, title: String, artist: String, bpm: Double, key: String, chords: [[Int]], at seconds: Double) {
-        let pcm = Self.arrangedTrack(bpm: bpm, firstBeat: 0.1, seconds: 90, chords: chords)
+    private func loadFixture(_ deck: Deck, audio: String?, title: String, artist: String, bpm: Double, key: String, chords: [[Int]], at seconds: Double, art: Bool) {
+        var pcm = Self.arrangedTrack(bpm: bpm, firstBeat: 0.1, seconds: 180, chords: chords)
+        if let audio, let decoded = try? AudioDecoder.decode(url: URL(fileURLWithPath: audio), sampleRate: AudioConfig.sampleRate) {
+            pcm = decoded
+        }
         deck.renderer.setSources([pcm])
-        deck.waveform = TrackAnalyzer.analyze(pcm).waveform
-        let beat = 60 / bpm
-        deck.track = Track(id: UUID(), title: title, artist: artist, fileName: "none", duration: 90, bpm: bpm, firstBeat: 0.1,
-                           key: key, hotCues: [0: 0.1, 1: 0.1 + 16 * beat, 3: 0.1 + 64 * beat])
-        deck.seek(to: seconds)
+        let analysis = TrackAnalyzer.analyze(pcm)
+        deck.waveform = analysis.waveform
+        let realBPM = audio == nil ? bpm : analysis.bpm
+        let first = audio == nil ? 0.1 : analysis.firstBeat
+        let beat = 60 / realBPM
+        deck.track = Track(id: UUID(), title: title, artist: artist, fileName: "none", duration: pcm.duration, bpm: realBPM, firstBeat: first,
+                           key: analysis.key ?? key, hotCues: [0: first, 1: first + 16 * beat, 3: first + 64 * beat, 5: first + 128 * beat])
+        deck.seek(to: min(seconds, pcm.duration * 0.6))
+        deck.cuePoint = first + 16 * beat
+        if art { deck.artwork = Self.fixtureArtwork() }
+    }
+
+    /// A sleeve with some structure, to judge how artwork sits on the jog.
+    static func fixtureArtwork() -> CGImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
+        let image = renderer.image { context in
+            let colors = [UIColor(red: 0.95, green: 0.3, blue: 0.3, alpha: 1).cgColor, UIColor(red: 0.2, green: 0.1, blue: 0.5, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 512, y: 512), options: [])
+            UIColor(white: 1, alpha: 0.85).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 150, y: 90, width: 210, height: 210))
+            UIColor(red: 0.1, green: 0.05, blue: 0.2, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 330, width: 512, height: 182))
+        }
+        return image.cgImage!
     }
 
     /// A track with an arrangement, so waveforms show structure the way real music does:
@@ -138,6 +188,7 @@ final class LayoutSnapshots: XCTestCase {
         window.frame = CGRect(origin: .zero, size: screen.size)
         window.windowLevel = .alert + 1
         window.overrideUserInterfaceStyle = .dark
+        window.layer.contentsScale = screen.scale
         let host = UIHostingController(rootView: view)
         window.rootViewController = host
         window.isHidden = false
@@ -148,6 +199,7 @@ final class LayoutSnapshots: XCTestCase {
                                                      bottom: max(0, screen.insets.bottom - system.bottom),
                                                      right: max(0, screen.insets.right - system.right))
         try await Task.sleep(for: .milliseconds(500))
+        LiveRenderer.shared.captureForSnapshot()
         let format = UIGraphicsImageRendererFormat()
         format.scale = screen.scale
         let image = UIGraphicsImageRenderer(size: screen.size, format: format).image { _ in

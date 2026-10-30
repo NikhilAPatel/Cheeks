@@ -32,6 +32,7 @@ final class DJEngine {
     var headphoneVolume: Float = 0.8 { didSet { updateVolumes() } }
     /// Master level and limiter state. Not observed; meters poll them.
     var masterLevel: Float { cheeks_engine_master_peak(core) }
+    var masterLevelRight: Float { cheeks_engine_master_peak_right(core) }
     var limiterReduction: Float { cheeks_engine_limiter_reduction(core) }
     var cpuLoad: Float { cheeks_engine_load(core) }
     var engineError: String?
@@ -67,6 +68,8 @@ final class DJEngine {
     private static let onAirSeconds: TimeInterval = 10
 
     @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var samples: [PCM16Stereo] = []
+    @ObservationIgnored private var nowPlaying: NowPlaying?
 
     init(library: Library) {
         let newDecks = [Deck(index: 0), Deck(index: 1)]
@@ -88,8 +91,20 @@ final class DJEngine {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
+        // The sampler's sounds are synthesised, which takes a moment.
+        Task.detached(priority: .utility) {
+            let bank = SampleBank.render()
+            await MainActor.run { self.installSamples(bank) }
+        }
         // Recordings interrupted by a crash or the app being killed get saved now.
         for caf in Recordings.unfinished() { finalize(caf, recovered: true) }
+        nowPlaying = NowPlaying(engine: self)
+    }
+
+    /// The deck the audience is hearing most: for the Lock Screen.
+    var loudestDeck: Deck? {
+        decks.filter { $0.isPlaying && channelGains[$0.index] > 0.02 }.max { channelGains[$0.index] < channelGains[$1.index] }
     }
 
     // MARK: Graph
@@ -135,6 +150,7 @@ final class DJEngine {
                 MainActor.assumeIsolated {
                     self?.engineError = failure
                     self?.outputLatency = latency
+                    self?.decks.forEach { $0.outputLatency = latency }
                 }
             }
         }
@@ -177,7 +193,8 @@ final class DJEngine {
         let programInCue = min(1, 2 * headphoneMix)
         for deck in decks {
             let xf = deck.index == 0 ? a : b
-            let trim = pow(10, deck.trim * 12 / 20)
+            let automatic = UserDefaults.standard.object(forKey: "autoGain") as? Bool ?? true
+            let trim = pow(10, (deck.trim * 12 + (automatic ? deck.autoGainDB : 0)) / 20)
             let fader = deck.fader * deck.fader * xf
             channelGains[deck.index] = fader * trim
             cheeks_engine_set_channel(core, Int32(deck.index), trim, fader, deck.headphoneCue ? cueLevel : 0)
@@ -185,10 +202,29 @@ final class DJEngine {
         cheeks_engine_set_master(core, masterVolume, headphoneVolume, programInCue, splitCue)
     }
 
+    // MARK: Loading
+
+    /// Loads a track, unless the deck is playing: replacing a track mid-set by mistake is the worst
+    /// thing a DJ app can do. A refused load shakes off with a little buzz.
+    @discardableResult
+    func load(_ track: Track, onto deck: Deck) -> Bool {
+        guard !deck.isPlaying else {
+            Haptics.shared.deny()
+            statusMessage = "Deck \(deck.index + 1) is playing. Stop it first."
+            return false
+        }
+        Haptics.shared.load()
+        deck.load(track)
+        return true
+    }
+
     // MARK: Sampler and preview
 
-    func setSample(_ slot: Int, pcm: PCM16Stereo) {
-        cheeks_engine_set_sample(core, Int32(slot), pcm.data, Int64(pcm.frames))
+    private func installSamples(_ bank: [PCM16Stereo]) {
+        samples = bank // keeps the buffers alive; the render thread only sees their raw pointers
+        for (slot, pcm) in bank.enumerated() {
+            cheeks_engine_set_sample(core, Int32(slot), pcm.data, Int64(pcm.frames))
+        }
     }
 
     func triggerSample(_ slot: Int, gain: Float = 1) { cheeks_engine_trigger_sample(core, Int32(slot), gain) }
@@ -274,6 +310,7 @@ final class DJEngine {
             }
         }
         trackOnAir()
+        nowPlaying?.update()
         if isRecording && recorder.didFail {
             stopRecording()
             statusMessage = "Recording stopped: storage is full. Everything up to now was saved."

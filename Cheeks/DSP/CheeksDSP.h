@@ -144,6 +144,7 @@ void cheeks_engine_set_channel(CheeksEngine *engine, int channel, float trim, fl
 void cheeks_engine_set_master(CheeksEngine *engine, float master, float phones, float programInCue, bool split);
 
 float cheeks_engine_master_peak(const CheeksEngine *engine);
+float cheeks_engine_master_peak_right(const CheeksEngine *engine);
 /// Current limiter gain reduction, in dB (0 when it isn't working).
 float cheeks_engine_limiter_reduction(const CheeksEngine *engine);
 /// Fraction of the time available for each render that was actually used (0...1), smoothed.

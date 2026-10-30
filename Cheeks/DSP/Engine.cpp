@@ -684,7 +684,7 @@ struct CheeksEngine {
     std::atomic<float> trim[4], fader[4], cue[4];
     std::atomic<float> masterGain{0.9f}, phonesGain{0.8f}, programInCue{0.5f};
     std::atomic<bool> split{false}, recording{false};
-    std::atomic<float> masterPeak{0}, limiterDB{0}, cpuLoad{0};
+    std::atomic<float> masterPeak{0}, masterPeakRight{0}, limiterDB{0}, cpuLoad{0};
     std::atomic<float> previewToCue{1}, previewToMaster{0};
     std::atomic<int> recordWrite{0}, recordRead{0};
     std::atomic<int64_t> overruns{0};
@@ -758,8 +758,11 @@ private:
         const float gainNow = limiter.lastGain();
         put(limiterDB, gainNow < 0.9999f ? -20 * std::log10(std::max(gainNow, 0.0001f)) : 0.0f);
 
-        float high = 0;
-        for (int i = 0; i < n; ++i) high = std::max(high, std::max(std::abs(programLeft[i]), std::abs(programRight[i])));
+        float highLeft = 0, highRight = 0;
+        for (int i = 0; i < n; ++i) {
+            highLeft = std::max(highLeft, std::abs(programLeft[i]));
+            highRight = std::max(highRight, std::abs(programRight[i]));
+        }
 
         if (relaxed(recording)) pushRecording(n);
 
@@ -795,8 +798,9 @@ private:
         blendNow = blendTarget;
         splitNow = splitTarget;
 
-        const float fall = relaxed(masterPeak) * std::pow(0.9937f, float(n) / 16);
-        put(masterPeak, std::max(high * masterTarget, fall));
+        const float fall = std::pow(0.9937f, float(n) / 16);
+        put(masterPeak, std::max(highLeft * masterTarget, relaxed(masterPeak) * fall));
+        put(masterPeakRight, std::max(highRight * masterTarget, relaxed(masterPeakRight) * fall));
     }
 
     void pushRecording(int n) {
@@ -1008,6 +1012,7 @@ void cheeks_engine_set_master(CheeksEngine *engine, float master, float phones, 
 }
 
 float cheeks_engine_master_peak(const CheeksEngine *engine) { return relaxed(engine->masterPeak); }
+float cheeks_engine_master_peak_right(const CheeksEngine *engine) { return relaxed(engine->masterPeakRight); }
 float cheeks_engine_limiter_reduction(const CheeksEngine *engine) { return relaxed(engine->limiterDB); }
 float cheeks_engine_load(const CheeksEngine *engine) { return relaxed(engine->cpuLoad); }
 
