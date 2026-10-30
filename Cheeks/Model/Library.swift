@@ -8,6 +8,8 @@ final class Library {
     var tracks: [Track] = []
     var playlists: [Playlist] = []
     private(set) var analyzing: UUID?
+    /// Tracks whose audio file has gone. They stay in the list, and come back when the file's imported.
+    var missingFiles: Set<UUID> = []
     private var analysisQueue: [UUID] = []
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
@@ -18,8 +20,9 @@ final class Library {
     init() {
         try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
         load()
+        refreshMissingFiles()
         importInbox()
-        for track in tracks where !track.isAnalyzed { enqueueAnalysis(track.id) }
+        for track in tracks where !track.isAnalyzed && !isMissing(track) { enqueueAnalysis(track.id) }
     }
 
     // MARK: Persistence
@@ -58,6 +61,7 @@ final class Library {
         pendingSave = nil
         guard let data = try? JSONEncoder().encode(Snapshot(tracks: tracks, playlists: playlists)) else { return }
         try? data.write(to: Self.databaseURL, options: .atomic)
+        writeAutomaticBackup()
     }
 
     // MARK: Tracks
@@ -90,7 +94,9 @@ final class Library {
             return
         }
 
-        let id = UUID()
+        // A track restored from a backup, or whose file went missing, gets its audio back.
+        let waiting = trackAwaitingFile(named: source.lastPathComponent)
+        let id = waiting?.id ?? UUID()
         let fileName = "\(id.uuidString).\(source.pathExtension.lowercased())"
         let destination = LibraryFiles.musicDirectory.appending(path: fileName)
         do {
@@ -100,6 +106,11 @@ final class Library {
                 try FileManager.default.copyItem(at: source, to: destination)
             }
         } catch {
+            return
+        }
+        if waiting != nil {
+            update(id) { $0.fileName = fileName }
+            missingFiles.remove(id)
             return
         }
         let title = source.deletingPathExtension().lastPathComponent

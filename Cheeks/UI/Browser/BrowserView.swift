@@ -337,11 +337,19 @@ struct TrackRow: View {
         HStack(spacing: 8) {
             TrackArtwork(track: track).frame(width: 28, height: 28)
             TrackPreview(track: track).frame(width: 90, height: 24)
-            Text(track.title)
-                .font(Theme.text(12, .medium))
-                .foregroundStyle(loadedOn != nil ? Theme.accent : Theme.textPrimary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                if library.isMissing(track) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.warn)
+                        .accessibilityLabel("File missing")
+                }
+                Text(track.title)
+                    .font(Theme.text(12, .medium))
+                    .foregroundStyle(library.isMissing(track) ? Theme.textTertiary : loadedOn != nil ? Theme.accent : Theme.textPrimary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
                 .font(Theme.text(11))
                 .foregroundStyle(Theme.textSecondary)

@@ -213,7 +213,7 @@ struct TopBar: View {
         .padding(.horizontal, 6)
         .frame(height: 26)
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
-        .sheet(isPresented: $showSettings) { SettingsView().environment(dj) }
+        .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }
         .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
             // It may have stopped by itself (storage full) while this was open; don't start a new one.
             Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }

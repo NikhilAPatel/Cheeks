@@ -228,6 +228,11 @@ final class DJEngine {
             statusMessage = "Deck \(deck.index + 1) is playing. Stop it first."
             return false
         }
+        guard library?.isMissing(track) != true else {
+            Haptics.shared.deny()
+            statusMessage = "\(track.title)'s file is missing. Import it again and it'll get its cues back."
+            return false
+        }
         Haptics.shared.load()
         deck.load(track)
         return true
