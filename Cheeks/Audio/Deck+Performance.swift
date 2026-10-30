@@ -7,7 +7,12 @@ extension Deck {
     func hotCue(_ slot: Int) {
         guard isLoaded else { return }
         if shift {
+            shift = false
+            guard let removed = track?.hotCues[slot] else { return }
             updateTrack { $0.hotCues[slot] = nil }
+            offerUndo?("Deleted hot cue \(Theme.hotCueLetters[slot])") { [weak self] in
+                self?.updateTrack { $0.hotCues[slot] = removed }
+            }
             return
         }
         guard let time = track?.hotCues[slot] else {

@@ -53,8 +53,15 @@ final class DJEngine {
     var recordingFormat: RecordingFormat = RecordingFormat(rawValue: UserDefaults.standard.string(forKey: "recordingFormat") ?? "") ?? .aac {
         didSet { UserDefaults.standard.set(recordingFormat.rawValue, forKey: "recordingFormat") }
     }
-    /// Short message for the top bar (saved, low storage, errors).
+    /// Short message for the status capsule (saved, low storage, errors).
     var statusMessage: String?
+    /// Set alongside a message when what just happened can be taken back.
+    var undoAction: (@MainActor () -> Void)?
+
+    // Preview
+    /// The track being auditioned from the browser.
+    private(set) var previewingTrack: UUID?
+    @ObservationIgnored private var previewPCM: PCM16Stereo?
     private let recorder = MixRecorder()
     @ObservationIgnored private var recordingDrain: RecordingDrain?
     @ObservationIgnored private var recordingURL: URL?
@@ -80,6 +87,10 @@ final class DJEngine {
         for deck in decks {
             deck.library = library
             deck.onMixChange = { [weak self] in self?.updateVolumes() }
+            deck.offerUndo = { [weak self] message, undo in
+                self?.statusMessage = message
+                self?.undoAction = undo
+            }
         }
         buildGraph()
         updateVolumes()
@@ -167,7 +178,10 @@ final class DJEngine {
         center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.startAudio() }
         }
-        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+            // Setting the category reports a route change of its own, which mustn't start a loop.
+            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard raw != AVAudioSession.RouteChangeReason.categoryChange.rawValue else { return }
             MainActor.assumeIsolated { self?.startAudio() }
         }
     }
@@ -231,18 +245,42 @@ final class DJEngine {
     func stopSample(_ slot: Int) { cheeks_engine_stop_sample(core, Int32(slot)) }
     func isSampleActive(_ slot: Int) -> Bool { cheeks_engine_sample_active(core, Int32(slot)) }
 
-    func setPreview(pcm: PCM16Stereo?) {
-        cheeks_engine_set_preview(core, pcm?.data, Int64(pcm?.frames ?? 0))
+    /// Auditions a track from about a quarter of the way in, where the music has usually started.
+    func togglePreview(_ track: Track) {
+        if previewingTrack == track.id {
+            stopPreview()
+            return
+        }
+        stopPreview()
+        guard let library else { return }
+        previewingTrack = track.id
+        let id = track.id, url = library.url(for: track)
+        Task.detached(priority: .userInitiated) {
+            guard let pcm = try? AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate) else { return }
+            await MainActor.run {
+                guard self.previewingTrack == id else { return }
+                self.previewPCM = pcm
+                cheeks_engine_set_preview(self.core, pcm.data, Int64(pcm.frames))
+                cheeks_engine_seek_preview(self.core, Double(pcm.frames) * 0.25)
+                // Without a split cable there's no cue bus to hear, so it plays through the master, more quietly.
+                cheeks_engine_set_preview_routing(self.core, 1, self.splitCue ? 0 : 0.7)
+                cheeks_engine_set_preview_playing(self.core, true)
+            }
+        }
     }
 
-    func setPreviewPlaying(_ playing: Bool) {
-        // Without a split cable there's no cue bus to hear, so it plays through the master at a safe level.
-        cheeks_engine_set_preview_routing(core, 1, splitCue ? 0 : 0.8)
-        cheeks_engine_set_preview_playing(core, playing)
+    func stopPreview() {
+        previewingTrack = nil
+        cheeks_engine_set_preview_playing(core, false)
+        cheeks_engine_set_preview(core, nil, 0)
+        previewPCM = nil
     }
 
-    func seekPreview(toFrame frame: Double) { cheeks_engine_seek_preview(core, frame) }
-    var previewFrame: Double { cheeks_engine_preview_position(core) }
+    /// How far through the preview is, 0...1. Not observed; poll it.
+    var previewFraction: CGFloat {
+        guard let frames = previewPCM?.frames, frames > 0 else { return 0 }
+        return CGFloat(cheeks_engine_preview_position(core) / Double(frames))
+    }
 
     /// Renders the whole mix offline, for tests.
     func renderOffline(frames: Int) -> (left: [Float], right: [Float]) {
@@ -289,8 +327,17 @@ final class DJEngine {
         if deck.syncOn {
             deck.syncOn = false
         } else {
-            deck.sync(to: master(for: deck))
+            let leader = master(for: deck)
+            // Syncing the master means following the other deck, so that one has to lead.
+            if masterIndex == deck.index { masterIndex = leader.index }
+            deck.sync(to: leader)
         }
+    }
+
+    func performUndo() {
+        undoAction?()
+        undoAction = nil
+        statusMessage = nil
     }
 
     private func tick() {

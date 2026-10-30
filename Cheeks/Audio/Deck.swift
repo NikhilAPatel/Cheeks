@@ -69,6 +69,8 @@ final class Deck {
     @ObservationIgnored weak var library: Library?
     /// Called when anything affecting channel volume or tempo-synced FX changes.
     @ObservationIgnored var onMixChange: (@MainActor () -> Void)?
+    /// Called after something destructive, to offer a way back.
+    @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
 
     // Track
     var track: Track? { didSet { applyGrid() } }
@@ -108,6 +110,7 @@ final class Deck {
     var shift = false
     var loopActive = false
     var loopBeats: Double = 4
+    var jumpBeats: Double = 4
     var stemStatus: StemStatus = .unavailable
     var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
     /// Each stem's level (0...1), on top of its on/off state.
@@ -190,7 +193,7 @@ final class Deck {
         let generation = loadGeneration
         let url = library.url(for: newTrack)
         let id = newTrack.id
-        let needsAnalysis = !newTrack.isAnalyzed
+        let needsAnalysis = !newTrack.isAnalyzed || newTrack.loudness == nil
         Task.detached(priority: .userInitiated) {
             do {
                 let pcm = try AudioDecoder.decode(url: url, sampleRate: AudioConfig.sampleRate)

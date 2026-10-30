@@ -43,7 +43,7 @@ final class LayoutSnapshots: XCTestCase {
             }
         }
 
-        try await snapAll("empty", ContentView())
+        try await snapAll("empty", ContentView(opensBrowserWhenEmpty: false))
 
         // Real music, if the caller points at some (see CLAUDE.md); otherwise a synthetic arrangement.
         loadFixture(dj.decks[0], audio: env["CHEEKS_FIXTURE_A"], title: "Midnight Drive (Extended Mix)", artist: "Synth Test", bpm: 124, key: "8A", chords: Synth.aMinor, at: 61, art: true)
@@ -69,9 +69,10 @@ final class LayoutSnapshots: XCTestCase {
                 _ = dj.renderOffline(frames: 2048)
             }
             if mode == .fx { dj.decks[0].fxEngage(.echo) }
-            try await snapAll("decks-\(mode.id.lowercased().replacingOccurrences(of: " ", with: "-"))", ContentView())
+            try await snapAll("decks-\(mode.id.lowercased().replacingOccurrences(of: " ", with: "-"))", ContentView(opensBrowserWhenEmpty: false))
             if mode == .fx { dj.decks[0].fxRelease() }
         }
+        try await writeAppIcon(to: dir)
         dj.decks.forEach { $0.padMode = .hotCue }
 
         // Not saved: nothing here calls `library.update`, which is what writes the library to disk.
@@ -84,6 +85,52 @@ final class LayoutSnapshots: XCTestCase {
         // Leaves the realtime engine's state harmless for whatever test runs next.
         dj.decks.forEach { $0.pause() }
         LiveRenderer.shared.captureMode = false
+    }
+
+    /// The app icon, drawn by the same shader as the jog wheel. Copied to the asset catalog by hand.
+    private func writeAppIcon(to dir: URL) async throws {
+        guard ProcessInfo.processInfo.environment["CHEEKS_WRITE_ICON"] != nil else { return }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let side: CGFloat = 1024.0 / 3 * 0.86
+        window.frame = CGRect(x: 0, y: 0, width: side, height: side)
+        window.windowLevel = .alert + 1
+        let deck = Deck(index: 0)
+        deck.renderer.setSources([PCM16Stereo(frames: 44_100)])
+        deck.track = Track(id: UUID(), title: "Cheeks", artist: "", fileName: "none", duration: 1, bpm: 124)
+        deck.cuePoint = 100 // keeps the amber cue light off the ring
+        let jog = JogLiveView(deck: deck)
+        jog.frame = window.bounds
+        window.addSubview(jog)
+        window.isHidden = false
+        jog.metalLayer.contentsScale = 3
+        jog.metalLayer.drawableSize = CGSize(width: side * 3, height: side * 3)
+        jog.setNeedsLayout()
+        jog.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        LiveRenderer.shared.captureForSnapshot()
+        let captured = try XCTUnwrap(jog.layer.sublayers?.last?.contents)
+        let jogImage = captured as! CGImage
+        window.isHidden = true
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 1024, height: 1024), format: format).image { context in
+            let c = context.cgContext
+            let colors = [UIColor(white: 0.135, alpha: 1).cgColor, UIColor(white: 0.035, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
+            c.drawLinearGradient(gradient, start: CGPoint(x: 150, y: 0), end: CGPoint(x: 870, y: 1024), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            let size = side * 3
+            let origin = (1024 - size) / 2
+            UIImage(cgImage: jogImage).draw(in: CGRect(x: origin, y: origin, width: size, height: size))
+            // The hub carries the mark: a blue spindle dot on the black label.
+            let center = CGPoint(x: 512, y: 512)
+            UIColor(white: 0.02, alpha: 1).setFill()
+            c.fillEllipse(in: CGRect(x: center.x - size * 0.2, y: center.y - size * 0.2, width: size * 0.4, height: size * 0.4))
+            UIColor(red: 0.13, green: 0.52, blue: 1, alpha: 1).setFill()
+            c.fillEllipse(in: CGRect(x: center.x - 44, y: center.y - 44, width: 88, height: 88))
+        }
+        try XCTUnwrap(image.pngData()).write(to: dir.appending(path: "AppIcon.png"))
     }
 
     static let libraryFixture: [Track] = [
@@ -192,6 +239,10 @@ final class LayoutSnapshots: XCTestCase {
         let host = UIHostingController(rootView: view)
         window.rootViewController = host
         window.isHidden = false
+        // A new window can start with the scene's portrait bounds, so lay it out at its real size.
+        window.frame = CGRect(origin: .zero, size: screen.size)
+        host.view.frame = window.bounds
+        host.view.layoutIfNeeded()
         // Top up whatever insets the window already gets from its spot on the iPad screen.
         let system = window.safeAreaInsets
         host.additionalSafeAreaInsets = UIEdgeInsets(top: max(0, screen.insets.top - system.top),

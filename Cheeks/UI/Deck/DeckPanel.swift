@@ -119,6 +119,8 @@ struct DeckKeys: View {
             Key("MASTER", color: Theme.cue, lit: dj.masterIndex == deck.index && deck.isLoaded, size: 8.5, feel: .toggle, onPress: { dj.setMaster(deck) })
                 .frame(height: 22)
             Spacer(minLength: 2)
+            jumpSection
+            Spacer(minLength: 2)
             HStack(spacing: 3) {
                 Key("Q", lit: deck.quantize, feel: .toggle, onPress: { deck.quantize.toggle() })
                 Key("SLIP", lit: deck.slipMode, size: 8.5, feel: .toggle, onPress: { deck.slipMode.toggle() })
@@ -131,6 +133,31 @@ struct DeckKeys: View {
             .frame(height: 24)
             Spacer(minLength: 2)
             keySection
+        }
+    }
+
+    /// Beat jump: tap the number to change how far.
+    private var jumpSection: some View {
+        VStack(spacing: 2) {
+            Text("BEAT JUMP").silk(7.5, color: Theme.textTertiary)
+            HStack(spacing: 2) {
+                Key(color: Theme.accent, accessibilityName: "Jump back", onPress: { deck.beatJump(-deck.jumpBeats) }) {
+                    Image(systemName: "backward.end.fill").font(.system(size: 8))
+                }
+                Key(color: Theme.accent, accessibilityName: "Jump size", onPress: {
+                    let sizes: [Double] = [1, 2, 4, 8, 16, 32]
+                    deck.jumpBeats = sizes[((sizes.firstIndex(of: deck.jumpBeats) ?? 2) + 1) % sizes.count]
+                }) {
+                    Text(Format.beats(deck.jumpBeats)).font(Theme.digits(11))
+                        .contentTransition(.numericText())
+                        .animation(Theme.press, value: deck.jumpBeats)
+                }
+                .frame(width: 24)
+                Key(color: Theme.accent, accessibilityName: "Jump forward", onPress: { deck.beatJump(deck.jumpBeats) }) {
+                    Image(systemName: "forward.end.fill").font(.system(size: 8))
+                }
+            }
+            .frame(height: 22)
         }
     }
 
@@ -187,6 +214,17 @@ struct JogReadout: View {
 
     var body: some View {
         let unit = radius / 100
+        if deck.isLoaded {
+            readouts(unit)
+        } else {
+            VStack(spacing: 1 * unit) {
+                Text("\(deck.index + 1)").font(Theme.digits(34 * unit)).foregroundStyle(Theme.textTertiary)
+                Text("NO TRACK").silk(8.5 * unit, color: Theme.textTertiary)
+            }
+        }
+    }
+
+    private func readouts(_ unit: CGFloat) -> some View {
         VStack(spacing: 0) {
             TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                 let remaining = deck.duration - deck.position
@@ -208,18 +246,20 @@ struct JogReadout: View {
     }
 
     private func bpm(_ unit: CGFloat) -> some View {
-        let text = deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "--.--"
+        let text = deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "0.00"
         let parts = text.split(separator: ".")
         return HStack(alignment: .firstTextBaseline, spacing: 0) {
             Text(String(parts[0])).font(Theme.digits(30 * unit))
             Text("." + String(parts.count > 1 ? parts[1] : "00")).font(Theme.digits(16 * unit))
         }
         .foregroundStyle(deck.syncOn ? Theme.accent : Color.white)
+        .opacity(deck.bpm > 0 ? 1 : 0.3)
     }
 }
 
 /// The screen at the top of a deck: artwork, title and artist, key, BPM and time.
 struct DeckHeader: View {
+    @Environment(\.openBrowser) private var openBrowser
     @Bindable var deck: Deck
 
     var body: some View {
@@ -243,6 +283,13 @@ struct DeckHeader: View {
         .padding(.horizontal, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .displayWell()
+        // An empty deck's screen is a shortcut to the music.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard deck.track == nil else { return }
+            Haptics.shared.key()
+            openBrowser()
+        }
     }
 
     private var subtitle: String {
@@ -266,7 +313,7 @@ struct DeckHeader: View {
             Button("Save cue as memory cue", systemImage: "bookmark") { deck.saveMemoryCue() }
         } label: {
             VStack(alignment: .trailing, spacing: 0) {
-                Text(deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "--.--")
+                Text(deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "–")
                     .font(Theme.digits(13))
                     .foregroundStyle(Theme.textPrimary)
                 HStack(spacing: 2) {
@@ -286,7 +333,7 @@ struct DeckHeader: View {
         TimelineView(.periodic(from: .now, by: 0.1)) { _ in
             let remaining = deck.duration - deck.position
             VStack(alignment: .trailing, spacing: 0) {
-                Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "--:--.-")
+                Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "–")
                     .font(Theme.digits(18))
                     .foregroundStyle(deck.isLoaded && remaining < 30 ? Theme.danger : Theme.textPrimary)
                 Text(deck.isLoaded ? Format.tenths(deck.position) : " ")

@@ -106,9 +106,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
             wave = mix(wave, bandShade(mixColor, y, height, aa), shapeCoverage(y, height, aa));
         } else {
             // rekordbox's 3-band: bass outermost, mids inside it, highs at the core.
-            const float low = pow(v.r, 0.86);
-            const float mid = pow(v.g, 0.86) * 0.84;
-            const float high = pow(v.b, 0.8) * 0.62;
+            const float low = pow(v.r, 0.78);
+            const float mid = pow(v.g, 0.9) * 0.78;
+            const float high = pow(v.b, 0.85) * 0.56;
             wave = mix(wave, bandShade(u.lowColor.rgb, y, low, aa), shapeCoverage(y, low, aa));
             wave = mix(wave, bandShade(u.midColor.rgb, y, mid, aa), shapeCoverage(y, mid, aa));
             wave = mix(wave, bandShade(u.highColor.rgb, y, high, aa), shapeCoverage(y, high, aa));
@@ -352,7 +352,7 @@ fragment float4 jog_bake_fragment(VOut in [[stage_in]], constant JogUniforms &u 
         const float band1 = smoothstep(0.004, 0.0, abs(r - 0.56));
         const float band2 = smoothstep(0.004, 0.0, abs(r - 0.675));
         base = mix(base, 0.012, max(band1, band2));
-        const float sheen = 0.2 * anisotropic(theta, -2.2, 26.0) + 0.09 * anisotropic(theta, -2.2, 6.0) + 0.05 * anisotropic(theta, -0.3, 40.0);
+        const float sheen = 0.3 * anisotropic(theta, -2.2, 22.0) + 0.15 * anisotropic(theta, -2.2, 5.0) + 0.09 * anisotropic(theta, -0.3, 34.0);
         float3 vinyl = float3(base) + float3(0.98, 1.0, 1.05) * sheen * (0.55 + 0.45 * groove);
         // Small shadow where the record meets the channel, and where the hub sits on the record.
         vinyl *= 1.0 - 0.6 * smoothstep(0.745, 0.78, r);
@@ -418,7 +418,7 @@ fragment float4 jog_fragment(VOut in [[stage_in]],
         color = mix(color, float3(0.92, 0.93, 0.96), line * 0.92);
         // Fine pressed specks turning with the disc, so even a bare record visibly moves.
         const float specks = grain(float2(floor(fromMarker * 90.0), floor(r * 60.0)));
-        if (specks > 0.965) color += 0.035;
+        if (specks > 0.975) color += 0.012;
         color += u.vinylTint.rgb * 0.05 * (1.0 - smoothstep(0.46, 0.78, r));
         color += u.ledColor.rgb * u.touchPlatter * 0.05;
     }
@@ -452,8 +452,8 @@ fragment float4 jog_fragment(VOut in [[stage_in]],
         float span = fmod(u.loopTo - u.loopFrom, 2.0 * M_PI_F);
         if (span < 0) span += 2.0 * M_PI_F;
         if (a <= span) {
-            ledTint = mix(ledTint, float3(1.0, 0.55, 0.05), 0.95);
-            level = max(level, 0.9);
+            ledTint = mix(ledTint, float3(1.0, 0.5, 0.04), 0.95);
+            level = max(level, 0.55);
         }
     }
     if (u.cueAngle < 90.0) {

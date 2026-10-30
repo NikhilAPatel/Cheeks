@@ -438,18 +438,39 @@ struct TrackArtwork: View {
 
 /// A row's whole-track waveform, drawn once, off the main thread, and cached.
 struct TrackPreview: View {
+    @Environment(DJEngine.self) private var dj
     let track: Track
     @State private var image: CGImage?
 
     var body: some View {
-        Group {
+        let previewing = dj.previewingTrack == track.id
+        ZStack {
             if let image {
                 Image(decorative: image, scale: 3).resizable()
             } else {
                 Rectangle().fill(Color.black.opacity(0.4))
             }
+            if previewing {
+                Color.black.opacity(0.35)
+                TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                    GeometryReader { geo in
+                        Rectangle().fill(Color.white).frame(width: 1)
+                            .offset(x: geo.size.width * dj.previewFraction)
+                    }
+                }
+                Image(systemName: "stop.fill").font(.system(size: 9)).foregroundStyle(.white)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+        // Tap the waveform to audition the track: in the cue ear with a split cable, or quietly on the main output without one.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            Haptics.shared.toggle(!previewing)
+            dj.togglePreview(track)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(previewing ? "Stop preview" : "Preview")
+        .accessibilityAddTraits(.isButton)
         .task(id: track.bpm) {
             image = await WaveformThumbnails.image(track.id, width: 90 * 3, height: 24 * 3)
         }

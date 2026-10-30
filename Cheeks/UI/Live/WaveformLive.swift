@@ -506,6 +506,7 @@ final class MeterLiveView: LiveView {
     private var peaks: [Float]
     private var holds: [Double]
     private var last: CFTimeInterval = 0
+    private let created = CACurrentMediaTime()
 
     init(bars: Int, vertical: Bool = true, read: @escaping @MainActor () -> [Float]) {
         self.read = read
@@ -539,7 +540,12 @@ final class MeterLiveView: LiveView {
                 withUnsafeMutablePointer(to: &u.peaks) { pp in
                     pp.withMemoryRebound(to: Float.self, capacity: 4) { p in
                         for i in 0..<min(levels.count, 4) {
-                            let target = position(levels[i])
+                            var target = position(levels[i])
+                            // The meters run up and back when the app starts, like hardware powering on.
+                            let age = now - created
+                            if age < 1.1 && !UIAccessibility.isReduceMotionEnabled && !LiveRenderer.shared.captureMode {
+                                target = max(target, Float(sin(.pi * age / 1.1)))
+                            }
                             // Fast attack, slow release, like real meter ballistics.
                             let rate: Float = target > eased[i] ? 1 : Float(min(1, dt * 7))
                             eased[i] += (target - eased[i]) * rate

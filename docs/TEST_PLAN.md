@@ -1,31 +1,25 @@
 # Test plan
 
-The app was written without a compiler. This is the order for bringing it up on a Mac and then proving it on the phone.
+**Automated (run by Claude):** `CheeksTests` renders the engine offline. See CLAUDE.md for the commands.
 
-## 1. Mac bring-up (Claude can do all of this)
+**Hands-on in the simulator (run by a Claude with computer use):** `docs/COMPUTER_USE_TEST.md`.
 
-Status on 2026-10-29: steps 2, 3 and 6 pass. Step 4 is done for the iPhone Duo and 13-inch iPad sizes through `CheeksTests/LayoutSnapshots`, apart from the beat-grid menu. Step 5 found that the folded Duo cover screen doesn't fit; the owner only uses it unfolded, so that's out of scope. Step 7 waits on the signing team. Commands are in CLAUDE.md.
-
-1. **Prerequisites:** Xcode 16+ with an iOS 17+ simulator runtime, with the repo cloned on `master`.
-2. **Compile:** `xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'generic/platform=iOS Simulator' build`. Fix errors minimally; expect a handful.
-3. **Unit tests:** `xcodebuild test … -destination 'platform=iOS Simulator,name=<iPad>'`. All of `CheeksTests` should pass. Their expected values were cross-checked against a numpy port of the analysis code.
-4. **Simulator UI pass:** render the screens at the iPhone Duo's unfolded size (951×669 pt) with the snapshot test, and on a large iPad. Take screenshots of:
-   - the decks screen, empty and with two tracks loaded
-   - the browser and an empty library
-   - each pad mode
-   - the stems "separating" state
-   - the beat-grid menu
-
-   Check nothing is clipped or overlapping, and that controls are at least ~30 pt.
-5. **Smaller widths:** repeat on a smaller iPad and on the largest iPhone in landscape. Note any layout that breaks.
-6. **Profile in the simulator** (Instruments → Allocations, or the `MemoryFootprint` test). Load a 6-minute track on both decks, then separate stems:
-   - each loaded deck should add about 65 MB (measured: 60.6 MB)
-   - stems should add about 250 MB per 6-minute track (measured: 242 MB)
-7. **On the phone:** pick a signing team in Xcode once (the owner does this), plug in the phone, and run.
+**On the phone (the owner):** below. Picking a signing team in Xcode once is all the setup it needs.
 
 ## 2. On-device checklist (owner: ears and fingers)
 
 Tick each item. Anything that fails: note what you did, what you heard or saw, and which track.
+
+### Feel: the things only you can judge
+Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
+- [ ] Keys click on the first touch and there's no perceptible delay before anything happens.
+- [ ] Pads feel firmer and duller than keys.
+- [ ] The platter has fine ridges as it turns, and you can **feel each beat go past, with a stronger tap on each bar**.
+- [ ] Knobs and the tempo fader have a centre click you can find without looking. Fader ends have a soft stop.
+- [ ] Loading a track, locking sync and a refused load each feel distinct.
+- [ ] Touching and letting go of the jog feels immediate. If it feels laggy, say so: that's the number one thing to tune.
+- [ ] Holding CUE while moving a fader and a pad all work at once.
+- [ ] Nothing's too small to hit on the unfolded screen, and nothing important sits badly on the crease.
 
 ### Sound and stability
 - [ ] Two tracks play for 30+ minutes with no clicks, dropouts or stutter, with the screen on.
@@ -38,7 +32,9 @@ Tick each item. Anything that fails: note what you did, what you heard or saw, a
 ### Decks
 - [ ] CUE while playing jumps back to the cue and stops. CUE while paused sets the cue; holding it previews; releasing returns.
 - [ ] Holding CUE and then pressing PLAY keeps playing after you release CUE.
-- [ ] Tempo fader: at ±8% with KEY on, the pitch stays the same and artifacts are acceptable. With KEY off, the pitch follows the tempo.
+- [ ] Tempo fader: at ±8% with KEY on, the pitch stays the same and artifacts are acceptable (this is a new stretcher, so compare it with what you're used to). With KEY off, the pitch follows the tempo.
+- [ ] Hot cues and jumps are instant with KEY on, even with the deck far from 0%.
+- [ ] No clicks when pressing play, pause, a hot cue, or at a loop point.
 - [ ] Key shift ± changes pitch by a semitone per step, and double-tapping resets it.
 - [ ] SYNC on two tracks with different BPMs: the beats line up immediately and **stay locked for 5 minutes**, with no flamming kicks.
 - [ ] SYNC on a half/double-time pair (e.g. 70 vs 140): it locks at half time rather than jumping ±50%.
@@ -54,15 +50,19 @@ Tick each item. Anything that fails: note what you did, what you heard or saw, a
 
 ### Stems
 - [ ] With all four stems on, the track sounds identical to the original (A/B against another deck).
-- [ ] Muting each stem does roughly what its label says. The default mode is approximate.
-- [ ] SOLO works, and soloing again restores all stems.
-- [ ] Separating while the deck plays doesn't interrupt playback.
+- [ ] ACAPELLA gives you a clean vocal and NO VOCAL a clean instrumental, on three different tracks you know well. Note the worst artifacts.
+- [ ] How long does a 6-minute track take to separate on the phone, and does it get hot? Does anything stutter meanwhile?
+- [ ] SOLO works, and soloing again restores what was on.
+- [ ] Separating while the deck plays doesn't interrupt playback, and the second load of a track is instant.
+- [ ] Echo on vocals only, then mute the vocal stem: the echo tail carries on.
 
 ### Mixer and FX
-- [ ] EQ: each band kills fully at the far left, and boosts are modest.
-- [ ] The filter sweeps low-pass to the left and high-pass to the right, silent at centre.
+- [ ] EQ: each band kills fully at the far left, and boosts are modest. This is a new isolator; compare it with your hardware.
+- [ ] The filter sweeps low-pass to the left and high-pass to the right, has no effect at centre, and doesn't click leaving centre.
+- [ ] Two tracks at full level don't distort on the master, and the LIM light comes on.
+- [ ] Tracks at different loudness come in at about the same level with "Match track loudness" on.
 - [ ] Crossfader: SMOOTH has no volume dip at centre; SCRATCH cuts in sharply at the edges.
-- [ ] ECHO is in time at 1/2 and 1 beat. REVERB tails. ROLL and BRAKE work on the selected channel.
+- [ ] Each of the 12 Beat FX sounds right: ECHO and PING PONG in time at 1/2 and 1 beat, tails ring out on release, ROLL and BRAKE and BACKSPIN behave.
 - [ ] REC for 10+ minutes across 3+ tracks, then stop. "Saving mix…" appears, then the mix, `.txt` and `.cue` show up in Recordings (and in Files → Cheeks → Recordings).
 - [ ] The tracklist times match when each track came in (±10 s). A track only previewed in the headphones (fader down) is *not* listed.
 - [ ] The recording plays back in the Recordings screen with no gaps or clicks. Share sends the audio and the tracklists.

@@ -1,6 +1,18 @@
 import SwiftUI
 
 /// The lower half of a deck: a row of controls for the current mode, the mode tabs, and the pads.
+private struct OpenBrowserKey: EnvironmentKey {
+    static let defaultValue: @MainActor () -> Void = {}
+}
+
+extension EnvironmentValues {
+    /// Slides the browser in, from anywhere in the deck.
+    var openBrowser: @MainActor () -> Void {
+        get { self[OpenBrowserKey.self] }
+        set { self[OpenBrowserKey.self] = newValue }
+    }
+}
+
 struct PadSection: View {
     @Bindable var deck: Deck
 

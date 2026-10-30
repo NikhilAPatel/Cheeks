@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Cheeks
 
@@ -286,6 +287,47 @@ final class EngineTests: XCTestCase {
         }
         // 1/1000 of a beat at 128 BPM is under half a millisecond: far too small to hear.
         XCTAssertLessThan(worst, 1.0 / 1000)
+    }
+
+    /// Recording must capture exactly what's on the program bus, end to end: ring, drain, file, conversion.
+    @MainActor
+    func testRecordingCapturesTheMix() async throws {
+        let library = Library()
+        let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        let before = Set(Recordings.list())
+        dj.recordingFormat = .wav
+        dj.decks[0].renderer.setSources([stereo(sine(440, seconds: 6, level: 0.4))])
+        dj.decks[0].fader = 1
+        dj.decks[0].renderer.isPlaying = true
+        _ = dj.renderOffline(frames: 2048)
+        dj.toggleRecording()
+        XCTAssertTrue(dj.isRecording)
+        let seconds = 3
+        for _ in 0..<(seconds * 44_100 / 256) {
+            _ = dj.renderOffline(frames: 256)
+            // The drain runs on its own queue; rendering this fast would outrun it without a breather.
+            try await Task.sleep(for: .microseconds(200))
+        }
+        dj.toggleRecording()
+        var saved: URL?
+        for _ in 0..<100 where saved == nil {
+            try await Task.sleep(for: .milliseconds(100))
+            saved = Set(Recordings.list()).subtracting(before).first
+        }
+        let url = try XCTUnwrap(saved, "The recording never appeared")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            for companion in Recordings.companionFiles(for: url) { try? FileManager.default.removeItem(at: companion) }
+        }
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(Double(file.length) / file.fileFormat.sampleRate, Double(seconds), accuracy: 0.05)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        let samples = Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: Int(buffer.frameLength)))
+        XCTAssertEqual(dominantFrequency(samples), 440, accuracy: 1)
+        // Fader at full: the tone comes through the limiter at its own level.
+        XCTAssertEqual(rms(samples[1000...]), 0.4 / Float(2).squareRoot(), accuracy: 0.03)
     }
 
     // MARK: Performance

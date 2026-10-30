@@ -77,6 +77,7 @@ struct Key<Label: View>: View {
     @ViewBuilder var label: () -> Label
 
     @State private var pressed = false
+    @State private var refused = 0
 
     var body: some View {
         label()
@@ -87,10 +88,13 @@ struct Key<Label: View>: View {
             .animation(Theme.press, value: pressed)
             .animation(.easeOut(duration: 0.12), value: lit)
             .opacity(isEnabled ? 1 : 0.4)
+            .modifier(Shake(amount: Double(refused)))
+            .animation(.linear(duration: 0.32), value: refused)
             .overlay {
                 TouchSurface(onDown: { _ in
                     guard isEnabled else {
                         Haptics.shared.deny()
+                        refused += 1
                         return
                     }
                     pressed = true
@@ -156,6 +160,21 @@ enum KeyFeel {
 
     @MainActor func up() {
         if self == .key { Haptics.shared.keyUp() }
+    }
+}
+
+/// "No", the way an iPhone says it when you get a passcode wrong.
+struct Shake: GeometryEffect {
+    var amount: Double
+    var animatableData: Double {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let fraction = amount - amount.rounded(.down)
+        let decay = 1 - fraction
+        return ProjectionTransform(CGAffineTransform(translationX: sin(fraction * .pi * 6) * 3.5 * decay, y: 0))
     }
 }
 

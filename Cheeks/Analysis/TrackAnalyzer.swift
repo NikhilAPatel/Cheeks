@@ -167,6 +167,9 @@ enum TrackAnalyzer {
             var s: Float = 0
             for i in 0..<(frames - lag) { s += onset[i] * onset[i + lag] }
             s /= Float(frames - lag)
+            // A beat correlates with its own half and double, so lean towards where tempos usually are.
+            let octaves = log2(fps * 60 / Double(lag) / 125)
+            s *= Float(exp(-0.5 * octaves * octaves / (0.85 * 0.85)))
             if s > bestScore { bestScore = s; bestLag = lag }
         }
         let coarseBPM = 60 * fps / Double(bestLag)

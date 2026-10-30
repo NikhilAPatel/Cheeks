@@ -5,7 +5,10 @@ import SwiftUI
 /// reachable beside it, so you can keep mixing while you pick the next track.
 struct ContentView: View {
     @Environment(DJEngine.self) private var dj
+    @Environment(Library.self) private var library
     @State var showLibrary = false
+    /// With no music yet, the first thing to see is where to add some.
+    var opensBrowserWhenEmpty = true
 
     var body: some View {
         GeometryReader { geo in
@@ -40,6 +43,10 @@ struct ContentView: View {
         .background(Theme.chassis.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .overlay(alignment: .top) { StatusCapsule().padding(.top, 2) }
+        .environment(\.openBrowser, { showLibrary = true })
+        .task {
+            if opensBrowserWhenEmpty && library.tracks.isEmpty { showLibrary = true }
+        }
     }
 }
 
@@ -188,6 +195,8 @@ struct TopBar: View {
             .frame(width: 26, height: 20)
 
             Spacer(minLength: 4)
+            MasterTempo()
+            Spacer(minLength: 4)
 
             AnalysisIndicator()
             EngineLoad()
@@ -239,6 +248,23 @@ struct TopBar: View {
     }
 }
 
+/// The tempo everything's locked to, in the centre of the bar.
+private struct MasterTempo: View {
+    @Environment(DJEngine.self) private var dj
+
+    var body: some View {
+        let master = dj.decks[dj.masterIndex]
+        HStack(spacing: 5) {
+            Text("MASTER \(master.index + 1)").silk(7.5, color: Theme.textTertiary)
+            Text(master.bpm > 0 ? String(format: "%.2f", master.effectiveBPM) : "–")
+                .font(Theme.digits(13))
+                .foregroundStyle(master.bpm > 0 ? Theme.textPrimary : Theme.textTertiary)
+                .frame(minWidth: 44, alignment: .leading)
+        }
+        .opacity(master.isLoaded ? 1 : 0.5)
+    }
+}
+
 /// How hard the audio engine is working, as a pro app would show it. It only appears when it matters.
 private struct EngineLoad: View {
     @Environment(DJEngine.self) private var dj
@@ -278,7 +304,8 @@ struct StatusCapsule: View {
             if let error = dj.engineError {
                 capsule(error, symbol: "exclamationmark.triangle.fill", tint: Theme.danger)
             } else if let message = dj.statusMessage {
-                capsule(message, symbol: "checkmark.circle.fill", tint: Theme.play)
+                capsule(message, symbol: dj.undoAction == nil ? "checkmark.circle.fill" : "trash.circle.fill",
+                        tint: dj.undoAction == nil ? Theme.play : Theme.textSecondary)
             } else if dj.savingRecordings > 0 {
                 capsule("Saving your mix…", symbol: nil, tint: Theme.accent)
             }
@@ -288,7 +315,10 @@ struct StatusCapsule: View {
         .task(id: dj.statusMessage) {
             guard dj.statusMessage != nil else { return }
             try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled { dj.statusMessage = nil }
+            if !Task.isCancelled {
+                dj.statusMessage = nil
+                dj.undoAction = nil
+            }
         }
     }
 
@@ -301,6 +331,14 @@ struct StatusCapsule: View {
                 ProgressView().controlSize(.mini)
             }
             Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1)
+            if dj.undoAction != nil {
+                Button("Undo") {
+                    Haptics.shared.confirm()
+                    dj.performUndo()
+                }
+                .font(Theme.text(11.5, .semibold))
+                .tint(Theme.accent)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 24)

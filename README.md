@@ -1,90 +1,91 @@
 # Cheeks
 
-A standalone DJ app for iPhone, designed for a large landscape screen (an unfolded foldable, or an iPad). You perform entirely on the phone, with no controller needed. The layout follows rekordbox / CDJ conventions: two decks, a two-channel mixer, waveforms on top and a browser.
-
-> Built without a Mac, so it has **never been compiled**. Expect to fix a handful of compile errors on the first Xcode build.
+A professional DJ app for iPhone, designed for a large landscape screen: the iPhone Duo unfolded, or an iPad. You perform entirely on the screen, with no controller. It looks and works like rekordbox's screens set into a Pioneer control surface, and it feels like an Apple app.
 
 ## Features
 
 **Decks (×2)**
-- Touch jog wheel. Touch the platter to scratch (vinyl feel); use the outer ring to bend pitch. When paused, any touch scrubs.
-- CDJ-style CUE button: pressing while playing returns to the cue; pressing while paused sets the cue, and holding previews from it. PLAY/PAUSE.
-- Tempo fader with ±6 / ±10 / ±16 / WIDE ranges, key lock (master tempo), and key shift of ±12 semitones.
-- SYNC matches BPM (including half or double time) and snaps beat phase, then keeps following the master and corrects drift.
-- Quantize (Q) and slip mode (SLIP).
-- 8 performance pads with five modes:
-  - **HOT CUE** A–H, saved with each track. Turn on SHIFT and tap a pad to delete its cue.
-  - **BEAT LOOP**: 1/4 to 32 beats.
-  - **ROLL**: momentary loop rolls from 1/16 to 8 beats. Playback resumes in time when you release.
-  - **BEAT JUMP**: ±1 / 4 / 16 / 32 beats. An active loop moves with the jump.
-  - **STEMS**: mute or solo VOCAL / INST / BASS / DRUMS.
-- Loop controls: IN / OUT / RELOOP-EXIT / ½ / ×2. Loops are sample-accurate.
+- **Jog wheel:** touch the record to scratch, the metal ring to bend pitch. When paused, any touch scrubs. Touches go straight to the audio core with every sample the screen reports, and scratching bypasses the time-stretcher, so the record follows your hand. You can feel beats and bars go past under your finger.
+- **CDJ-style CUE:** pressing while playing returns to the cue. Pressing while paused sets the cue, and holding previews from it.
+- **Tempo fader** with ±6 / ±10 / ±16 / WIDE ranges, a centre click, and finer control if you slide sideways off it.
+- **Key lock**, key shift of ±12 semitones, and **KEY SYNC**, which moves a deck to the nearest compatible key.
+- **BEAT SYNC** matches BPM (including half or double time) and snaps phase. MASTER chooses which deck leads. Both decks render on one sample clock, so a synced pair can't drift.
+- **Waveforms are drawn in real time scale**, so beats line up on screen when decks are matched.
+- Quantize, slip mode, reverse, beat jump, and manual and automatic loops.
+
+**Performance pads**
+- **CUE:** hot cues A–H, saved with each track. DEL then a pad removes one, with Undo.
+- **LOOP:** 1/4 to 32 beats.
+- **ROLL:** momentary loops from 1/16 to 8 beats. Playback resumes in time on release.
+- **SLICER:** play any of eight slices of the current bar, back in time on release.
+- **JUMP:** ±1 / 4 / 16 / 32 beats. A loop moves with the jump.
+- **STEMS:** see below.
+- **FX:** 12 Beat FX: echo, ping pong, spiral, reverb, flanger, phaser, filter, trans, crush, roll, brake, backspin. Hold for as long as you want, or tap to latch. While holding, slide up and down for depth and left and right for beat length. Effects stay on the beat at any tempo.
+- **SAMPLER:** eight one-shots, including an air horn.
+
+**Stems**
+- Real AI source separation into **vocals, instruments, bass and drums** with HT-Demucs running on the device. See [Stems](#stems).
+- Tap a pad to mute a stem, instantly. Slide on it to set its level. SOLO, and one-touch ACAPELLA, NO VOCAL and BEAT.
+- The waveform splits into matching colours, and muted stems drop to a ghost, so you can see what you've taken out.
+- **Effects can target single stems.** Echo the vocal, then mute it, and the tail rings out over the instrumental.
+- Split tracks are cached, so they load instantly next time.
 
 **Mixer**
-- Trim, 3-band EQ (turning a band fully left kills it), and a one-knob LPF/HPF filter per channel.
-- Channel faders, level meters, master volume, and a crossfader with smooth or scratch curves.
-- Beat FX: ECHO and REVERB (beat-synced), ROLL and BRAKE, applied to channel 1, 2 or both.
-- Headphone cue with SPLIT mode: master in the left ear, cued channels in the right, for use with a cheap headphone splitter cable. Each channel has a pre-fader 🎧 cue button. There are also CUE·MST blend and PHONES level knobs.
-- **Session recording.** REC records the master mix.
-  - **Crash-safe:** it captures to a 24-bit file that can be recovered if the app is killed mid-set, then converts to AAC or WAV (your choice, in settings) when you stop. Interrupted recordings are recovered on the next launch.
-  - **Tracklist:** every track audible for 10+ seconds is logged with its timestamp and BPM/key. It's saved next to the mix as a `.txt` and a `.cue` sheet (chapter markers).
-  - **Recordings screen:** play, view the tracklist, share, rename and delete.
-  - **Safety:** stopping asks for confirmation, recording warns when storage is low and stops cleanly if storage fills.
+- Trim, 3-band **isolator EQ** where fully left removes the band, and a one-knob resonant LPF/HPF filter per channel.
+- Channel faders, LED meters with peak hold, master volume, and a crossfader with smooth or scratch curves. Knobs and faders have detents you can feel.
+- **Look-ahead limiter** on the master, so two hot decks can't clip the output or a recording.
+- **Loudness matching:** tracks are measured to BS.1770 and brought to a matched level.
+- **Headphone cue with SPLIT mode:** master in the left ear, cued channels in the right, for a cheap splitter cable. Each channel has a pre-fader cue button, plus CUE/MST blend and level.
+
+**Recording**
+- REC records the master mix. **Crash-safe:** it captures to a 24-bit file that can be recovered if the app is killed mid-set, then converts to AAC or WAV when you stop.
+- **Tracklist:** every track audible for 10+ seconds is logged with its timestamp, BPM and key, and saved next to the mix as a `.txt` and a `.cue` sheet.
+- **Recordings screen:** play, view the tracklist, share, rename and delete.
 - **History:** a "History <date>" playlist logs what you played each day, recording or not.
 
-**Waveforms and library**
-- rekordbox-style 3-band colour waveform (low blue, mid amber, high white) with beat grid, bar markers, cues and loop region. Drag it to scratch; pinch to zoom.
-- Overview waveform per deck. Tap or drag it to needle-search.
-- Automatic analysis of BPM, beat grid, key (Camelot) and waveform on import.
-- Tap a deck's BPM to fix the grid: ×2 / ÷2, ±0.1 BPM, shift the grid by 10 ms, or set the downbeat at the playhead. You can also save the cue point as the track's memory cue.
-- Library with playlists, search, and sorting by date / title / artist / BPM / key.
-- Keys that mix harmonically with the playing track are shown in green.
-- Load buttons are disabled for a deck that is playing, so you can't replace a track mid-set by mistake.
-- Import from the Files app, or drop files into the app's folder through Files / Finder (Documents is shared).
-- rekordbox library import, in two steps:
-  1. Import your audio files first.
-  2. In rekordbox, choose File → Export Collection in xml format, then pick that file under Import → rekordbox library.
+**Library**
+- Automatic analysis of BPM, beat grid, key (Camelot), loudness and waveform on import.
+- Fix the grid from a deck's BPM: ×2 / ÷2, ±0.1 BPM, shift by 10 ms, or set the downbeat at the playhead.
+- Browser with playlists, search, tap-to-sort columns, artwork, tiny waveforms, and **IN KEY** and **±6% BPM** filters. Compatible keys are highlighted.
+- Load with the deck buttons, by swiping a row, or by dragging it onto a deck. A playing deck refuses a new track.
+- Tap a row's waveform to **preview** it: in the cue ear with a split cable, or quietly on the main output without one.
+- Import from the Files app, or drop files into the app's folder through Files or Finder.
+- **rekordbox library import:** in rekordbox, File → Export Collection in xml format, then Import → rekordbox library. Import your audio first; tracks are matched by file name, and bring over their beat grid, BPM, key, hot cues, memory cue and playlists.
 
-  Tracks are matched by file name. For each match, Cheeks brings over:
-  - beat grid and BPM
-  - key
-  - hot cues A–H
-  - memory cue
-  - playlists
+**The small things**
+- Haptics designed per control. Keys that move like keys, pads that flare when struck.
+- Now Playing on the Lock Screen and in Control Center, with the track's artwork.
+- Status messages in a capsule at the top of the screen, with Undo where it matters.
+- A refused action shakes its head. Knobs and faders spring home on a double-tap.
+- The hardware wakes up: rings sweep on and meters run up and back at launch.
+- VoiceOver labels and adjustable actions on every control, and Reduce Motion is respected.
 
 ## Getting it onto your phone
 
-1. On a Mac with **Xcode 16+**, open `Cheeks.xcodeproj`.
+1. On a Mac with **Xcode 16+**, open `Cheeks.xcodeproj`. If it asks for the Metal toolchain, let it download (or run `xcodebuild -downloadComponent MetalToolchain`).
 2. Select the **Cheeks** target. Under **Signing & Capabilities**, pick your team (your Apple Developer account). Change the bundle ID if Xcode asks.
 3. Plug in the phone (or pair it over Wi‑Fi). On the phone, turn on **Developer Mode** under Settings → Privacy & Security.
 4. Press Run. With a paid developer account, the install lasts about a year.
 
-## Stems: how they work
+## Stems
 
-Real stem separation needs a machine-learning model. Apple doesn't provide one.
+Separation needs a machine-learning model. Cheeks uses [HT-Demucs](https://github.com/facebookresearch/demucs) converted to Core ML. `tools/stems/` has the conversion script and instructions, and the result goes at `Cheeks/Stems.mlpackage`. It's large, so it isn't kept in git. **Personal use is fine; check the weights' licence before distributing the app**, since they were trained on a research dataset.
 
-- **Without a model** (the default), Cheeks uses a frequency-based split:
-  - bass = the lows
-  - drums = cymbals and hats
-  - vocals = the centre of the vocal band
-  - inst = everything else
+Without the model, the app falls back to a frequency-based split, and the status shows **≈EQ**. That's only good for rough "drop the bass" moves.
 
-  With all four stems on, the track sounds exactly like the original. Muting a stem is a rough approximation, good for "drop the bass" or "thin out the vocals", but not a clean acapella. The pads show **≈EQ** in this mode.
-- **With a model**, you get real separation. Convert a source-separation model such as [HT-Demucs](https://github.com/facebookresearch/demucs) (MIT licence) to Core ML with `coremltools`, name it `Stems.mlpackage`, and drop it into the `Cheeks/` folder. The app detects it automatically and the pads show **AI**. Expected interface:
-  - input `audio`: Float32 `[1, 2, N]` (stereo, 44.1 kHz)
-  - output `stems`: Float32 `[1, 4, 2, N]` in Demucs order: drums, bass, other, vocals
-
-Separation runs in the background when you first touch a stem pad, then swaps in without interrupting playback.
+Separation runs in the background, and swaps in without interrupting playback. With "Prepare stems on load" on (Settings), it starts as soon as a track is loaded.
 
 ## Tests
 
-`CheeksTests/` checks the engine offline using synthetic tracks:
+`CheeksTests/` renders the engine offline using synthetic tracks:
 - BPM, beat-grid and key detection
-- loop wrap, slip return and scratch tracking in the realtime renderer
-- stem muting
-- sync (including half time)
-- quantized loops and hot cues, beat jump and grid editing
-- stems summing back to the original
+- loop wrap, slip return, scratch tracking, stem muting
+- no clicks at jumps, loops, play or pause
+- key lock and key shift pitch, and instant hot cues under key lock
+- isolator flatness and kills, filter sweeps, limiter ceiling
+- stem-targeted FX and tails, and every effect staying bounded
+- a 3-minute sync lock, and recording end to end
+- real-time CPU headroom
 
 Run them with ⌘U in Xcode, or:
 
@@ -92,25 +93,23 @@ Run them with ⌘U in Xcode, or:
 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
+Hands-on testing is scripted in [docs/COMPUTER_USE_TEST.md](docs/COMPUTER_USE_TEST.md), and on-device checks in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
+
 ## Code map
 
 | Folder | What's there |
 | --- | --- |
-| `Audio/DeckRenderer.swift` | Realtime render callback: playhead, scratch, loops, slip, brake, stem mixing |
-| `Audio/Deck*.swift` | Deck control: load, cue, hot cues, loops, rolls, sync, stems, EQ/filter |
-| `Audio/DJEngine.swift` | AVAudioEngine graph, crossfader, Beat FX, sync follower, recorder |
-| `Analysis/` | Decoding, BPM/beat grid, key detection, 3-band waveform |
-| `Stems/` | Stem separators (frequency split + Core ML) |
-| `Model/` | Tracks, playlists, library storage |
-| `UI/` | SwiftUI views |
+| `DSP/` | The realtime engine in C++: decks, time-stretcher, isolator EQ, filter, FX, mixer, limiter |
+| `Audio/` | Deck control, the mixer, recording, decoding, the sampler |
+| `Analysis/` | BPM and beat grid, key, loudness, 3-band waveform |
+| `Stems/` | Stem separators and their cache |
+| `Model/` | Tracks, playlists, library storage, artwork |
+| `UI/Live/` | Metal renderer and shaders for everything that moves |
+| `UI/Design/`, `UI/Controls/` | Theme, pre-rendered parts, touch, haptics, keys, pads, knobs, faders |
+| `UI/Deck/`, `UI/Mixer/`, `UI/Browser/`, `UI/Shell/` | The screens |
 
-Signal chain per deck: `source → varispeed → time-pitch → EQ/filter → echo → reverb → channel fader → master`. Internal audio runs at 44.1 kHz.
+Credits: time-stretching by [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) (MIT). Stem separation by [Demucs](https://github.com/facebookresearch/demucs) (MIT).
 
 ## What's next
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the plan:
-- real AI stems
-- more FX, saved loops, a sampler and 4 decks
-- better analysis
-
-[docs/TEST_PLAN.md](docs/TEST_PLAN.md) covers first build and on-device testing. Hardware controllers and streaming are out of scope.
+See [docs/ROADMAP.md](docs/ROADMAP.md). Hardware controllers and streaming are out of scope.
