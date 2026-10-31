@@ -168,6 +168,8 @@ final class Deck {
     var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
     /// Each stem's level (0...1), on top of its on/off state.
     var stemLevels: [Float] = [1, 1, 1, 1] { didSet { applyStemGains() } }
+    /// Part of the track is missing or turned down, which the ordinary waveform has no way to show.
+    var stemsAltered: Bool { stemsOn.contains(false) || stemLevels.contains { $0 < 1 } }
     /// Set when the stems were last heard all on, for restoring after a solo.
     @ObservationIgnored var stemsBeforeSolo: [Bool]?
 

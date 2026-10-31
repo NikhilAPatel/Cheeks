@@ -270,7 +270,7 @@ final class WaveformLiveView: LiveView {
         // Load-in, and the stems colours easing in and out.
         let reveal = revealStart == 0 ? 1 : min(1, (now - revealStart) / 0.5)
         u.reveal = UIAccessibility.isReduceMotionEnabled || renderer.captureMode ? 1 : Float(1 - pow(1 - reveal, 3))
-        let wantStems: Float = deck.padMode == .stems && stems != nil ? 1 : 0
+        let wantStems: Float = (deck.padMode == .stems || deck.stemsAltered) && stems != nil ? 1 : 0
         stemBlend += (wantStems - stemBlend) * Float(min(1, dt * 10))
         if abs(wantStems - stemBlend) < 0.005 || renderer.captureMode { stemBlend = wantStems }
         u.stemBlend = stemBlend

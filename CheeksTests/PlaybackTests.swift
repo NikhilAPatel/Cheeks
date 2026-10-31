@@ -111,6 +111,18 @@ final class DeckTests: XCTestCase {
         XCTAssertTrue(deck.syncOn)
     }
 
+    func testStemsCountAsAlteredUntilAllAreBackAtFullLevel() {
+        let deck = makeDeck(0, bpm: 128, at: 5)
+        XCTAssertFalse(deck.stemsAltered)
+        deck.stemsOn[1] = false
+        XCTAssertTrue(deck.stemsAltered)
+        deck.stemsOn[1] = true
+        deck.stemLevels[2] = 0.5
+        XCTAssertTrue(deck.stemsAltered)
+        deck.stemLevels[2] = 1
+        XCTAssertFalse(deck.stemsAltered)
+    }
+
     func testSyncUsesHalfTimeWhenCloser() {
         let master = makeDeck(0, bpm: 140, at: 5)
         let deck = makeDeck(1, bpm: 72, at: 5)
