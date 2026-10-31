@@ -67,7 +67,9 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
         .fileExporter(isPresented: $exportingBackup, document: backupDocument, contentType: .json, defaultFilename: library.suggestedBackupName) { result in
             switch result {
-            case .success: Haptics.shared.confirm()
+            case .success:
+                Haptics.shared.confirm()
+                libraryMessage = "Backup saved."
             case .failure: libraryMessage = "The backup couldn't be saved there."
             }
         }
@@ -118,8 +120,10 @@ struct SettingsView: View {
         }
         Haptics.shared.confirm()
         dj.decks.forEach { $0.refreshTrack() }
-        var message = "Restored \(result.matched) tracks and \(result.playlists) playlists."
-        if result.added > 0 {
+        var message = "Restored \(Format.count(result.matched, "track")) and \(Format.count(result.playlists, "playlist"))."
+        if result.added == 1 {
+            message += " 1 track is waiting for its music: import the file and it'll get its cues back."
+        } else if result.added > 1 {
             message += " \(result.added) tracks are waiting for their music: import the files and they'll get their cues back."
         }
         libraryMessage = message

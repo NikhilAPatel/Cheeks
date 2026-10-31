@@ -29,6 +29,7 @@ struct CheeksApp: App {
                 Haptics.shared.start()
             } else if phase == .background {
                 library.saveNow()
+                library.writeAutomaticBackup(evenIfRecent: true)
                 Haptics.shared.stop()
             }
         }

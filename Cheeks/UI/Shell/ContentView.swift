@@ -394,7 +394,7 @@ struct StatusCapsule: View {
             if dj.undoAction != nil {
                 // A key like every other on this bar, acting on first contact. These sit right at
                 // the screen's top edge, where a SwiftUI button didn't reliably get the tap.
-                Key("UNDO", color: Theme.accent, size: 8.5, feel: .none, accessibilityName: "Undo", onPress: {
+                Key("UNDO", color: Theme.accent, size: 8.5, feel: .none, accessibilityName: "Undo", touchMargin: 6, onPress: {
                     Haptics.shared.confirm()
                     dj.performUndo()
                 })

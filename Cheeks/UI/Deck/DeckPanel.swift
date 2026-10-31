@@ -219,7 +219,7 @@ struct JogReadout: View {
         } else {
             VStack(spacing: 1 * unit) {
                 Text("\(deck.index + 1)").font(Theme.digits(34 * unit)).foregroundStyle(Theme.textTertiary)
-                Text("NO TRACK").silk(8.5 * unit, color: Theme.textTertiary)
+                Text(deck.loadingTrack == nil ? "NO TRACK" : "LOADING").silk(8.5 * unit, color: Theme.textTertiary)
             }
         }
     }
@@ -388,7 +388,10 @@ struct DeckArt: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 3.5, style: .continuous)
         ZStack {
-            if let art = deck.artwork {
+            if deck.loadingTrack != nil {
+                // Blank until the new track's art is known, so the old one doesn't sit beside the new title.
+                shape.fill(Color(white: 0.09))
+            } else if let art = deck.artwork {
                 Image(decorative: art, scale: 1).resizable().aspectRatio(contentMode: .fill)
                     .transition(.opacity.combined(with: .scale(scale: 0.92)))
             } else if let track = deck.track {
@@ -420,6 +423,11 @@ struct GeneratedArt: View {
 }
 
 enum Format {
+    /// "1 track", "2 tracks".
+    static func count(_ number: Int, _ noun: String) -> String {
+        "\(number) \(noun)\(number == 1 ? "" : "s")"
+    }
+
     static func tenths(_ seconds: Double) -> String {
         guard seconds.isFinite else { return "--:--.-" }
         let t = Int(max(0, seconds) * 10)

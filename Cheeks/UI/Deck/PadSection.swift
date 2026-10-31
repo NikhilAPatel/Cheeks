@@ -75,41 +75,69 @@ struct PadTabs: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(PadMode.allCases) { mode in
-                let selected = deck.padMode == mode
-                ZStack {
-                    Text(mode.rawValue)
-                        .font(Theme.silk(8.5))
-                        .tracking(0.3)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(selected ? Color.white : Theme.textTertiary)
-                    VStack {
-                        Spacer(minLength: 0)
-                        Capsule().fill(selected ? Theme.accent : Color.clear)
-                            .frame(height: 2)
-                            .padding(.horizontal, 5)
-                            .shadow(color: selected ? Theme.accent : .clear, radius: 3)
-                    }
+            TabRowLayout {
+                ForEach(PadMode.allCases) { mode in
+                    tab(mode)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay {
-                    TouchSurface(onDown: { _ in
-                        guard deck.padMode != mode else { return }
-                        Haptics.shared.toggle(true)
-                        // No fade: pads on their way out still take touches, and would fire the old page.
-                        deck.padMode = mode
-                    })
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(mode.rawValue.capitalized + " pads")
-                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-                .accessibilityAction { deck.padMode = mode }
             }
             Key("DEL", color: Theme.danger, lit: deck.shift, size: 8, feel: .toggle, onPress: { deck.shift.toggle() })
                 .frame(width: 30)
                 .opacity(deck.padMode == .hotCue || deck.padMode == .memory ? 1 : 0.0)
                 .allowsHitTesting(deck.padMode == .hotCue || deck.padMode == .memory)
+        }
+    }
+
+    private func tab(_ mode: PadMode) -> some View {
+        let selected = deck.padMode == mode
+        return ZStack {
+            Text(mode.rawValue)
+                .font(Theme.silk(8.5))
+                .tracking(0.3)
+                .lineLimit(1)
+                .foregroundStyle(selected ? Color.white : Theme.textSecondary)
+            VStack {
+                Spacer(minLength: 0)
+                Capsule().fill(selected ? Theme.accent : Color.clear)
+                    .frame(height: 2)
+                    .padding(.horizontal, 5)
+                    .shadow(color: selected ? Theme.accent : .clear, radius: 3)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            TouchSurface(onDown: { _ in
+                guard deck.padMode != mode else { return }
+                Haptics.shared.toggle(true)
+                // No fade: pads on their way out still take touches, and would fire the old page.
+                deck.padMode = mode
+            })
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(mode.rawValue.capitalized + " pads")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { deck.padMode = mode }
+    }
+}
+
+/// Shares a row out equally, except that a label too long for its share gets the room it needs, so
+/// none has to shrink to fit.
+private struct TabRowLayout: Layout {
+    private static let labelMargin: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let needed = subviews.map { $0.sizeThatFits(.unspecified).width + Self.labelMargin }
+        let share = bounds.width / CGFloat(max(subviews.count, 1))
+        let long = needed.filter { $0 > share }
+        let rest = (bounds.width - long.reduce(0, +)) / CGFloat(max(subviews.count - long.count, 1))
+        var x = bounds.minX
+        for (view, wanted) in zip(subviews, needed) {
+            let width = wanted > share ? wanted : rest
+            view.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width
         }
     }
 }
@@ -506,21 +534,25 @@ struct FXPad: View {
     @State private var startDepth: Float = 0
     @State private var startBeatIndex = 0
     @State private var wasOn = false
+    @State private var adjusted = false
 
     var body: some View {
         let isOn = deck.isFXOn(effect)
         Pad(color: effect.color, lit: isOn, accessibilityName: effect.rawValue.capitalized, onPress: {
             pressTime = Date()
             wasOn = isOn
+            adjusted = false
             deck.fxEngage(effect)
             startDepth = deck.fxDepth
             startBeatIndex = BeatFX.beatChoices.firstIndex(of: deck.fxBeats) ?? 2
         }, onRelease: {
             let held = Date().timeIntervalSince(pressTime ?? Date())
-            // A quick tap latches; pressing a latched one or holding one lets it go on release.
-            if wasOn || held > 0.25 { deck.fxRelease(effect) }
+            // A quick tap latches and holding one is momentary. Tapping a latched one lets it go,
+            // but sliding on it is adjusting it, so it stays on.
+            if wasOn ? !adjusted : held > 0.25 { deck.fxRelease(effect) }
             pressTime = nil
         }, onDrag: { translation in
+            if hypot(translation.width, translation.height) > 8 { adjusted = true }
             let depth = min(1, max(0, startDepth + Float(-translation.height / 80)))
             if abs(depth - deck.fxDepth) > 0.001 { deck.fxDepth = depth }
             let steps = Int((translation.width / 26).rounded())

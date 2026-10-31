@@ -830,16 +830,17 @@ private:
             voiceLock.unlock();
         }
 
-        limiter.process(programLeft, programRight, n);
-        writeCapture(n);
-        const float gainNow = limiter.lastGain();
-        put(limiterDB, gainNow < 0.9999f ? -20 * std::log10(std::max(gainNow, 0.0001f)) : 0.0f);
-
+        // The meters read ahead of the limiter, so going into the red means the mix is really over.
         float highLeft = 0, highRight = 0;
         for (int i = 0; i < n; ++i) {
             highLeft = std::max(highLeft, std::abs(programLeft[i]));
             highRight = std::max(highRight, std::abs(programRight[i]));
         }
+
+        limiter.process(programLeft, programRight, n);
+        writeCapture(n);
+        const float gainNow = limiter.lastGain();
+        put(limiterDB, gainNow < 0.9999f ? -20 * std::log10(std::max(gainNow, 0.0001f)) : 0.0f);
 
         if (relaxed(recording)) pushRecording(n);
 

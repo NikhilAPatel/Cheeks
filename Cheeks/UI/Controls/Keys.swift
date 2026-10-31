@@ -72,6 +72,8 @@ struct Key<Label: View>: View {
     var feel: KeyFeel = .key
     var isEnabled = true
     var accessibilityName: String = ""
+    /// How far past its edges a key takes a touch, for one too small to hit easily.
+    var touchMargin: CGFloat = 0
     /// Called when a disabled key is pressed, to say why, and in place of the plain buzz.
     var onRefused: (@MainActor () -> Void)?
     var onPress: @MainActor () -> Void
@@ -108,6 +110,7 @@ struct Key<Label: View>: View {
                     feel.up()
                     onRelease()
                 })
+                .padding(-touchMargin)
             }
             // Otherwise the glow's margin counts towards the key's frame for VoiceOver.
             .contentShape(.accessibility, Rectangle())
@@ -128,9 +131,9 @@ struct Key<Label: View>: View {
 
 extension Key where Label == KeyLegend {
     init(_ title: String, color: Color = Theme.accent, lit: Bool = false, size: CGFloat = 9.5, feel: KeyFeel = .key,
-         isEnabled: Bool = true, accessibilityName: String? = nil, onRefused: (@MainActor () -> Void)? = nil,
+         isEnabled: Bool = true, accessibilityName: String? = nil, touchMargin: CGFloat = 0, onRefused: (@MainActor () -> Void)? = nil,
          onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
-        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
+        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, touchMargin: touchMargin, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
             KeyLegend(title: title, size: size)
         }
     }
@@ -203,7 +206,7 @@ struct Pad<Label: View>: View {
     var body: some View {
         ZStack {
             face
-            label().foregroundStyle(lit ? Color.white : color.opacity(dimmed ? 0.5 : 0.9))
+            label().foregroundStyle(glowing ? Color.white : color.opacity(dimmed ? 0.5 : 0.9))
         }
         .scaleEffect(pressed ? 0.965 : 1)
         .animation(Theme.press, value: pressed)
@@ -230,17 +233,19 @@ struct Pad<Label: View>: View {
         }
     }
 
+    /// Held down, a pad looks like any other that's on.
+    private var glowing: Bool { lit || (pressed && !dimmed) }
+
     private var face: some View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         return ZStack {
-            KeyFace(color: color, lit: lit, pressed: pressed, cornerRadius: 6)
-            if lit {
+            KeyFace(color: color, lit: glowing, pressed: pressed, cornerRadius: 6)
+            if glowing {
                 // The diffuser is brightest in the middle, where the LED is.
                 Image(uiImage: Self.hotspot).resizable().blendMode(.plusLighter).opacity(0.09).clipShape(shape).allowsHitTesting(false)
             } else if !dimmed {
-                // Held, it stays clearly brighter than the pads around it.
-                shape.fill(color.opacity(pressed ? 0.42 : 0.09)).allowsHitTesting(false)
-                shape.strokeBorder(color.opacity(pressed ? 0.7 : 0.22), lineWidth: 0.75).allowsHitTesting(false)
+                shape.fill(color.opacity(0.09)).allowsHitTesting(false)
+                shape.strokeBorder(color.opacity(0.22), lineWidth: 0.75).allowsHitTesting(false)
             }
         }
         // A keyframe track, because it runs on the strike itself. Setting a value and animating it

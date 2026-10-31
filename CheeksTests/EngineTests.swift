@@ -613,6 +613,23 @@ final class EngineTests: XCTestCase {
         XCTAssertGreaterThan(rms(tail[...]), 0.01, "The repeats keep going with the knob back at the centre")
     }
 
+    func testDubEchoTailLastsAFewSecondsAndThenStops() {
+        let r = DeckRenderer(sampleRate: sr)
+        var source = sine(440, seconds: 20)
+        for i in Int(sr * 2)..<source.count { source[i] = 0 }
+        r.setSources([stereo(source)])
+        r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+        r.isPlaying = true
+        r.setColor(CheeksColorDubEcho, amount: -0.8)
+        _ = r.renderChannelOffline(frames: Int(sr * 2))
+        r.setColor(CheeksColorDubEcho, amount: 0)
+        var levels: [Float] = []
+        for _ in 0..<14 { levels.append(rms(r.renderChannelOffline(frames: Int(sr)).left[...])) }
+        print("DSP: dub tail per second after the knob comes back: \(levels.map { String(format: "%.0f", 20 * log10(max($0, 1e-6))) }.joined(separator: " ")) dB")
+        XCTAssertGreaterThan(levels[2], 0.003, "Still clearly there 3 s later")
+        XCTAssertLessThan(levels[13], 0.0003, "and gone in the end")
+    }
+
     func testPitchEffectReallyMovesThePitch() {
         // An octave up should put most of a 440 Hz tone's energy near 880 Hz.
         func power(_ x: ArraySlice<Float>, _ frequency: Double) -> Float {

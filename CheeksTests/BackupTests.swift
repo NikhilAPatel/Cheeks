@@ -126,11 +126,51 @@ final class BackupTests: XCTestCase {
         var day = Date(timeIntervalSince1970: 1_700_000_000)
         for _ in 0..<20 {
             library.writeAutomaticBackup(now: day)
-            library.writeAutomaticBackup(now: day) // only once a day
+            library.writeAutomaticBackup(now: day) // one file a day
             day.addTimeInterval(86_400)
         }
         let files = try manager.contentsOfDirectory(at: Library.backupDirectory, includingPropertiesForKeys: nil)
         XCTAssertEqual(files.count, 14)
+    }
+
+    func testTodaysCopyKeepsUpWithTheLibrary() throws {
+        let library = emptyLibrary()
+        let manager = FileManager.default
+        for file in try manager.contentsOfDirectory(at: Library.backupDirectory, includingPropertiesForKeys: nil) {
+            try manager.removeItem(at: file)
+        }
+        library.tracks = [preparedTrack(name: "One")]
+        let now = Date()
+        library.writeAutomaticBackup(now: now)
+        func cuesInTheCopy() throws -> Int {
+            let files = try manager.contentsOfDirectory(at: Library.backupDirectory, includingPropertiesForKeys: nil)
+            XCTAssertEqual(files.count, 1)
+            return try emptyRestored(from: Data(contentsOf: files[0]))
+        }
+        library.tracks[0].memoryCues.append(MemoryCue(time: 50))
+        library.writeAutomaticBackup(now: now.addingTimeInterval(60))
+        XCTAssertEqual(try cuesInTheCopy(), 1, "A burst of saves doesn't rewrite it every time")
+        library.writeAutomaticBackup(now: now.addingTimeInterval(6 * 60))
+        XCTAssertEqual(try cuesInTheCopy(), 2, "A few minutes on, it catches up")
+        library.tracks[0].memoryCues.append(MemoryCue(time: 60))
+        library.writeAutomaticBackup(now: now.addingTimeInterval(6 * 60), evenIfRecent: true)
+        XCTAssertEqual(try cuesInTheCopy(), 3, "and going to the background always does")
+    }
+
+    private func emptyRestored(from data: Data) throws -> Int {
+        let library = emptyLibrary()
+        try library.restore(from: data)
+        return library.tracks.first?.memoryCues.count ?? 0
+    }
+
+    func testRestoringDoesntReorderTracksAddedTogether() throws {
+        let library = emptyLibrary()
+        var one = preparedTrack(name: "One"), two = preparedTrack(name: "Two")
+        one.dateAdded = Date(timeIntervalSince1970: 1000.75)
+        two.dateAdded = Date(timeIntervalSince1970: 1000.25)
+        library.tracks = [one, two]
+        try library.restore(from: library.backupData())
+        XCTAssertEqual(library.tracks.map(\.dateAdded), [one.dateAdded, two.dateAdded])
     }
 
     func testCatchingUpOnAnalysisWaitsWhileTheDecksAreBusy() {

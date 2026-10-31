@@ -594,7 +594,7 @@ fragment float4 meter_fragment(VOut in [[stage_in]], constant MeterUniforms &u [
     const float fraction = (index + 0.5) / segments;
     float3 tint = float3(0.1, 0.82, 0.3);
     if (fraction > 0.72) tint = float3(0.98, 0.7, 0.08);
-    if (fraction > 0.9) tint = float3(1.0, 0.17, 0.13);
+    if (fraction > 42.0 / 45.0) tint = float3(1.0, 0.17, 0.13); // 0 dB on the meter's scale
 
     const float level = u.levels[bar], peak = u.peaks[bar];
     const float on = fraction <= level ? 1.0 : 0.0;

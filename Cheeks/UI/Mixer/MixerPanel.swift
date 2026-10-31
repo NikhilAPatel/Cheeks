@@ -39,11 +39,17 @@ struct MixerPanel: View {
             Key("SPLIT", lit: dj.splitCue, size: 8, feel: .toggle, onPress: { dj.splitCue.toggle() })
                 .frame(height: 20)
                 .padding(.top, 1)
-            Key(dj.colorFX.rawValue, color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter, size: 7.5,
+            Key(color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter,
                 feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", onPress: {
                 let all = ColorEffect.allCases
                 dj.colorFX = all[((all.firstIndex(of: dj.colorFX) ?? 0) + 1) % all.count]
-            })
+            }) {
+                // The arrows say it steps through effects, rather than switching the filter on and off.
+                HStack(spacing: 0) {
+                    KeyLegend(title: dj.colorFX.rawValue, size: 7.5)
+                    Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 6.5, weight: .bold))
+                }
+            }
             .frame(height: 20)
             .padding(.top, 1)
             Spacer(minLength: 2)

@@ -64,7 +64,7 @@ struct BrowserView: View {
             case .key: order = compare(a.key.flatMap { Camelot.sortValue($0) } ?? 99, b.key.flatMap { Camelot.sortValue($0) } ?? 99)
             case .duration: order = compare(a.duration, b.duration)
             }
-            if order == .orderedSame { return a.dateAdded > b.dateAdded }
+            if order == .orderedSame { return a.dateAdded == b.dateAdded ? a.id.uuidString < b.id.uuidString : a.dateAdded > b.dateAdded }
             return ascending ? order == .orderedAscending : order == .orderedDescending
         }
         return list
@@ -145,7 +145,7 @@ struct BrowserView: View {
                 }
                 let result = library.applyRekordbox(collection)
                 dj.decks.forEach { $0.refreshTrack() }
-                importMessage = "Matched \(result.matched) of \(result.total) rekordbox tracks and imported \(result.playlists) playlists. "
+                importMessage = "Matched \(result.matched) of \(Format.count(result.total, "rekordbox track")) and imported \(Format.count(result.playlists, "playlist")). "
                     + "Tracks are matched by file name, so import the audio files first."
             }
         }

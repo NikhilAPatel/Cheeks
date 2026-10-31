@@ -52,6 +52,7 @@ extension Library {
     }()
 
     private static let automaticBackupsKept = 14
+    private static let automaticBackupInterval: TimeInterval = 5 * 60
 
     func backupData() throws -> Data {
         let encoder = JSONEncoder()
@@ -64,11 +65,16 @@ extension Library {
         "Cheeks Library \(Self.dayFormatter.string(from: Date()))"
     }
 
-    /// Writes today's automatic copy if there isn't one yet, and clears out old ones.
-    func writeAutomaticBackup(now: Date = Date()) {
+    /// Brings today's automatic copy up to date and clears out old ones. Each day's copy ends up as
+    /// that day finished, so yesterday's is there if today goes wrong. Saves can come quickly in the
+    /// middle of a mix, so unless it's asked to, this leaves a copy made in the last few minutes alone.
+    func writeAutomaticBackup(now: Date = Date(), evenIfRecent: Bool = false) {
         guard !tracks.isEmpty else { return }
         let url = Self.backupDirectory.appending(path: "Cheeks Library \(Self.dayFormatter.string(from: now)).json")
-        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        if !evenIfRecent, let made = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+           abs(now.timeIntervalSince(made)) < Self.automaticBackupInterval {
+            return
+        }
         guard let data = try? backupData() else { return }
         try? data.write(to: url, options: .atomic)
         pruneAutomaticBackups()
@@ -118,7 +124,9 @@ extension Library {
                                bpm: saved.bpm, firstBeat: saved.firstBeat, tempoMarkers: saved.tempoMarkers,
                                key: saved.key, loudness: saved.loudness, hotCues: saved.hotCues, hotCueInfo: saved.hotCueInfo,
                                memoryCues: saved.memoryCues, savedLoops: saved.savedLoops, phrases: saved.phrases,
-                               rating: saved.rating, playCount: saved.playCount, dateAdded: saved.dateAdded)
+                               rating: saved.rating, playCount: saved.playCount,
+                               // A backup only keeps whole seconds, which mustn't reorder tracks added together.
+                               dateAdded: abs(local.dateAdded.timeIntervalSince(saved.dateAdded)) < 1 ? local.dateAdded : saved.dateAdded)
                 tracks[index] = merged
                 localIDForBackupID[saved.id] = local.id
                 result.matched += 1

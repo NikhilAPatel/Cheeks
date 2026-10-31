@@ -22,8 +22,10 @@ public:
 
     void process(float *left, float *right, int n, CheeksColorType type, float amount, double beatSamples) {
         const float size = std::min(1.0f, std::abs(amount));
-        const bool dark = amount < 0;
         const bool on = size > 0.01f;
+        // What's still ringing stays on the side it was turned to.
+        if (on) lastDark = amount < 0;
+        const bool dark = lastDark;
         if (type != CheeksColorFilter && on) lastType = type;
 
         const bool dub = on && type == CheeksColorDubEcho;
@@ -49,7 +51,7 @@ private:
     void runDub(float *left, float *right, int n, float size, bool dark, double beatSamples) {
         const double wanted = std::min(double(kEchoLength - 8), std::max(64.0, beatSamples * 0.75));
         if (echoIdle) echoDelay = wanted;
-        const float feedback = 0.55f + 0.4f * size;
+        const float feedbackTarget = 0.55f + 0.4f * size;
         const float sendTarget = size * size;
         const float g = std::tan(float(kPi) * float(dark ? 1100.0 : 800.0) / float(sampleRate));
         echoFilter[0].set(g, 1.2f);
@@ -58,6 +60,8 @@ private:
         for (int i = 0; i < n; ++i) {
             echoDelay += (wanted - echoDelay) * 0.0004;
             echoSend += (sendTarget - echoSend) * 0.004f;
+            // Quick to rise and slow to fall, so the repeats go on ringing once the knob's back.
+            echoFeedback += (feedbackTarget - echoFeedback) * (feedbackTarget > echoFeedback ? 0.004f : 0.00001f);
             const double readPosition = double(echoWrite) - echoDelay;
             const int base = int(std::floor(readPosition));
             const float frac = float(readPosition - base);
@@ -69,7 +73,7 @@ private:
                 echoFilter[c].process(wet[c], low, band, high);
                 const float shaped = dark ? low : high;
                 // The tape saturates gently, so a long feedback can't run away.
-                const float back = shaped * feedback;
+                const float back = shaped * echoFeedback;
                 echoLine[c][echoWrite] = (c == 0 ? left[i] : right[i]) * echoSend + back / (1 + std::abs(back) * 0.3f);
             }
             echoWrite = (echoWrite + 1) & kEchoMask;
@@ -205,7 +209,9 @@ private:
     SVF echoFilter[2];
     int echoWrite = 0;
     double echoDelay = 22050;
+    bool lastDark = false;
     float echoSend = 0;
+    float echoFeedback = 0.55f;
     bool echoIdle = true;
 
     std::vector<float> spaceLine[kSpaceLines];
