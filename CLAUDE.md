@@ -85,6 +85,9 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **Say things through `dj.say(message, kind)`:** `.refused` shows a hand and buzzes, `.done` a green tick.
 - **Everything you touch has a feel:** add a `Haptics.shared` call when you add a control. Use the existing vocabulary instead of raw generators.
 - **One blue (`Theme.accent`) for every "on" state.** Hot cues, stems and FX families have their own colours, and they match across pads, waveforms and flags.
+- **Knob arcs:** white on level knobs (`TRIM`, `MASTER`, `CUE/MST`, `LEVEL`), blue on tone knobs (EQ, filter).
+- **A deck's BPM is always the tempo it's playing at,** in the header and on the jog. The track's own speed is in the BPM menu and the browser.
+- **Stem colours show on the `STEMS` tab, and anywhere while `Deck.stemsAltered`,** because the 3-band waveform can't show that part of the track is missing.
 - **Respect the system:** `UIAccessibility.isReduceMotionEnabled` for decorative motion, accessibility labels and adjustable actions on controls, continuous corners everywhere.
 - **Deck 2 is mirrored** so each deck's tempo fader and CUE/PLAY sit at the screen edge.
 - **The Duo has a centre crease when unfolded**, so the mixer sits across it and the waveform playhead sits off-centre.

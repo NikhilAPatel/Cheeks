@@ -326,8 +326,12 @@ Fixed on the `features` branch. "UI test" means the real app driven by real touc
 **Doesn't reproduce**
 - **`DEPTH` not dragging:** a UI test drags it from 60% to 100% at both sizes. It's in the task doc to settle.
 
+**Left to Claude to decide, once the owner had been asked**
+- **Header BPM:** changed. It now follows the tempo, matching the jog.
+- **Stem colours:** they stay off the other tabs while every stem is on at full level. They now stay on while one's muted or turned down, because otherwise nothing on the deck shows it after you leave `STEMS`.
+- **Knob arcs:** unchanged and deliberate. White is for level knobs, and blue for tone knobs.
+
 **Not changed**
-- **Waiting on the owner:** white knob arcs, stem colours only on the `STEMS` tab, and the header's BPM.
 - **By design, left alone:** the loop keys aren't on the `STEMS` and `FX` pages, and when a track ends the other deck becomes master and its sync turns off.
 - **Not looked into:**
   - the `UIKit.AnimationKit:DebugAssertion` faults: none in about an hour of UI tests, but those don't drag rows or open context menus, so they may still be there

@@ -28,7 +28,10 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 **After the first hands-on test:** 66 passed and 3 failed. Those, and the "Looks wrong" list, have been worked through: see the end of `docs/COMPUTER_USE_RESULTS.md`. Three things to know:
 - **The Undo failure was never reproduced.** The control's been rebuilt on the evidence available, so it needs the task doc's retest and the owner's finger.
 - **There's now a UI test target** (`tools/ui-tests.sh`), so a Claude without computer use can drive the real app with real touch events and take screenshots. Use it. It found bugs reading the code didn't.
-- **Waiting on the owner:** white knob arcs, stem colours only on the `STEMS` tab, and whether the header BPM should follow the tempo.
+- **Product calls are yours to make.** The owner has said they don't know what DJ software usually does and wants Claude to decide things like these three, so decide and report it instead of asking:
+  - The header BPM now follows the tempo, matching the jog. The track's own speed is in the BPM menu and the browser.
+  - Level knobs keep their white arcs, and tone knobs their blue ones.
+  - Stem colours show on the `STEMS` tab, and also anywhere else while a stem is muted or turned down, because the normal waveform can't show that.
 
 **How far to trust the new features:**
 - **Phrase analysis** gets the kinds and hard edges right on synthetic arrangements (`PhraseTests`). On real music it's only been run on two tracks, neither club music, with no ground truth to compare to: it came out coarse, with long CHORUS sections. Expect to tune `minimumSectionDifference` and the labelling once it's run on the owner's music. Build-ups fade in, so where an UP starts is approximate.
