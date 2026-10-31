@@ -314,10 +314,11 @@ struct DeckHeader: View {
         return "Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
     }
 
-    /// Tap the BPM to fix the beat grid.
+    /// The tempo it's playing at, as the jog shows it. Tap it to fix the beat grid, which belongs to the
+    /// track and so is labelled at the track's own speed.
     private var gridMenu: some View {
         Menu {
-            Section("Beat grid") {
+            Section("Beat grid: " + String(format: "%.2f", deck.bpm) + " BPM at normal speed") {
                 Button("Double BPM", systemImage: "multiply") { deck.scaleBPM(2) }
                 Button("Halve BPM", systemImage: "divide") { deck.scaleBPM(0.5) }
                 if deck.grid?.isVariable == true {
@@ -334,7 +335,7 @@ struct DeckHeader: View {
             Button("Cues and loops…", systemImage: "list.bullet") { showCueList = true }
         } label: {
             VStack(alignment: .trailing, spacing: 0) {
-                Text(deck.isLoaded && deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "–")
+                Text(deck.isLoaded && deck.bpm > 0 ? String(format: "%.2f", deck.effectiveBPM) : "–")
                     .font(Theme.digits(13))
                     .foregroundStyle(Theme.textPrimary)
                 HStack(spacing: 2) {
@@ -347,6 +348,8 @@ struct DeckHeader: View {
         }
         .disabled(!deck.isLoaded)
         .simultaneousGesture(TapGesture().onEnded { Haptics.shared.key() })
+        .accessibilityLabel("Beat grid")
+        .accessibilityValue(deck.isLoaded && deck.bpm > 0 ? String(format: "%.2f BPM", deck.effectiveBPM) : "No track")
     }
 
     /// Remaining time large, elapsed small.

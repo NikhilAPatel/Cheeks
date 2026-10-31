@@ -77,6 +77,28 @@ final class LayoutAndFeedbackTests: CheeksUITestCase {
         press(button("Cue pads"))
     }
 
+    func testTheHeaderBPMFollowsTheTempo() throws {
+        loadDeck1()
+        let grid = button("Beat grid")
+        let tempo = anyElement("Tempo")
+        waitFor(grid)
+        waitFor(tempo)
+        func bpm() -> Double { Double((grid.value as? String ?? "").replacingOccurrences(of: " BPM", with: "")) ?? 0 }
+        func percent() -> Double { Double((tempo.value as? String ?? "").replacingOccurrences(of: " percent", with: "")) ?? 0 }
+        let bpmBefore = bpm(), percentBefore = percent()
+        XCTAssertGreaterThan(bpmBefore, 0)
+        let middle = tempo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        middle.press(forDuration: 0.1, thenDragTo: tempo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72)))
+        sleep(1)
+        print("UITEST: \(bpmBefore) BPM at \(percentBefore)% to \(bpm()) BPM at \(percent())%")
+        XCTAssertNotEqual(percent(), percentBefore, "The fader should have moved")
+        XCTAssertEqual(bpm() / bpmBefore, (100 + percent()) / (100 + percentBefore), accuracy: 0.0015)
+        screenshot("header-bpm-moved")
+        press(grid)
+        sleep(1)
+        screenshot("header-bpm-menu")
+    }
+
     func testPadsAndLayoutForALook() throws {
         loadDeck1()
         screenshot("decks-full")
