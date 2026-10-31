@@ -101,7 +101,7 @@ final class Deck {
     /// Called when anything affecting channel volume or tempo-synced FX changes.
     @ObservationIgnored var onMixChange: (@MainActor () -> Void)?
     /// A message for the status capsule.
-    @ObservationIgnored var onMessage: (@MainActor (String) -> Void)?
+    @ObservationIgnored var onMessage: (@MainActor (String, StatusKind) -> Void)?
     @ObservationIgnored var stemJob: StemJob?
     /// Called after something destructive, to offer a way back.
     @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?

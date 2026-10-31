@@ -367,7 +367,8 @@ struct TrackRow: View {
                 .frame(width: 34, alignment: .trailing)
             HStack(spacing: 3) {
                 ForEach(dj.decks, id: \.index) { deck in
-                    Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying, onPress: {
+                    Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying,
+                        onRefused: { dj.refuseLoad(onto: deck) }, onPress: {
                         _ = dj.load(track, onto: deck)
                     })
                     .frame(width: 29, height: 25)

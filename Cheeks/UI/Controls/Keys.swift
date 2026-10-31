@@ -72,6 +72,8 @@ struct Key<Label: View>: View {
     var feel: KeyFeel = .key
     var isEnabled = true
     var accessibilityName: String = ""
+    /// Called when a disabled key is pressed, to say why, and in place of the plain buzz.
+    var onRefused: (@MainActor () -> Void)?
     var onPress: @MainActor () -> Void
     var onRelease: @MainActor () -> Void = {}
     @ViewBuilder var label: () -> Label
@@ -93,8 +95,8 @@ struct Key<Label: View>: View {
             .overlay {
                 TouchSurface(onDown: { _ in
                     guard isEnabled else {
-                        Haptics.shared.deny()
                         refused += 1
+                        if let onRefused { onRefused() } else { Haptics.shared.deny() }
                         return
                     }
                     pressed = true
@@ -107,6 +109,8 @@ struct Key<Label: View>: View {
                     onRelease()
                 })
             }
+            // Otherwise the glow's margin counts towards the key's frame for VoiceOver.
+            .contentShape(.accessibility, Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityName)
             .accessibilityAddTraits(lit ? [.isButton, .isSelected] : .isButton)
@@ -124,8 +128,9 @@ struct Key<Label: View>: View {
 
 extension Key where Label == KeyLegend {
     init(_ title: String, color: Color = Theme.accent, lit: Bool = false, size: CGFloat = 9.5, feel: KeyFeel = .key,
-         isEnabled: Bool = true, accessibilityName: String? = nil, onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
-        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, onPress: onPress, onRelease: onRelease) {
+         isEnabled: Bool = true, accessibilityName: String? = nil, onRefused: (@MainActor () -> Void)? = nil,
+         onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
+        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
             KeyLegend(title: title, size: size)
         }
     }
@@ -216,6 +221,7 @@ struct Pad<Label: View>: View {
                 onRelease()
             })
         }
+        .contentShape(.accessibility, Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(lit ? [.isButton, .isSelected] : .isButton)

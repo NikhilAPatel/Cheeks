@@ -17,30 +17,49 @@ final class UndoAndRefusalTests: CheeksUITestCase {
         return undo
     }
 
-    private func attempt(_ name: String, _ tapIt: (XCUIElement) -> Void) {
-        let undo = deleteHotCue()
-        let frame = undo.frame
-        tapIt(undo)
-        sleep(1)
-        print("UITEST: \(name): frame \(frame), capsule gone \(!app.buttons["Undo"].exists), cue back \(button("Hot cue A").exists)")
-        if !button("Hot cue A").exists {
-            // Leave it so the next attempt can run: the capsule goes by itself.
-            sleep(6)
+    func testUndoBringsADeletedHotCueBackWhetherPausedOrPlaying() throws {
+        loadDeck1()
+        for playing in [false, true] {
+            if playing {
+                press(button("Play"))
+                sleep(1)
+            }
+            let undo = deleteHotCue()
+            screenshot("undo-capsule-\(playing ? "playing" : "paused")")
+            XCTAssertFalse(button("Hot cue A").exists, "It's deleted first")
+            undo.tap()
+            sleep(1)
+            XCTAssertTrue(button("Hot cue A").exists, "The cue should be back")
+            XCTAssertFalse(app.buttons["Undo"].exists, "and the capsule gone")
         }
+        press(button("Pause"))
     }
 
-    func testUndoVariations() throws {
+    func testTheCapsuleStaysClearOfTheMasterTempo() throws {
         loadDeck1()
-        attempt("paused, tap") { $0.tap() }
-        attempt("paused, 0.25 s press") { self.press($0, seconds: 0.25) }
-        attempt("paused, 0.01 s press") { self.press($0, seconds: 0.01) }
+        let undo = deleteHotCue()
+        let master = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'MASTER'")).firstMatch
+        waitFor(master)
+        print("UITEST: master \(master.frame), undo \(undo.frame)")
+        // The whole capsule sits to the right of the readout, whose number ends about 60 pt past its label.
+        XCTAssertGreaterThan(undo.frame.minX, master.frame.maxX + 60)
+        undo.tap()
+    }
+
+    func testPressingALoadKeyForAPlayingDeckSaysWhyNot() throws {
+        loadDeck1()
         press(button("Play"))
-        sleep(2)
-        screenshot("d3-playing")
-        attempt("playing, tap") { $0.tap() }
-        attempt("playing, 0.25 s press") { self.press($0, seconds: 0.25) }
-        attempt("playing, 0.12 s press") { self.press($0, seconds: 0.12) }
-        attempt("playing, 0.01 s press") { self.press($0, seconds: 0.01) }
+        sleep(1)
+        openBrowser()
+        let keys = app.buttons.matching(NSPredicate(format: "label == '1'"))
+        waitFor(keys.firstMatch)
+        XCTAssertGreaterThanOrEqual(keys.count, 2, "Needs a second track to try loading")
+        // Whichever row isn't the loaded track: the second key may be either, and neither should load.
+        press(keys.element(boundBy: 1))
+        let message = app.staticTexts["Deck 1 is playing. Stop it first."]
+        XCTAssertTrue(message.waitForExistence(timeout: 2), "A refusal has to say why")
+        screenshot("c5-refused")
+        closeBrowser()
         press(button("Pause"))
     }
 }

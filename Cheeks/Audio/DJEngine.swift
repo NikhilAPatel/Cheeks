@@ -2,6 +2,11 @@ import Accelerate
 import AVFoundation
 import Observation
 
+/// What a status message is saying, which decides how the capsule looks.
+enum StatusKind {
+    case done, info, refused, problem
+}
+
 enum CrossfaderCurve: String, CaseIterable, Identifiable {
     case smooth = "SMOOTH"
     case scratch = "SCRATCH"
@@ -57,7 +62,14 @@ final class DJEngine {
         didSet { UserDefaults.standard.set(recordingFormat.rawValue, forKey: "recordingFormat") }
     }
     /// Short message for the status capsule (saved, low storage, errors).
-    var statusMessage: String?
+    /// A new message clears any Undo offered with the last one, which it'd no longer apply to.
+    var statusMessage: String? {
+        didSet {
+            statusKind = .done
+            undoAction = nil
+        }
+    }
+    private(set) var statusKind: StatusKind = .done
     /// Set alongside a message when what just happened can be taken back.
     var undoAction: (@MainActor () -> Void)?
 
@@ -90,7 +102,7 @@ final class DJEngine {
         for deck in decks {
             deck.library = library
             deck.onMixChange = { [weak self] in self?.updateVolumes() }
-            deck.onMessage = { [weak self] message in self?.statusMessage = message }
+            deck.onMessage = { [weak self] message, kind in self?.say(message, kind) }
             deck.offerUndo = { [weak self] message, undo in
                 self?.statusMessage = message
                 self?.undoAction = undo
@@ -107,6 +119,7 @@ final class DJEngine {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
+        sampler.onMessage = { [weak self] message, kind in self?.say(message, kind) }
         sampler.loadSounds()
         library.isBusy = { [weak self] in
             let thermal = ProcessInfo.processInfo.thermalState
@@ -230,18 +243,28 @@ final class DJEngine {
     @discardableResult
     func load(_ track: Track, onto deck: Deck) -> Bool {
         guard !deck.isPlaying else {
-            Haptics.shared.deny()
-            statusMessage = "Deck \(deck.index + 1) is playing. Stop it first."
+            refuseLoad(onto: deck)
             return false
         }
         guard library?.isMissing(track) != true else {
-            Haptics.shared.deny()
-            statusMessage = "\(track.title)'s file is missing. Import it again and it'll get its cues back."
+            say("\(track.title)'s file is missing. Import it again and it'll get its cues back.", .refused)
             return false
         }
         Haptics.shared.load()
         deck.load(track)
         return true
+    }
+
+    /// Says why a load didn't happen.
+    func refuseLoad(onto deck: Deck) {
+        say("Deck \(deck.index + 1) is playing. Stop it first.", .refused)
+    }
+
+    /// Puts up a message. A refusal also buzzes, so it's felt as well as seen.
+    func say(_ message: String, _ kind: StatusKind = .info) {
+        statusMessage = message
+        statusKind = kind
+        if kind == .refused { Haptics.shared.deny() }
     }
 
     // MARK: Sampler and preview
@@ -365,7 +388,7 @@ final class DJEngine {
         nowPlaying?.update()
         if isRecording && recorder.didFail {
             stopRecording()
-            statusMessage = "Recording stopped: storage is full. Everything up to now was saved."
+            say("Recording stopped: storage is full. Everything up to now was saved.", .problem)
         }
     }
 
@@ -412,7 +435,7 @@ final class DJEngine {
     private func startRecording() {
         let minutesLeft = Recordings.minutesOfStorageLeft()
         if let minutesLeft, minutesLeft < 10 {
-            statusMessage = "Not enough free space to record."
+            say("Not enough free space to record.", .refused)
             return
         }
         let url = Recordings.directory.appending(path: Recordings.newBaseName() + Recordings.inProgressSuffix)
@@ -420,7 +443,7 @@ final class DJEngine {
         do {
             try recorder.start(url: url, format: format)
         } catch {
-            statusMessage = "Couldn't start recording."
+            say("Couldn't start recording.", .problem)
             return
         }
         recordingDrain = RecordingDrain(core: core, recorder: recorder, format: format)
@@ -432,7 +455,7 @@ final class DJEngine {
         setlistTrack = [nil, nil]
         trackOnAir()
         if let minutesLeft, minutesLeft < 120 {
-            statusMessage = "Free space for about \(Int(minutesLeft)) min of recording."
+            say("Free space for about \(Int(minutesLeft)) min of recording.", .info)
         }
     }
 
@@ -459,17 +482,21 @@ final class DJEngine {
         let format = recordingFormat
         Task.detached(priority: .userInitiated) {
             let message: String
+            let kind: StatusKind
             do {
                 let saved = try RecordingFinalizer.finalize(caf, format: format, recovered: recovered)
                 message = (recovered ? "Recovered " : "Saved ") + saved.deletingPathExtension().lastPathComponent
+                kind = .done
             } catch RecordingFinalizer.FinalizeError.empty {
                 message = "The recording was empty, so nothing was saved."
+                kind = .info
             } catch {
                 message = "Couldn't convert a recording; the full-quality raw file is in Recordings."
+                kind = .problem
             }
             await MainActor.run {
                 self.savingRecordings -= 1
-                self.statusMessage = message
+                self.say(message, kind)
             }
         }
     }

@@ -42,7 +42,6 @@ struct ContentView: View {
         }
         .background(Theme.chassis.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .overlay(alignment: .top) { StatusCapsule().padding(.top, 2) }
         .environment(\.openBrowser, { showLibrary = true })
         .task {
             if opensBrowserWhenEmpty && library.tracks.isEmpty { showLibrary = true }
@@ -180,6 +179,7 @@ struct TopBar: View {
 
     var body: some View {
         HStack(spacing: 5) {
+            HStack(spacing: 5) {
             HStack(spacing: 4) {
                 CheeksMark(size: 13)
                 Text("cheeks").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Theme.textPrimary)
@@ -200,11 +200,17 @@ struct TopBar: View {
                 Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
             }
             .frame(width: 26, height: 20)
-
             Spacer(minLength: 4)
+            }
+            .frame(maxWidth: .infinity)
+
             MasterTempo()
-            Spacer(minLength: 4)
 
+            // Laid out with the bar rather than floated over it, so it can't cover the tempo. Both
+            // sides take the same width, which keeps the tempo in the middle of the screen.
+            HStack(spacing: 5) {
+            StatusCapsule()
+                .frame(maxWidth: .infinity)
             AnalysisIndicator()
             EngineLoad()
             TimelineView(.everyMinute) { context in
@@ -216,6 +222,8 @@ struct TopBar: View {
                 Image(systemName: "gearshape.fill").font(.system(size: 9))
             }
             .frame(width: 26, height: 20)
+            }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 6)
         .frame(height: 26)
@@ -307,16 +315,39 @@ private struct AnalysisIndicator: View {
 }
 
 /// Messages appear in a capsule that grows out of the top of the screen and tucks itself away again.
+extension StatusKind {
+    var symbol: String {
+        switch self {
+        case .done: "checkmark.circle.fill"
+        case .info: "info.circle.fill"
+        case .refused: "hand.raised.fill"
+        case .problem: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .done: Theme.play
+        case .info: Theme.textSecondary
+        case .refused: Theme.warn
+        case .problem: Theme.danger
+        }
+    }
+}
+
 struct StatusCapsule: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
         Group {
             if let error = dj.engineError {
-                capsule(error, symbol: "exclamationmark.triangle.fill", tint: Theme.danger)
+                capsule(error, symbol: StatusKind.problem.symbol, tint: StatusKind.problem.tint)
             } else if let message = dj.statusMessage {
-                capsule(message, symbol: dj.undoAction == nil ? "checkmark.circle.fill" : "trash.circle.fill",
-                        tint: dj.undoAction == nil ? Theme.play : Theme.textSecondary)
+                if dj.undoAction != nil {
+                    capsule(message, symbol: "trash.circle.fill", tint: Theme.textSecondary)
+                } else {
+                    capsule(message, symbol: dj.statusKind.symbol, tint: dj.statusKind.tint)
+                }
             } else if dj.savingRecordings > 0 {
                 capsule("Saving your mix…", symbol: nil, tint: Theme.accent)
             }
@@ -325,7 +356,8 @@ struct StatusCapsule: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.savingRecordings)
         .task(id: dj.statusMessage) {
             guard dj.statusMessage != nil else { return }
-            try? await Task.sleep(for: .seconds(5))
+            // Undo stays around longer: you may need a moment to realise you want it.
+            try? await Task.sleep(for: .seconds(dj.undoAction == nil ? 5 : 8))
             if !Task.isCancelled {
                 dj.statusMessage = nil
                 dj.undoAction = nil
@@ -341,22 +373,23 @@ struct StatusCapsule: View {
             } else {
                 ProgressView().controlSize(.mini)
             }
-            Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1)
+            Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.75)
             if dj.undoAction != nil {
-                Button("Undo") {
+                // A key like every other on this bar, acting on first contact. These sit right at
+                // the screen's top edge, where a SwiftUI button didn't reliably get the tap.
+                Key("UNDO", color: Theme.accent, size: 8.5, feel: .none, accessibilityName: "Undo", onPress: {
                     Haptics.shared.confirm()
                     dj.performUndo()
-                }
-                .font(Theme.text(11.5, .semibold))
-                .tint(Theme.accent)
+                })
+                .frame(width: 46, height: 18)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 10)
+        .padding(.trailing, dj.undoAction == nil ? 10 : 3)
         .frame(height: 24)
         .background(Capsule().fill(.black))
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.6), radius: 8, y: 3)
-        .frame(maxWidth: 520)
         .transition(.asymmetric(insertion: .scale(scale: 0.5, anchor: .top).combined(with: .opacity),
                                 removal: .scale(scale: 0.8, anchor: .top).combined(with: .opacity)))
     }

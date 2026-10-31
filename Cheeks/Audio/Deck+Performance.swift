@@ -80,8 +80,7 @@ extension Deck {
         guard isLoaded else { return }
         let time = isPlaying ? snap(renderer.playhead) / sampleRate : cuePoint
         guard track?.memoryCues.contains(where: { abs($0.time - time) < 0.01 }) == false else {
-            Haptics.shared.deny()
-            onMessage?("There's already a memory cue here.")
+            onMessage?("There's already a memory cue here.", .refused)
             return
         }
         saveMemoryCue(at: time)
@@ -91,14 +90,12 @@ extension Deck {
     /// Saves the loop that's set, on or off.
     func saveCurrentLoop() {
         guard isLoaded, renderer.loopEnd > renderer.loopStart + sampleRate * 0.01 else {
-            Haptics.shared.deny()
-            onMessage?("Set a loop first, then save it.")
+            onMessage?("Set a loop first, then save it.", .refused)
             return
         }
         let start = renderer.loopStart / sampleRate, end = renderer.loopEnd / sampleRate
         guard track?.savedLoops.contains(where: { abs($0.start - start) < 0.01 && abs($0.end - end) < 0.01 }) == false else {
-            Haptics.shared.deny()
-            onMessage?("This loop's already saved.")
+            onMessage?("This loop's already saved.", .refused)
             return
         }
         updateTrack { $0.savedLoops.append(SavedLoop(start: start, end: end)) }
@@ -526,7 +523,7 @@ extension Deck {
         }
         echoingOut = true
         // The key's only on the FX page, and a silent deck needs explaining from anywhere else.
-        onMessage?("Echo out on deck \(index + 1). Press OUT again to bring it back.")
+        onMessage?("Echo out on deck \(index + 1). Press OUT again to bring it back.", .info)
         let here = beatPosition(renderer.playhead)
         let cut = (here + 0.5).rounded(.up)
         // The echo's input closes on the same beat as the cut, so what's in the line rings out.
@@ -587,7 +584,7 @@ extension Deck {
                     StemJob.finished()
                     guard let self, self.loadGeneration == generation else { return }
                     self.stemStatus = .unavailable
-                    if !wasCancelled { self.onMessage?("Couldn't split this track into stems.") }
+                    if !wasCancelled { self.onMessage?("Couldn't split this track into stems.", .problem) }
                 }
             }
         }

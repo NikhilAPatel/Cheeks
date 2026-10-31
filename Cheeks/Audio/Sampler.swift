@@ -63,7 +63,7 @@ final class Sampler {
     var isSetting = false
     var slotBeingEdited: Int?
     /// A message for the status capsule.
-    @ObservationIgnored var onMessage: (@MainActor (String) -> Void)?
+    @ObservationIgnored var onMessage: (@MainActor (String, StatusKind) -> Void)?
 
     @ObservationIgnored private let core: OpaquePointer
     /// Strong references keep the audio alive; the render thread only sees raw pointers.
@@ -216,7 +216,7 @@ final class Sampler {
         guard frames > 64 else { return }
         let pcm = buffer.slice(from: 0, count: frames)
         guard let name = save(pcm, slot: slot) else {
-            onMessage?("The recording couldn't be saved.")
+            onMessage?("The recording couldn't be saved.", .problem)
             return
         }
         useSound(pcm, fileName: name, title: "REC \(slot + 1)", slot: slot)

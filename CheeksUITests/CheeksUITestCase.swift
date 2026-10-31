@@ -28,7 +28,8 @@ class CheeksUITestCase: XCTestCase {
 
     /// Saves what's on screen where the script can find it, if it asked for that.
     func screenshot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
+        // The window rather than the main screen: on the Duo, that's the cover screen, which is off.
+        let png = app.windows.firstMatch.screenshot().pngRepresentation
         if let directory = ProcessInfo.processInfo.environment["CHEEKS_UI_SHOTS"] {
             try? png.write(to: URL(filePath: directory).appending(path: name + ".png"))
         }
