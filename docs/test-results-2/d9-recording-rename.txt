@@ -1,0 +1,14 @@
+--- Friday Set.cue
+TITLE "Friday Set"
+PERFORMER "Cheeks"
+FILE "Friday Set.m4a" WAVE
+  TRACK 01 AUDIO
+    TITLE "Severe Tire Damage - High Quality"
+    PERFORMER "Kevin MacLeod"
+    INDEX 01 00:00:00
+
+--- Friday Set.txt
+Friday Set
+
+00:00  Kevin MacLeod – Severe Tire Damage - High Quality  (181.9 BPM, 5A)
+
