@@ -191,3 +191,45 @@ The `DUB` figures use a new measure, the last frame with any lit LED, so compare
 
 ## First impressions
 Not run: part 3 of the task is only for when the owner asks.
+
+---
+
+## What happened next
+Everything here was checked against the code first. Each fix below has a test that failed before it, unless it says otherwise.
+
+**The tab race (S1):** closed. 29 of 29 is good evidence, though only a real finger can confirm it.
+
+**Fixed**
+- **Armed loop pulling the deck back:** confirmed. Going past a loop now lets it go, leaving it set for `RELOOP`. Going to a point before a loop that's still ahead leaves it waiting.
+- **Roll or slice ending a running loop:** confirmed. The loop now comes back still running, at the point it would have reached, so it stays in time. With `SLIP` on, the way back survives too.
+- **`EXIT` for a loop you haven't reached:** the key says `ARMED`, unlit, until the deck gets there. Tapping it still disarms.
+- **Tab spacing:** evened out, with a 26 pt minimum so `FX` stays easy to hit. Not re-measured.
+- **`Stems waiting` flash:** gone for a split that's already saved. No test: the retest checks it.
+- **Slow file picker:** the row shows a spinner until the picker closes. It's not known whether the delay happens on a phone. No test: the retest checks it.
+
+**T5 turned out to be two things**
+- **The deck's meter ignored `TRIM`:** the lead was right. It now reads after `TRIM` and loudness matching and ahead of the fader, as on a real mixer, and 3 dB down.
+- **A bug nobody had reported, and bigger than the meter:** with every knob centred, the channel raised Exhilarate's peaks from 1.0 to 1.85 (+5.3 dB), and Severe Tire Damage's to 1.11. The EQ's bands add back at a flat level but with the phase turned, which is hard on a heavily limited master. With every band at 1 the signal now goes straight through, and it crossfades into the bands as the first knob leaves centre.
+
+| Default levels, 30 s of each | Before | After |
+|---|---|---|
+| Exhilarate, peak after the channel | 1.85 | 1.00 |
+| Severe Tire Damage, peak after the channel | 1.11 | 1.00 |
+| One deck, limiter's worst | 0.4 dB | 0.0 dB |
+| Both decks, limiter over 0.5 dB | 11% of the time | 7% |
+| Both decks, limiter's worst | 3.2 dB | 2.5 dB |
+| Deck meters in the red | | 0%, top -5.4 and -1.5 dB |
+
+**Also found and fixed, in the same code**
+- **`BEAT JUMP` while armed:** moved the waiting loop along with the deck. It now moves only the deck.
+- **Loop keys while armed:** halving sent the deck from 0:10 to 1:00, into the loop. Halving now leaves the deck alone, and a loop pad starts a new loop where the deck is.
+- **Hot cue during a slip loop:** landed on the slip position, not the cue.
+- **Seeking out of a running loop:** got pulled back, or left the loop armed behind the deck.
+
+**Not fixed**
+- **Section lengths:** still up to 118.7 s. That needs someone listening to the music: see `docs/TEST_PLAN.md` §2.
+- **A muted stem that doesn't show:** as the report says, it's the music.
+- **The log faults:** still not looked into. None comes from an engine.
+
+**Worth knowing:** the first move of an EQ knob now crossfades between two signals with different phase. It's quick and shouldn't click (there's a test), but nobody has heard it yet, so it's on the owner's listening list.
+

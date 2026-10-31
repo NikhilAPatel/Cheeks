@@ -65,6 +65,9 @@ Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 
 ### Mixer and FX
 - [ ] EQ: each band kills fully at the far left, and boosts are modest. This is a new isolator; compare it with your hardware.
+- [ ] EQ off centre: turn a knob slowly away from the centre, on a loud track. With all knobs centred the sound now skips the EQ entirely, so listen for any swish, pop or change in tone as the first knob leaves centre.
+- [ ] Loud tracks: do they sound any different from before, punchier or cleaner? The EQ was raising their peaks by up to 5 dB and sending them into the limiter, even with every knob centred.
+- [ ] `DUB`: turn it well round and back to the centre. The tail now rings on for about 5 seconds. Too long, or about right?
 - [ ] The filter sweeps low-pass to the left and high-pass to the right, has no effect at centre, and doesn't click leaving centre.
 - [ ] Two tracks at full level don't distort on the master, and the LIM light comes on.
 - [ ] Tracks at different loudness come in at about the same level with "Match track loudness" on.
@@ -79,6 +82,7 @@ Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] "History <today>" lists the tracks that were played out.
 
 ### New: cues, sampler, FX and structure
+- [ ] **Section names:** on tracks you know, do the names and starts match the song? Some sections still run about 2 minutes. Only someone listening can say if this is any use.
 - [ ] **rekordbox import:** export your collection and import it. Are every memory cue, saved loop, hot loop, name and colour there? Does a track you know has a tempo drift follow it?
 - [ ] **Phrases:** load five tracks you know well. Are the intro, chorus, breakdown and outro roughly where they should be? Tell me which ones are wrong and how, that's what's needed to tune it.
 - [ ] **False tempo maps:** on anything played to a click, does the BPM stay still as it plays? If the number moves on a steady track, say which one.

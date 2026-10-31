@@ -119,19 +119,27 @@ final class LayoutAndFeedbackTests: CheeksUITestCase {
 
     func testASliceLeavesNothingForTheSamplerToGrab() throws {
         loadDeck1()
+        // The track may have a real loop saved on it from earlier, so compare before and after.
+        func offersGrab() -> Bool {
+            press(button("Sample pads"))
+            waitFor(button("SET"))
+            press(button("SET"))
+            press(button("Clap"))
+            waitFor(app.buttons["Record the Master"], seconds: 5)
+            let offered = app.buttons["Grab Deck 1's Loop"].exists
+            screenshot("sampler-sheet")
+            app.buttons["Done"].firstMatch.tap()
+            sleep(1)
+            return offered
+        }
+        let before = offersGrab()
         press(button("Slicer pads"))
         let slice = button("Slice 3")
         waitFor(slice)
         slice.press(forDuration: 1)
         sleep(1)
         press(button("Pause"))
-        press(button("Sample pads"))
-        waitFor(button("SET"))
-        press(button("SET"))
-        press(button("Clap"))
-        waitFor(app.buttons["Record the Master"], seconds: 5)
-        XCTAssertFalse(app.buttons["Grab Deck 1's Loop"].exists, "There's no loop on deck 1 to grab")
-        screenshot("sampler-sheet-after-slice")
+        XCTAssertEqual(offersGrab(), before, "A slice mustn't add a loop to grab")
     }
 
     func testPadsAndLayoutForALook() throws {

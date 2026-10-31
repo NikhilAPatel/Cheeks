@@ -25,7 +25,11 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Not yet proven, because nothing here could touch or hear it:** a real finger, especially near the screen's top and bottom edges, haptic tuning, how it sounds, headphone and split cue routing, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. The owner covers these with TEST_PLAN §2.
 
-**After the second hands-on test:** 53 of 58 passed, on 97e6a30. The 5 failures and most of the "Looks wrong" list are fixed: see the end of `docs/COMPUTER_USE_RESULTS_2.md`. The retest is at the top of `docs/COMPUTER_USE_TASK.md`, and hasn't been run. Section names were judged only from the numbers, with nobody listening.
+**Hands-on testing is a loop now:** the owner told the two Claude sessions to work directly and keep going until told to stop. The computer-use session runs `docs/COMPUTER_USE_TASK.md` and commits its results to local `master`. This side merges, fixes, verifies, pushes, and messages it what to retest. Stay off a simulator while it's testing there.
+
+**After the third hands-on test:** 21 of 22 passed, on 05feeed, and the tab race held on 29 of 29 synthetic tries. See the end of `docs/COMPUTER_USE_RESULTS_3.md`, which also has a bug nobody had reported: with every knob centred, the channel's EQ was raising loud masters' peaks by up to 5 dB. The next retest, including a harder round, is at the top of `docs/COMPUTER_USE_TASK.md`. Section names have only been judged from the numbers, with nobody listening.
+
+**After the second hands-on test:** 53 of 58 passed, on 97e6a30. See the end of `docs/COMPUTER_USE_RESULTS_2.md`.
 
 **After the first hands-on test:** 66 passed and 3 failed. Those, and the "Looks wrong" list, have been worked through: see the end of `docs/COMPUTER_USE_RESULTS.md`. Three things to know:
 - **The Undo failure was never reproduced.** The control's been rebuilt on the evidence available, so it needs the task doc's retest and the owner's finger.

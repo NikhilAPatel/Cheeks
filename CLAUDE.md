@@ -59,9 +59,12 @@ xcrun simctl io booted screenshot screenshot.png
   - The playhead and the meters are *not* observed. The live views read them directly from the audio core.
 - **Beats go through `BeatGrid`** (`Model/BeatGrid.swift`), never `bpm` and `firstBeat` sums, because a track can change tempo. `Deck.bpm`, `beatFrames` and `firstBeatFrame` describe the section at the playhead, and `Deck.tick` tells the core when that changes. Use `beatPosition(frame)` and `frame(atBeat:)` for anything spanning more than a beat.
 - **Edit a loaded track through `Deck.updateTrack`:** its closure runs once, so anything it creates has one ID in both the deck and the library. A deck holding the same track picks the change up.
-- **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, so nothing else finds its tiny loop afterwards.
+- **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, running or not, so nothing else finds its tiny loop afterwards. A loop that was running comes back where it would have got to.
+- **A loop can be waiting up ahead** (`Deck.isLoopAhead`): on, but the deck hasn't reached it. Anything that moves the deck or the loop has to allow for that. Go through `leaveLoop(ifGoingTo:)` when moving the deck, or a loop behind it pulls it straight back.
 - **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
 - **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
+- **The isolator is out of the path with every band at 1.** Its bands add back flat but with the phase turned, which raised a loud master's peaks by 5 dB. It crossfades in as the first knob leaves centre.
+- **A deck's meter is `Deck.level`:** after TRIM and loudness matching, ahead of the fader, and read 3 dB down. The master meters read ahead of the limiter. Red on either means it's really too hot.
 - **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
 - **Two decks' positions come from `DJEngine.positions`,** not one `playhead` each: those can be read between two decks being published, a whole block apart. The engine publishes them together under a sequence lock, and the render thread never waits.
 - **Audio session calls stay off the main thread,** including `AVAudioPlayer.play()`, which activates the session. `RecordingPlayer` has its own queue for that.
@@ -111,4 +114,4 @@ TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also 
 
 ## Testing on the device
 
-Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_3.md`. Read those if they exist. The first two runs are in `docs/COMPUTER_USE_RESULTS.md` and `docs/COMPUTER_USE_RESULTS_2.md`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
+Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_4.md`. Read those if they exist. Earlier runs are in `docs/COMPUTER_USE_RESULTS.md`, `_2` and `_3`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
