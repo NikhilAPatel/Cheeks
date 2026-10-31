@@ -448,6 +448,46 @@ final class EngineTests: XCTestCase {
         return Double(crossings.count - 1) * sr / (crossings.last! - crossings.first!)
     }
 
+    // MARK: Reading both decks at once
+
+    @MainActor
+    func testBothDecksPositionsComeFromTheSameMoment() async {
+        let dj = DJEngine(library: Library())
+        dj.stopRealtimeForTesting()
+        for deck in dj.decks {
+            deck.renderer.setSources([PCM16Stereo(frames: Int(sr * 120))])
+            deck.renderer.playhead = 1000
+            deck.renderer.isPlaying = true
+        }
+        // Rendering on another thread, as the audio callback does. Identical decks are always level,
+        // so any difference between them is the read landing between two updates.
+        let core = dj.coreForTesting
+        let stop = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
+        stop.pointee = 0
+        defer { stop.deallocate() }
+        let rendering = Task.detached(priority: .high) {
+            var left = [Float](repeating: 0, count: 256), right = left
+            while OSAtomicAdd32(0, stop) == 0 {
+                left.withUnsafeMutableBufferPointer { l in
+                    right.withUnsafeMutableBufferPointer { r in
+                        cheeks_engine_render(core, l.baseAddress!, r.baseAddress!, 256)
+                    }
+                }
+            }
+        }
+        var worstTogether = 0.0, worstApart = 0.0
+        for _ in 0..<400_000 {
+            let together = dj.positions
+            worstTogether = max(worstTogether, abs(together[0] - together[1]))
+            worstApart = max(worstApart, abs(dj.decks[0].renderer.playhead - dj.decks[1].renderer.playhead))
+        }
+        OSAtomicAdd32(1, stop)
+        await rendering.value
+        print("DSP: reading decks one at a time was \(Int(worstApart)) frames apart at worst, reading together \(Int(worstTogether))")
+        XCTAssertEqual(worstTogether, 0, "Positions read together must be from one moment")
+        XCTAssertGreaterThan(dj.positions[0], 1000, "It did render")
+    }
+
     // MARK: FX chain
 
     /// A steady tone on a 120 BPM grid, playing.

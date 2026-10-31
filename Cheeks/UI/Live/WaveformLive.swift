@@ -539,12 +539,14 @@ struct OverviewWaveform: UIViewRepresentable {
 /// Four beat blocks per deck and a centre scale showing how far apart the decks are.
 final class PhaseLiveView: LiveView {
     private let decks: [Deck]
+    private let positions: @MainActor () -> [Double]
     private var uniforms = PhaseUniforms()
     private var lastDrawn = PhaseUniforms()
     private var needsDraw = true
 
-    init(decks: [Deck]) {
+    init(decks: [Deck], positions: @escaping @MainActor () -> [Double]) {
         self.decks = decks
+        self.positions = positions
         super.init(frame: .zero)
         metalLayer.isOpaque = true
         isOpaque = true
@@ -571,7 +573,8 @@ final class PhaseLiveView: LiveView {
         u.beatB = beat(b)
         u.activeA = a.isPlaying ? 1 : 0
         u.activeB = b.isPlaying ? 1 : 0
-        u.offsetBeats = Float(b.phaseOffset(to: a))
+        let frames = positions()
+        u.offsetBeats = Float(b.phaseOffset(to: a, frame: frames[1], masterFrame: frames[0]))
         uniforms = u
         if !needsDraw && bytesEqual(u, lastDrawn) { return false }
         lastDrawn = u
@@ -588,7 +591,8 @@ final class PhaseLiveView: LiveView {
 
 struct PhaseStrip: UIViewRepresentable {
     let decks: [Deck]
-    func makeUIView(context: Context) -> PhaseLiveView { PhaseLiveView(decks: decks) }
+    let positions: @MainActor () -> [Double]
+    func makeUIView(context: Context) -> PhaseLiveView { PhaseLiveView(decks: decks, positions: positions) }
     func updateUIView(_ view: PhaseLiveView, context: Context) {}
 }
 

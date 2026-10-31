@@ -60,7 +60,7 @@ struct WaveformPanel: View {
         VStack(spacing: 1) {
             OverviewWaveform(deck: dj.decks[0]).frame(height: 14)
             ScrollingWaveform(deck: dj.decks[0]).frame(height: waveHeight)
-            PhaseStrip(decks: dj.decks).frame(height: 8)
+            PhaseStrip(decks: dj.decks, positions: { dj.positions }).frame(height: 8)
             ScrollingWaveform(deck: dj.decks[1]).frame(height: waveHeight)
             OverviewWaveform(deck: dj.decks[1]).frame(height: 14)
         }

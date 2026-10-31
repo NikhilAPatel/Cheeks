@@ -137,6 +137,16 @@ final class DJEngine {
         nowPlaying = NowPlaying(engine: self)
     }
 
+    /// Every deck's position, in frames, all from the same moment in the render.
+    var positions: [Double] {
+        var out = [Double](repeating: 0, count: decks.count)
+        cheeks_engine_positions(core, &out, Int32(out.count))
+        return out
+    }
+
+    /// The realtime core, for a test that renders from another thread.
+    var coreForTesting: OpaquePointer { core }
+
     /// The deck the audience is hearing most: for the Lock Screen.
     var loudestDeck: Deck? {
         decks.filter { $0.isPlaying && channelGains[$0.index] > 0.02 }.max { channelGains[$0.index] < channelGains[$1.index] }
@@ -389,7 +399,8 @@ final class DJEngine {
             // …and gently correct phase while both play. Both decks run on one clock, so this
             // only ever has to undo a jog nudge, a jump or the tempo glide at the moment sync engages.
             if deck.isPlaying && master.isPlaying && !deck.renderer.scratching && deck.renderer.pendingNudge == 0 {
-                let drift = deck.phaseOffset(to: master)
+                let frames = positions
+                let drift = deck.phaseOffset(to: master, frame: frames[deck.index], masterFrame: frames[master.index])
                 if abs(drift) > 0.0002 { deck.alignPhase(to: master, smoothly: true) }
             }
         }

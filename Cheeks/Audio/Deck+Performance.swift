@@ -357,12 +357,13 @@ extension Deck {
         [masterBPM, masterBPM / 2, masterBPM * 2].min { abs($0 - bpm) < abs($1 - bpm) } ?? masterBPM
     }
 
-    /// Phase difference to master in this deck's beats, wrapped to -0.5...0.5.
-    func phaseOffset(to master: Deck) -> Double {
+    /// Phase difference to master in this deck's beats, wrapped to -0.5...0.5. With both decks
+    /// live, pass positions from `DJEngine.positions` so they're from the same moment.
+    func phaseOffset(to master: Deck, frame: Double? = nil, masterFrame: Double? = nil) -> Double {
         guard beatFrames > 0, master.beatFrames > 0, master.effectiveBPM > 0 else { return 0 }
         let scale = effectiveBPM / master.effectiveBPM
-        let masterBeats = master.beatPosition(master.renderer.playhead) * scale
-        let mine = beatPosition(renderer.playhead)
+        let masterBeats = master.beatPosition(masterFrame ?? master.renderer.playhead) * scale
+        let mine = beatPosition(frame ?? renderer.playhead)
         var d = (masterBeats - masterBeats.rounded(.down)) - (mine - mine.rounded(.down))
         if d > 0.5 { d -= 1 }
         if d < -0.5 { d += 1 }

@@ -168,6 +168,10 @@ void cheeks_engine_set_channel(CheeksEngine *engine, int channel, float trim, fl
 /// `split` puts the master (mono) in the left channel and the cue bus (mono) in the right.
 void cheeks_engine_set_master(CheeksEngine *engine, float master, float phones, float programInCue, bool split);
 
+/// Where every deck is, all from the same moment in the render. Reading decks one at a time can
+/// land between two of them being updated, which reads as a whole block of drift that isn't there.
+void cheeks_engine_positions(const CheeksEngine *engine, double *positions, int count);
+
 float cheeks_engine_master_peak(const CheeksEngine *engine);
 float cheeks_engine_master_peak_right(const CheeksEngine *engine);
 /// Current limiter gain reduction, in dB (0 when it isn't working).

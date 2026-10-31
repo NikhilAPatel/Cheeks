@@ -171,6 +171,8 @@ struct CheeksDeck {
         put(peak, std::max(high, falling));
     }
 
+    double renderPosition() const { return position; }
+
     /// Where the next line of the beat grid (every `gridBeats`) falls in the block just rendered,
     /// in frames from its start, or -1 if it isn't in this block. `skip` is set when a line has just
     /// gone by: start now, that far in, and it's still in time.
@@ -768,6 +770,9 @@ struct CheeksEngine {
     std::atomic<double> sampleGrid[kSamples];
     std::atomic<float> samplerLevel{1};
 
+    std::atomic<uint32_t> positionSequence{0};
+    std::atomic<double> publishedPosition[4] = {};
+
     TryLock voiceLock;
     SamplerVoice samples[kSamples];
     Voice preview;
@@ -805,6 +810,7 @@ private:
             faderNow[d] = faderTarget;
             cueNow[d] = cueTarget;
         }
+        publishPositions();
 
         if (voiceLock.tryLock()) {
             for (int s = 0; s < kSamples; ++s) renderSampler(s, n);
@@ -872,6 +878,16 @@ private:
         const float fall = std::pow(0.9937f, float(n) / 16);
         put(masterPeak, std::max(highLeft * masterTarget, relaxed(masterPeak) * fall));
         put(masterPeakRight, std::max(highRight * masterTarget, relaxed(masterPeakRight) * fall));
+    }
+
+    /// A sequence lock: the count is odd while the positions are being written, and a reader tries
+    /// again if it changed underneath it. The render thread never waits for anyone.
+    void publishPositions() {
+        const uint32_t sequence = positionSequence.load(std::memory_order_relaxed);
+        positionSequence.store(sequence + 1, std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_release);
+        for (int d = 0; d < deckCount; ++d) put(publishedPosition[d], decks[d]->renderPosition());
+        positionSequence.store(sequence + 2, std::memory_order_release);
     }
 
     /// Mixes one sampler pad into the program bus.
@@ -1195,6 +1211,19 @@ void cheeks_engine_set_master(CheeksEngine *engine, float master, float phones, 
     put(engine->phonesGain, phones);
     put(engine->programInCue, programInCue);
     put(engine->split, split);
+}
+
+void cheeks_engine_positions(const CheeksEngine *engine, double *positions, int count) {
+    const int n = std::min(count, 4);
+    // A few tries is plenty: the writer takes nanoseconds, and every block or so at most.
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        const uint32_t before = engine->positionSequence.load(std::memory_order_acquire);
+        if (before & 1) continue;
+        for (int d = 0; d < n; ++d) positions[d] = relaxed(engine->publishedPosition[d]);
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (engine->positionSequence.load(std::memory_order_relaxed) == before) return;
+    }
+    for (int d = 0; d < n; ++d) positions[d] = relaxed(engine->publishedPosition[d]);
 }
 
 float cheeks_engine_master_peak(const CheeksEngine *engine) { return relaxed(engine->masterPeak); }
