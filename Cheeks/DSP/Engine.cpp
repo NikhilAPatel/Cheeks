@@ -414,6 +414,12 @@ private:
         if (loopNow && rate > 0 && position >= loopEndNow && loopEndNow > loopStartNow) {
             position -= loopEndNow - loopStartNow;
             wrapped = true;
+        } else if (loopNow && rate < 0 && position < loopStartNow && position - rate >= loopStartNow
+                   && loopEndNow > loopStartNow && !relaxed(scratching)) {
+            // Going backwards it holds too, but only a deck that was in it: one waiting for the
+            // loop further on isn't caught, and a jog goes where the hand takes it.
+            position += loopEndNow - loopStartNow;
+            wrapped = true;
         }
         const double last = double(frames - 1);
         if (position >= last) {

@@ -178,7 +178,7 @@ struct PadBank: View {
         case .memory: MemoryPad(deck: deck, index: i)
         case .beatLoop:
             let size = loopSizes[i]
-            sizePad(Format.beats(size), color: Theme.loop, lit: deck.loopActive && abs(deck.loopBeats - size) < 0.0001, name: "\(Format.beats(size)) beat loop") {
+            sizePad(Format.beats(size), color: Theme.loop, lit: deck.loopActive && !deck.loopArmed && abs(deck.loopBeats - size) < 0.0001, name: "\(Format.beats(size)) beat loop") {
                 deck.toggleBeatLoop(size)
             }
         case .roll:

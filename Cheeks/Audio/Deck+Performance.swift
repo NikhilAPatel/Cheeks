@@ -40,6 +40,7 @@ extension Deck {
     /// within the beat, measured on the audio thread, so the jump lands in time.
     private func jump(toSeconds time: Double) {
         let target = time * sampleRate
+        endMomentaryPads()
         leaveLoop(ifGoingTo: target)
         if quantize && isPlaying && beatFrames > 0 {
             renderer.seekBeatLocked(target, beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
@@ -128,6 +129,7 @@ extension Deck {
     }
 
     private func toggleLoop(start: Double, end: Double) {
+        endMomentaryPads()
         if isCurrentLoop(start: start, end: end) {
             exitLoop()
             return
@@ -184,8 +186,11 @@ extension Deck {
 
     // MARK: Loops
 
+    /// A loop of this size has hold of the deck. One waiting up ahead doesn't count: it's somewhere else.
+    func isRunningLoop(beats: Double) -> Bool { loopActive && !isLoopAhead && abs(loopBeats - beats) < 0.0001 }
+
     func toggleBeatLoop(_ beats: Double) {
-        if loopActive && abs(loopBeats - beats) < 0.0001 {
+        if isRunningLoop(beats: beats) {
             exitLoop()
         } else {
             // A loop that's waiting up ahead gets replaced by one here, not resized from afar.
@@ -253,6 +258,7 @@ extension Deck {
     }
 
     func reloop() {
+        endMomentaryPads()
         guard renderer.loopEnd > renderer.loopStart else { return }
         renderer.playhead = renderer.loopStart
         renderer.loopActive = true
@@ -309,7 +315,9 @@ extension Deck {
     /// When the last held pad comes up, the track returns to where it would have been, and whatever
     /// loop was set before comes back as it was. Otherwise RELOOP and SAVE LOOP would find the roll's.
     private func momentaryPadReleased() {
-        heldMomentaryPads = max(0, heldMomentaryPads - 1)
+        // Nothing to do for a pad whose moment ended while it was held.
+        guard heldMomentaryPads > 0 else { return }
+        heldMomentaryPads -= 1
         guard heldMomentaryPads == 0 else { return }
         let travelled = max(0, renderer.slipPlayhead - (borrowedLoop?.slipStart ?? 0))
         let returning = renderer.slipPlayhead
@@ -325,7 +333,9 @@ extension Deck {
             // It was running, so it's carried on underneath: come back to where it's got to.
             if !borrowed.slipWasOn { renderer.cancelSlip() }
             renderer.setLoop(start: borrowed.start, end: borrowed.end, active: true)
-            renderer.playhead = borrowed.start + (borrowed.playhead - borrowed.start + travelled).truncatingRemainder(dividingBy: length)
+            var within = (borrowed.playhead - borrowed.start + (reverse ? -travelled : travelled)).truncatingRemainder(dividingBy: length)
+            if within < 0 { within += length }
+            renderer.playhead = borrowed.start + within
             loopActive = true
         } else {
             renderer.releaseSlip()
@@ -337,6 +347,25 @@ extension Deck {
         loopBeats = borrowed.beats
         chosenLoopBeats = borrowed.chosenBeats
         loopInSet = borrowed.inSet
+    }
+
+    /// A seek or a cue during a held roll or slice goes somewhere else, which ends it. What was set
+    /// before comes back, the way back is forgotten, and letting go of the pad afterwards does nothing.
+    func endMomentaryPads() {
+        guard heldMomentaryPads > 0 else { return }
+        heldMomentaryPads = 0
+        if let borrowed = borrowedLoop {
+            borrowedLoop = nil
+            if !borrowed.slipWasOn { renderer.cancelSlip() }
+            renderer.setLoop(start: borrowed.start, end: borrowed.end, active: borrowed.wasActive)
+            loopActive = borrowed.wasActive
+            loopBeats = borrowed.beats
+            chosenLoopBeats = borrowed.chosenBeats
+            loopInSet = borrowed.inSet
+        }
+        guard isFXOn(.roll) else { return }
+        activeFX.removeAll { $0.effect == .roll }
+        if fxType == .roll, let latest = activeFX.last { focusFX(latest.effect) }
     }
 
     // MARK: Slicer
