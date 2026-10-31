@@ -123,6 +123,9 @@ final class Deck {
     @ObservationIgnored private var gridSection = 0
     /// The tempo at the playhead. Only changes during a track that has tempo changes in it.
     private(set) var bpm: Double = 0
+    /// The playhead in tenths of a second, for the labels that count. It only changes when one of
+    /// those numbers would, so they cost nothing at all while the deck isn't moving.
+    private(set) var clockTenths = 0
     /// Gain that brings this track to the target loudness, in dB, from its analysis.
     private(set) var autoGainDB: Float = 0
     private(set) var isLoading = false
@@ -484,6 +487,8 @@ final class Deck {
     /// Keeps observable state in step with the audio thread (end of track, brake, etc.).
     func tick() {
         followTempoMap()
+        let tenths = Int(position * 10)
+        if tenths != clockTenths { clockTenths = tenths }
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }

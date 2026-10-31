@@ -68,12 +68,10 @@ private struct LimiterLight: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.15)) { _ in
-            let working = dj.limiterReduction > 0.5
-            HStack(spacing: 2) {
-                Circle().fill(working ? Theme.danger : Theme.danger.opacity(0.14)).frame(width: 4, height: 4)
-                Text("LIM").silk(7, color: working ? Theme.danger : Theme.textTertiary)
-            }
+        let working = dj.limiterWorking
+        HStack(spacing: 2) {
+            Circle().fill(working ? Theme.danger : Theme.danger.opacity(0.14)).frame(width: 4, height: 4)
+            Text("LIM").silk(7, color: working ? Theme.danger : Theme.textTertiary)
         }
     }
 }

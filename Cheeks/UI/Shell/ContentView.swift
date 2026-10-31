@@ -90,7 +90,7 @@ private struct BarCounters: View {
         GeometryReader { geo in
             let x = geo.size.width * CGFloat(WaveformDisplay.playheadFraction)
             ForEach(decks, id: \.index) { deck in
-                TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                DeckClock(deck: deck) {
                     Text(label(deck))
                         .font(Theme.digits(10))
                         .foregroundStyle(Theme.accent)
@@ -291,12 +291,9 @@ private struct EngineLoad: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let load = dj.cpuLoad
-            if load > 0.6 {
-                Text("DSP \(Int(load * 100))%")
-                    .silk(8, color: load > 0.85 ? Theme.danger : Theme.warn)
-            }
+        if dj.loadWarning > 0 {
+            Text("DSP \(dj.loadWarning)%")
+                .silk(8, color: dj.loadWarning > 85 ? Theme.danger : Theme.warn)
         }
     }
 }

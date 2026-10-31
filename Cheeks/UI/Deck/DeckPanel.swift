@@ -226,7 +226,7 @@ struct JogReadout: View {
 
     private func readouts(_ unit: CGFloat) -> some View {
         VStack(spacing: 0) {
-            TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            DeckClock(deck: deck) {
                 let remaining = deck.duration - deck.position
                 Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "--:--.-")
                     .font(Theme.digits(10.5 * unit))
@@ -335,9 +335,9 @@ struct DeckHeader: View {
         .simultaneousGesture(TapGesture().onEnded { Haptics.shared.key() })
     }
 
-    /// Remaining time large, elapsed small. The playhead isn't observed, so poll it.
+    /// Remaining time large, elapsed small.
     private var times: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+        DeckClock(deck: deck) {
             let remaining = deck.duration - deck.position
             VStack(alignment: .trailing, spacing: 0) {
                 Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "–")
@@ -349,6 +349,18 @@ struct DeckHeader: View {
             }
             .frame(width: 66, alignment: .trailing)
         }
+    }
+}
+
+/// Redraws its content as the deck's clock moves, and not otherwise. A short `TimelineView` would do
+/// the same, but keeps SwiftUI's display link running and re-renders its whole graph every frame.
+struct DeckClock<Content: View>: View {
+    let deck: Deck
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        let _ = deck.clockTenths
+        content()
     }
 }
 
