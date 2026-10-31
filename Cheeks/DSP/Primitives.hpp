@@ -92,21 +92,28 @@ public:
             g0 += step[0];
             g1 += step[1];
             g2 += step[2];
-            left[i] = split(0, left[i], g0, g1, g2);
-            right[i] = split(1, right[i], g0, g1, g2);
+            const float bands = std::min(1.0f, std::max({std::abs(g0 - 1), std::abs(g1 - 1), std::abs(g2 - 1)}) / kBlendWidth);
+            left[i] = split(0, left[i], g0, g1, g2, bands);
+            right[i] = split(1, right[i], g0, g1, g2, bands);
         }
         std::copy(target, target + 3, gain);
     }
 
 private:
     static constexpr double kLowCross = 220, kHighCross = 2600;
+    /// How far a band's gain moves from 1 before the signal's all coming through the bands.
+    static constexpr float kBlendWidth = 0.05f;
 
-    inline float split(int c, float x, float g0, float g1, float g2) {
+    /// The bands add back to a flat level but with the phase turned, which can push a loud master's
+    /// peaks up by 5 dB. So with every band at 1 the signal goes straight through, untouched. As the
+    /// first knob leaves the centre it crossfades into the bands, which can then kill fully. The bands
+    /// always run, so their filters are ready.
+    inline float split(int c, float x, float g0, float g1, float g2, float bands) {
         const float low = lowPhase[c].process(low1[c][1].process(low1[c][0].process(x)));
         const float rest = rest1[c][1].process(rest1[c][0].process(x));
         const float mid = mid2[c][1].process(mid2[c][0].process(rest));
         const float high = high2[c][1].process(high2[c][0].process(rest));
-        return g0 * low + g1 * mid + g2 * high;
+        return x + (g0 * low + g1 * mid + g2 * high - x) * bands;
     }
 
     Biquad low1[2][2], rest1[2][2], mid2[2][2], high2[2][2], lowPhase[2];

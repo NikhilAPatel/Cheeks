@@ -199,6 +199,35 @@ final class EngineTests: XCTestCase {
         }
     }
 
+    func testTheChannelLeavesTheSignalUntouchedWithEverythingCentred() {
+        // Square-ish, like a heavily limited master, where a turned phase shows up as bigger peaks.
+        var source = sine(90, seconds: 2)
+        for i in source.indices { source[i] = max(-0.6, min(0.6, source[i] * 4 + 0.3 * sine1k(i))) }
+        let direct = DeckRenderer(sampleRate: sr), channel = DeckRenderer(sampleRate: sr)
+        for r in [direct, channel] {
+            r.setSources([stereo(source)])
+            r.isPlaying = true
+        }
+        let a = direct.renderOffline(frames: Int(sr)).left, b = channel.renderChannelOffline(frames: Int(sr)).left
+        let difference = zip(a, b).map { abs($0 - $1) }.max() ?? 1
+        XCTAssertLessThan(difference, 0.0001, "No phase turned, no peaks raised")
+    }
+
+    private func sine1k(_ i: Int) -> Float { Float(sin(2 * .pi * 1000 * Double(i) / sr)) }
+
+    func testMovingAnEQKnobOffCentreDoesntClick() {
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([stereo(sine(100, seconds: 3))])
+        r.isPlaying = true
+        _ = r.renderChannelOffline(frames: Int(sr / 2))
+        r.setEQ(low: 0.9, mid: 1, high: 1)
+        let out = r.renderChannelOffline(frames: Int(sr / 4)).left
+        var worst: Float = 0
+        for i in 1..<out.count { worst = max(worst, abs(out[i] - out[i - 1])) }
+        // A 100 Hz sine at 0.5 moves by 0.007 per sample at most.
+        XCTAssertLessThan(worst, 0.012)
+    }
+
     func testIsolatorKillsEachBand() {
         let reference = 0.5 / Float(2).squareRoot()
         XCTAssertLessThan(dB(channelLevel(frequency: 50, low: 0) / reference), -40)
