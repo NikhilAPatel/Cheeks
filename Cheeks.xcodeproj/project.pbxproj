@@ -14,12 +14,20 @@
 			remoteGlobalIDString = CE0000000000000000000006;
 			remoteInfo = Cheeks;
 		};
+		CE0000000000000000000046 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE0000000000000000000009 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE0000000000000000000006;
+			remoteInfo = Cheeks;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		CE0000000000000000000001 /* Cheeks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cheeks.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE0000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CE0000000000000000000030 /* CheeksTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CheeksTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE0000000000000000000040 /* CheeksUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CheeksUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +39,11 @@
 		CE0000000000000000000031 /* CheeksTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = CheeksTests;
+			sourceTree = "<group>";
+		};
+		CE0000000000000000000041 /* CheeksUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CheeksUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -50,6 +63,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE0000000000000000000043 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -58,6 +78,7 @@
 			children = (
 				CE0000000000000000000002 /* Cheeks */,
 				CE0000000000000000000031 /* CheeksTests */,
+				CE0000000000000000000041 /* CheeksUITests */,
 				CE0000000000000000000010 /* Config */,
 				CE0000000000000000000005 /* Products */,
 			);
@@ -68,6 +89,7 @@
 			children = (
 				CE0000000000000000000001 /* Cheeks.app */,
 				CE0000000000000000000030 /* CheeksTests.xctest */,
+				CE0000000000000000000040 /* CheeksUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -128,6 +150,29 @@
 			productReference = CE0000000000000000000030 /* CheeksTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		CE0000000000000000000042 /* CheeksUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE0000000000000000000048 /* Build configuration list for PBXNativeTarget "CheeksUITests" */;
+			buildPhases = (
+				CE0000000000000000000044 /* Sources */,
+				CE0000000000000000000043 /* Frameworks */,
+				CE0000000000000000000045 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE0000000000000000000047 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CE0000000000000000000041 /* CheeksUITests */,
+			);
+			name = CheeksUITests;
+			packageProductDependencies = (
+			);
+			productName = CheeksUITests;
+			productReference = CE0000000000000000000040 /* CheeksUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -142,6 +187,10 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					CE0000000000000000000032 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = CE0000000000000000000006;
+					};
+					CE0000000000000000000042 = {
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = CE0000000000000000000006;
 					};
@@ -163,6 +212,7 @@
 			targets = (
 				CE0000000000000000000006 /* Cheeks */,
 				CE0000000000000000000032 /* CheeksTests */,
+				CE0000000000000000000042 /* CheeksUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -176,6 +226,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		CE0000000000000000000037 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE0000000000000000000045 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -199,6 +256,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE0000000000000000000044 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -206,6 +270,11 @@
 			isa = PBXTargetDependency;
 			target = CE0000000000000000000006 /* Cheeks */;
 			targetProxy = CE0000000000000000000033 /* PBXContainerItemProxy */;
+		};
+		CE0000000000000000000047 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE0000000000000000000006 /* Cheeks */;
+			targetProxy = CE0000000000000000000046 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -365,6 +434,40 @@
 			};
 			name = Release;
 		};
+		CE0000000000000000000049 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nikhilpatel.cheeks.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Cheeks;
+			};
+			name = Debug;
+		};
+		CE000000000000000000004A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nikhilpatel.cheeks.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Cheeks;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -391,6 +494,15 @@
 			buildConfigurations = (
 				CE0000000000000000000039 /* Debug */,
 				CE000000000000000000003A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE0000000000000000000048 /* Build configuration list for PBXNativeTarget "CheeksUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE0000000000000000000049 /* Debug */,
+				CE000000000000000000004A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
