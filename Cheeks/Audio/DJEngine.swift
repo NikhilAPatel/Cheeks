@@ -248,6 +248,7 @@ final class DJEngine {
             let trim = pow(10, (deck.trim * 12 + (automatic ? deck.autoGainDB : 0)) / 20)
             let fader = deck.fader * deck.fader * xf
             channelGains[deck.index] = fader * trim
+            deck.channelTrim = trim
             cheeks_engine_set_channel(core, Int32(deck.index), trim, fader, deck.headphoneCue ? cueLevel : 0)
         }
         cheeks_engine_set_master(core, masterVolume, headphoneVolume, programInCue, splitCue)

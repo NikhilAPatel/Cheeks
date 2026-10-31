@@ -123,6 +123,24 @@ final class DeckTests: XCTestCase {
         XCTAssertFalse(deck.stemsAltered)
     }
 
+    func testAChannelMeterFollowsTrimButNotTheFader() throws {
+        let dj = DJEngine(library: Library())
+        dj.stopRealtimeForTesting()
+        let deck = dj.decks[0]
+        deck.renderer.setSources([PCM16Stereo(frames: 441_000)])
+        deck.setAutoGainForTesting(loudness: nil)
+        dj.updateVolumes()
+        XCTAssertEqual(deck.channelTrim, 1, accuracy: 0.001)
+        deck.trim = 0.5
+        XCTAssertEqual(deck.channelTrim, pow(10, 6.0 / 20), accuracy: 0.001, "TRIM moves it: half way up is +6 dB")
+        deck.trim = 0
+        deck.fader = 0.2
+        XCTAssertEqual(deck.channelTrim, 1, accuracy: 0.001, "The fader doesn't, as on a real mixer")
+        deck.setAutoGainForTesting(loudness: Deck.targetLoudness + 3)
+        dj.updateVolumes()
+        XCTAssertEqual(deck.channelTrim, pow(10, -3.0 / 20), accuracy: 0.001, "A loud track's loudness matching counts")
+    }
+
     func testSyncUsesHalfTimeWhenCloser() {
         let master = makeDeck(0, bpm: 140, at: 5)
         let deck = makeDeck(1, bpm: 72, at: 5)

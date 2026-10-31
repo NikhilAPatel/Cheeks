@@ -52,6 +52,10 @@ final class StemCache {
     // MARK: Loading
 
     /// The stems for a track, or nil on a miss. Marks the entry as recently used.
+    func contains(_ id: UUID) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: id).path)
+    }
+
     func load(_ id: UUID) -> [PCM16Stereo]? {
         let file = url(for: id)
         let descriptor = open(file.path, O_RDONLY)

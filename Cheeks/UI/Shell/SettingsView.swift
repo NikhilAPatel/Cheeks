@@ -86,15 +86,21 @@ struct SettingsView: View {
 
     private var librarySection: some View {
         Section {
-            Button("Save a Backup…", systemImage: "square.and.arrow.up") {
+            Button {
                 guard let data = try? library.backupData() else {
                     libraryMessage = "The backup couldn't be made."
                     return
                 }
                 backupDocument = LibraryBackupDocument(data: data)
                 exportingBackup = true
+            } label: {
+                PickerRow(title: "Save a Backup…", systemImage: "square.and.arrow.up", isOpening: exportingBackup)
             }
-            Button("Restore from a Backup…", systemImage: "clock.arrow.circlepath") { importingBackup = true }
+            Button {
+                importingBackup = true
+            } label: {
+                PickerRow(title: "Restore from a Backup…", systemImage: "clock.arrow.circlepath", isOpening: importingBackup)
+            }
             if !library.missingFiles.isEmpty {
                 LabeledContent("Tracks missing their file", value: "\(library.missingFiles.count)")
             }
@@ -127,5 +133,21 @@ struct SettingsView: View {
             message += " \(result.added) tracks are waiting for their music: import the files and they'll get their cues back."
         }
         libraryMessage = message
+    }
+}
+
+/// A row that opens the Files picker, which can take a few seconds to appear. The spinner says it's on
+/// its way, and goes when the picker's closed.
+struct PickerRow: View {
+    var title: String
+    var systemImage: String
+    var isOpening: Bool
+
+    var body: some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            if isOpening { ProgressView() }
+        }
     }
 }

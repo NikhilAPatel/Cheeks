@@ -40,14 +40,22 @@ extension Deck {
     /// within the beat, measured on the audio thread, so the jump lands in time.
     private func jump(toSeconds time: Double) {
         let target = time * sampleRate
-        if renderer.loopActive && (target < renderer.loopStart || target >= renderer.loopEnd) {
-            exitLoop()
-        }
+        leaveLoop(ifGoingTo: target)
         if quantize && isPlaying && beatFrames > 0 {
             renderer.seekBeatLocked(target, beatFrames: beatFrames, firstBeatFrame: firstBeatFrame)
         } else {
             renderer.playhead = target
         }
+    }
+
+    /// Going past a loop, or out of the one the deck's in, would only get the deck pulled back. A
+    /// loop that's waiting up ahead still holds it once it gets there. Either way the loop's left
+    /// set for RELOOP, and slip's dropped, because it's somewhere else you want to be.
+    func leaveLoop(ifGoingTo target: Double) {
+        guard renderer.loopActive, target >= renderer.loopEnd || (target < renderer.loopStart && !isLoopAhead) else { return }
+        renderer.loopActive = false
+        loopActive = false
+        if slipMode { renderer.cancelSlip() }
     }
 
     /// The colour a hot cue shows in: its own, or the slot's.
@@ -180,13 +188,15 @@ extension Deck {
         if loopActive && abs(loopBeats - beats) < 0.0001 {
             exitLoop()
         } else {
-            setLoop(beats: beats, resizeExisting: loopActive)
+            // A loop that's waiting up ahead gets replaced by one here, not resized from afar.
+            setLoop(beats: beats, resizeExisting: loopActive && !isLoopAhead)
         }
     }
 
     func setLoop(beats: Double, resizeExisting: Bool = true) {
         guard isLoaded, beatFrames > 0 else { return }
         let start: Double
+        let waiting = isLoopAhead
         if !(resizeExisting && loopActive) { chosenLoopBeats = nil }
         if resizeExisting && loopActive {
             start = renderer.loopStart
@@ -200,7 +210,7 @@ extension Deck {
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         loopInSet = false
         renderer.setLoop(start: start, end: start + length, active: true)
-        if renderer.playhead >= start + length || renderer.playhead < start {
+        if !(waiting && resizeExisting), renderer.playhead >= start + length || renderer.playhead < start {
             renderer.playhead = start + max(0, renderer.playhead - start).truncatingRemainder(dividingBy: length)
         }
         loopActive = true
@@ -266,8 +276,10 @@ extension Deck {
         guard isLoaded, beatFrames > 0 else { return }
         let here = renderer.playhead
         let delta = frame(atBeat: beatPosition(here) + beats) - here
-        if renderer.loopActive {
+        if renderer.loopActive && !isLoopAhead {
             renderer.setLoop(start: renderer.loopStart + delta, end: renderer.loopEnd + delta, active: true)
+        } else {
+            leaveLoop(ifGoingTo: here + delta)
         }
         renderer.jump(by: delta)
     }
@@ -287,24 +299,44 @@ extension Deck {
     /// A held roll or slice takes over the loop for a moment, so remember what it's replacing.
     private func borrowLoop() {
         guard heldMomentaryPads == 0 else { return }
-        renderer.engageSlip()
-        borrowedLoop = BorrowedLoop(start: renderer.loopStart, end: renderer.loopEnd, beats: chosenLoopBeats ?? loopBeats, inSet: loopInSet)
+        let here = renderer.playhead, slipWasOn = renderer.slipEngaged
+        if !slipWasOn { renderer.engageSlip() }
+        borrowedLoop = BorrowedLoop(start: renderer.loopStart, end: renderer.loopEnd, beats: loopBeats, chosenBeats: chosenLoopBeats,
+                                    inSet: loopInSet, wasActive: renderer.loopActive, playhead: here,
+                                    slipStart: slipWasOn ? renderer.slipPlayhead : here, slipWasOn: slipWasOn)
     }
 
-    /// When the last held pad comes up, the track returns to where it would have been. Whatever loop
-    /// was set before comes back as it was, or else RELOOP and SAVE LOOP would find the roll's.
+    /// When the last held pad comes up, the track returns to where it would have been, and whatever
+    /// loop was set before comes back as it was. Otherwise RELOOP and SAVE LOOP would find the roll's.
     private func momentaryPadReleased() {
         heldMomentaryPads = max(0, heldMomentaryPads - 1)
         guard heldMomentaryPads == 0 else { return }
+        let travelled = max(0, renderer.slipPlayhead - (borrowedLoop?.slipStart ?? 0))
+        let returning = renderer.slipPlayhead
         renderer.loopActive = false
         loopActive = false
-        renderer.releaseSlip()
-        if let borrowed = borrowedLoop {
-            renderer.setLoop(start: borrowed.start, end: borrowed.end, active: false)
-            loopBeats = borrowed.beats
-            loopInSet = borrowed.inSet
+        guard let borrowed = borrowedLoop else {
+            renderer.releaseSlip()
+            return
         }
         borrowedLoop = nil
+        let length = borrowed.end - borrowed.start
+        if borrowed.wasActive && borrowed.playhead >= borrowed.start && length > 0 {
+            // It was running, so it's carried on underneath: come back to where it's got to.
+            if !borrowed.slipWasOn { renderer.cancelSlip() }
+            renderer.setLoop(start: borrowed.start, end: borrowed.end, active: true)
+            renderer.playhead = borrowed.start + (borrowed.playhead - borrowed.start + travelled).truncatingRemainder(dividingBy: length)
+            loopActive = true
+        } else {
+            renderer.releaseSlip()
+            // One that was waiting up ahead goes on waiting, unless the track's now gone past it.
+            let stillWaiting = borrowed.wasActive && returning < borrowed.end
+            renderer.setLoop(start: borrowed.start, end: borrowed.end, active: stillWaiting)
+            loopActive = stillWaiting
+        }
+        loopBeats = borrowed.beats
+        chosenLoopBeats = borrowed.chosenBeats
+        loopInSet = borrowed.inSet
     }
 
     // MARK: Slicer
@@ -584,7 +616,8 @@ extension Deck {
             stemStatus = .tooLong
             return
         }
-        stemStatus = .separating(nil)
+        // A split that's already saved only takes a moment to read, which isn't worth announcing.
+        stemStatus = StemCache.shared.contains(track.id) ? .reading : .separating(nil)
         let id = track.id
         // Results from a separation started before another track was loaded are dropped.
         let generation = loadGeneration
@@ -595,8 +628,11 @@ extension Deck {
             do {
                 let (stems, label) = try StemJob.stems(for: id, mix: mix, job: job) { progress in
                     Task { @MainActor [weak self] in
-                        guard let self, self.loadGeneration == generation, case .separating = self.stemStatus else { return }
-                        self.stemStatus = .separating(progress)
+                        guard let self, self.loadGeneration == generation else { return }
+                        switch self.stemStatus {
+                        case .separating, .reading: self.stemStatus = .separating(progress)
+                        default: break
+                        }
                     }
                 }
                 let waves = StemWaveformData(stems: stems)

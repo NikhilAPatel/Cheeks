@@ -81,6 +81,8 @@ enum ColorEffect: String, CaseIterable, Identifiable {
 
 enum StemStatus: Equatable {
     case unavailable
+    /// A saved split's being read back.
+    case reading
     /// Progress is 0...1, or nil while it's waiting its turn or the model is loading.
     case separating(Double?)
     case ready(String)
@@ -90,12 +92,18 @@ enum StemStatus: Equatable {
 
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
 /// Realtime audio lives in `renderer`; this class is the main-thread control surface.
-/// The loop a held roll or slice takes over.
+/// The loop a held roll or slice takes over, and how to get back to it.
 struct BorrowedLoop {
     var start: Double
     var end: Double
     var beats: Double
+    var chosenBeats: Double?
     var inSet: Bool
+    var wasActive: Bool
+    var playhead: Double
+    /// Where slip was when the pad went down. How far it's moved since says how far a running loop's got.
+    var slipStart: Double
+    var slipWasOn: Bool
 }
 
 @MainActor
@@ -108,6 +116,8 @@ final class Deck {
     @ObservationIgnored weak var library: Library?
     /// Called when anything affecting channel volume or tempo-synced FX changes.
     @ObservationIgnored var onMixChange: (@MainActor () -> Void)?
+    /// TRIM and loudness matching together, as a gain. `DJEngine.updateVolumes` keeps it up to date.
+    @ObservationIgnored var channelTrim: Float = 1
     /// A message for the status capsule.
     @ObservationIgnored var onMessage: (@MainActor (String, StatusKind) -> Void)?
     @ObservationIgnored var stemJob: StemJob?
@@ -174,6 +184,8 @@ final class Deck {
             loopBeats = chosen
         }
     }
+    /// The same thing as `isLoopAhead`, for the keys to watch. It's set from `tick`.
+    private(set) var loopArmed = false
     var loopBeats: Double = 4
     /// The length chosen on the loop key, while the key's showing a manual or saved loop's own.
     @ObservationIgnored var chosenLoopBeats: Double?
@@ -215,7 +227,11 @@ final class Deck {
     var fader: Float = 0.85 { didSet { onMixChange?() } }
     var headphoneCue = false { didSet { onMixChange?() } }
     /// Channel level, pre-fader. Not observed; meters poll it.
-    var level: Float { renderer.peak }
+    /// What the channel's meter shows: after TRIM and loudness matching and ahead of the fader, as on a
+    /// real mixer, so you can set TRIM by it with the fader down. It reads 3 dB down, because loudness
+    /// matching lifts quieter tracks past full scale on their peaks, which the mix has room for: red
+    /// means turned up further than that.
+    var level: Float { renderer.peak * channelTrim * 0.708 }
 
     init(index: Int) {
         self.index = index
@@ -228,6 +244,8 @@ final class Deck {
     var sampleRate: Double { AudioConfig.sampleRate }
     var tempoRatio: Double { 1 + tempo / 100 }
     var effectiveBPM: Double { bpm * tempoRatio }
+    /// The loop's switched on but the deck hasn't got to it yet: it's waiting up ahead.
+    var isLoopAhead: Bool { renderer.loopActive && renderer.playhead < renderer.loopStart }
     var isLoaded: Bool {
         // Read first, so a view that asks while the deck's empty still hears about the load finishing.
         let loading = isLoading
@@ -456,7 +474,9 @@ final class Deck {
 
     func seek(to seconds: Double) {
         let maxFrame = Double(max(renderer.frameCount - 1, 0))
-        renderer.playhead = max(0, min(seconds * sampleRate, maxFrame))
+        let target = max(0, min(seconds * sampleRate, maxFrame))
+        leaveLoop(ifGoingTo: target)
+        renderer.playhead = target
         renderer.reachedEnd = false
     }
 
@@ -536,6 +556,7 @@ final class Deck {
         if tenths != clockTenths { clockTenths = tenths }
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
+        if loopArmed != isLoopAhead { loopArmed = isLoopAhead }
         if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
         // A deck that's stopped itself, by reaching the end or by a brake, has finished its echo out too.
         if echoingOut && !isPlaying { endEchoOut() }

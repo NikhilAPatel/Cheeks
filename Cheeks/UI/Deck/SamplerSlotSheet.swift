@@ -22,7 +22,9 @@ struct SamplerSlotSheet: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    Button("Choose a File…", systemImage: "folder") { importing = true }
+                    Button { importing = true } label: {
+                        PickerRow(title: "Choose a File…", systemImage: "folder", isOpening: importing)
+                    }
                     // Only decks with a loop set: there's nothing to grab from the others.
                     ForEach(dj.decks.filter { $0.renderer.loopEnd > $0.renderer.loopStart }, id: \.index) { deck in
                         Button("Grab Deck \(deck.index + 1)'s Loop", systemImage: "repeat") { grab(deck) }

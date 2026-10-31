@@ -355,6 +355,146 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(deck.renderer.loopStart, start)
     }
 
+    func testARunningLoopCarriesOnAfterARoll() {
+        let deck = makeDeck()
+        deck.play()
+        deck.setLoop(beats: 4, resizeExisting: false) // 2 s at 120
+        _ = deck.renderer.renderOffline(frames: Int(sr / 2))
+        let start = deck.renderer.loopStart, end = deck.renderer.loopEnd, before = deck.renderer.playhead
+        deck.rollBegin(1.0 / 4)
+        _ = deck.renderer.renderOffline(frames: Int(sr * 3))
+        XCTAssertLessThan(deck.renderer.loopEnd - deck.renderer.loopStart, sr, "It's the roll's loop for now")
+        deck.rollEnd()
+        XCTAssertTrue(deck.loopActive)
+        XCTAssertTrue(deck.renderer.loopActive)
+        XCTAssertEqual(deck.renderer.loopStart, start)
+        XCTAssertEqual(deck.renderer.loopEnd, end)
+        XCTAssertEqual(deck.loopBeats, 4)
+        _ = deck.renderer.renderOffline(frames: 256)
+        let expected = start + (before - start + sr * 3 + 256).truncatingRemainder(dividingBy: end - start)
+        XCTAssertEqual(deck.renderer.playhead, expected, accuracy: 1024, "It's where it would have got to")
+    }
+
+    func testARunningLoopCarriesOnAfterASlice() {
+        let deck = makeDeck()
+        deck.play()
+        deck.setLoop(beats: 4, resizeExisting: false)
+        let start = deck.renderer.loopStart, end = deck.renderer.loopEnd
+        _ = deck.renderer.renderOffline(frames: 2048)
+        deck.sliceBegin(2)
+        _ = deck.renderer.renderOffline(frames: Int(sr))
+        deck.sliceEnd()
+        XCTAssertTrue(deck.renderer.loopActive)
+        XCTAssertEqual(deck.renderer.loopStart, start)
+        XCTAssertEqual(deck.renderer.loopEnd, end)
+        _ = deck.renderer.renderOffline(frames: 2048)
+        XCTAssertGreaterThanOrEqual(deck.renderer.playhead, start)
+        XCTAssertLessThan(deck.renderer.playhead, end)
+    }
+
+    func testARollInASlipLoopKeepsTheWayBack() {
+        let deck = makeDeck()
+        deck.slipMode = true
+        deck.play()
+        deck.setLoop(beats: 4, resizeExisting: false)
+        _ = deck.renderer.renderOffline(frames: 2048)
+        let outer = deck.renderer.slipPlayhead
+        deck.rollBegin(1.0 / 4)
+        _ = deck.renderer.renderOffline(frames: Int(sr))
+        deck.rollEnd()
+        XCTAssertTrue(deck.renderer.slipEngaged, "The loop's slip is still running")
+        _ = deck.renderer.renderOffline(frames: 2048)
+        XCTAssertEqual(deck.renderer.slipPlayhead, outer + sr + 2048, accuracy: 1024)
+        deck.exitLoop()
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.renderer.playhead, outer + sr + 2048 + 256, accuracy: 1024, "and comes back where the track has got to")
+    }
+
+    // MARK: A loop waiting up ahead
+
+    /// Deck at 10 s, with a 2-second loop armed at 60 s.
+    private func deckWithArmedLoop() -> Deck {
+        let deck = makeDeck()
+        deck.track?.savedLoops = [SavedLoop(start: 60, end: 62, activeOnLoad: true)]
+        deck.cuePoint = 10
+        deck.armSavedLoops()
+        XCTAssertTrue(deck.isLoopAhead)
+        deck.tick()
+        XCTAssertTrue(deck.loopArmed, "The keys can tell it's waiting")
+        return deck
+    }
+
+    func testSeekingPastAnArmedLoopLetsItGo() {
+        let deck = deckWithArmedLoop()
+        deck.play()
+        deck.seek(to: 90)
+        _ = deck.renderer.renderOffline(frames: Int(sr))
+        XCTAssertEqual(deck.position, 91, accuracy: 0.1, "It doesn't get pulled back")
+        XCTAssertFalse(deck.loopActive)
+        deck.reloop()
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.position, 60, accuracy: 0.1, "RELOOP still has it")
+    }
+
+    func testSeekingBeforeAnArmedLoopLeavesItWaiting() {
+        let deck = deckWithArmedLoop()
+        deck.seek(to: 59.5)
+        XCTAssertTrue(deck.loopActive)
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: Int(sr * 4))
+        XCTAssertGreaterThanOrEqual(deck.position, 60)
+        XCTAssertLessThan(deck.position, 62, "It holds the deck once it gets there")
+        deck.tick()
+        XCTAssertFalse(deck.loopArmed)
+    }
+
+    func testSeekingOutOfARunningLoopLeavesIt() {
+        let deck = makeDeck()
+        deck.setLoop(beats: 4, resizeExisting: false)
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.seek(to: 1)
+        XCTAssertFalse(deck.loopActive, "Behind it counts too, when the deck was already in it")
+    }
+
+    func testAHotCueJumpDuringASlipLoopLandsOnTheCue() {
+        let deck = makeDeck()
+        deck.slipMode = true
+        deck.hotCue(0)
+        deck.play()
+        deck.seek(to: 40)
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.setLoop(beats: 4, resizeExisting: false)
+        _ = deck.renderer.renderOffline(frames: 2048)
+        deck.quantize = false
+        deck.hotCue(0)
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.position, 10, accuracy: 0.1, "Not the slip position")
+        XCTAssertFalse(deck.renderer.slipEngaged)
+    }
+
+    func testBeatJumpWhileArmedMovesTheDeckNotTheLoop() {
+        let deck = deckWithArmedLoop()
+        deck.beatJump(4)
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.position, 12, accuracy: 0.1)
+        XCTAssertEqual(deck.renderer.loopStart, 60 * sr)
+        XCTAssertTrue(deck.loopActive)
+    }
+
+    func testLoopKeysWhileArmedDontMoveTheDeck() {
+        let deck = deckWithArmedLoop()
+        deck.halveLoop()
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.position, 10, accuracy: 0.1, "Halving the waiting loop leaves the deck where it is")
+        XCTAssertEqual(deck.renderer.loopEnd, 61 * sr, accuracy: 1)
+        deck.toggleBeatLoop(1)
+        _ = deck.renderer.renderOffline(frames: 256)
+        XCTAssertEqual(deck.position, 10, accuracy: 0.6, "A loop pad starts a new loop here")
+        XCTAssertLessThan(deck.renderer.loopStart, 11 * sr)
+        XCTAssertTrue(deck.loopActive)
+        XCTAssertFalse(deck.isLoopAhead)
+    }
+
     func testAManualLoopShowsItsLengthAndTheKeyGoesBackAfterwards() {
         let deck = makeDeck(at: 10)
         deck.quantize = false

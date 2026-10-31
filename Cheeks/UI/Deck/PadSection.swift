@@ -46,7 +46,8 @@ struct LoopRow: View {
         HStack(spacing: 3) {
             Key("IN", color: Theme.loop, lit: deck.loopInSet, size: 9, onPress: deck.loopIn)
             Key("OUT", color: Theme.loop, size: 9, onPress: deck.loopOut)
-            Key(deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive, size: 8.5) {
+            // A loop that's waiting up ahead isn't holding the deck yet, so it doesn't look like it is.
+            Key(deck.loopArmed ? "ARMED" : deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive && !deck.loopArmed, size: 8.5) {
                 deck.loopActive ? deck.exitLoop() : deck.reloop()
             }
             .frame(minWidth: 46)
@@ -55,7 +56,7 @@ struct LoopRow: View {
                 Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
             }
             .frame(width: 22)
-            Key(color: Theme.loop, lit: deck.loopActive, accessibilityName: "Beat loop", onPress: { deck.toggleBeatLoop(deck.loopBeats) }) {
+            Key(color: Theme.loop, lit: deck.loopActive && !deck.loopArmed, accessibilityName: "Beat loop", onPress: { deck.toggleBeatLoop(deck.loopBeats) }) {
                 Text(Format.beats(deck.loopBeats)).font(Theme.digits(12))
                     .contentTransition(.numericText())
                     .animation(Theme.press, value: deck.loopBeats)
@@ -119,23 +120,28 @@ struct PadTabs: View {
     }
 }
 
-/// Shares a row out equally, except that a label too long for its share gets the room it needs, so
-/// none has to shrink to fit.
+/// Spaces a row of labels evenly, so none has to shrink to fit. A short one still gets a minimum
+/// width, to be easy to hit.
 private struct TabRowLayout: Layout {
-    private static let labelMargin: CGFloat = 6
+    private static let minimumWidth: CGFloat = 26
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         proposal.replacingUnspecifiedDimensions()
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let needed = subviews.map { $0.sizeThatFits(.unspecified).width + Self.labelMargin }
-        let share = bounds.width / CGFloat(max(subviews.count, 1))
-        let long = needed.filter { $0 > share }
-        let rest = (bounds.width - long.reduce(0, +)) / CGFloat(max(subviews.count - long.count, 1))
+        let labels = subviews.map { $0.sizeThatFits(.unspecified).width }
+        func margin(leavingOut narrow: [Bool]) -> CGFloat {
+            let held = narrow.filter { $0 }.count
+            let room = bounds.width - CGFloat(held) * Self.minimumWidth - zip(labels, narrow).filter { !$0.1 }.map(\.0).reduce(0, +)
+            return room / CGFloat(max(labels.count - held, 1))
+        }
+        let first = margin(leavingOut: labels.map { _ in false })
+        let narrow = labels.map { $0 + first < Self.minimumWidth }
+        let spare = margin(leavingOut: narrow)
         var x = bounds.minX
-        for (view, wanted) in zip(subviews, needed) {
-            let width = wanted > share ? wanted : rest
+        for (i, view) in subviews.enumerated() {
+            let width = narrow[i] ? Self.minimumWidth : labels[i] + spare
             view.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: width, height: bounds.height))
             x += width
         }
@@ -433,7 +439,7 @@ struct StemControlRow: View {
     @ViewBuilder
     private var status: some View {
         switch deck.stemStatus {
-        case .unavailable:
+        case .unavailable, .reading:
             Text("STEMS").silk(8, color: Theme.textTertiary)
         case .separating(let progress):
             VStack(spacing: 2) {
