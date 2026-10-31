@@ -1,0 +1,17 @@
+Exhilarate dur 145.5 s, bpm 170.59, 4 sections
+  CHORUS  0:00.00  (35.6 s)
+  VERSE   0:35.59  (22.5 s)
+  CHORUS  0:58.10  (78.8 s)
+  OUTRO   2:16.89  (8.6 s)
+Severe Tire Damage - H dur 412.0 s, bpm 178, 11 sections
+  INTRO   0:00.00  (16.1 s)
+  CHORUS  0:16.12  (118.7 s)
+  UP      2:14.77  (10.8 s)
+  CHORUS  2:25.56  (75.5 s)
+  UP      3:41.07  (16.2 s)
+  CHORUS  3:57.24  (24.3 s)
+  VERSE   4:21.51  (35.1 s)
+  CHORUS  4:56.57  (27.0 s)
+  VERSE   5:23.54  (48.5 s)
+  CHORUS  6:12.08  (27.0 s)
+  OUTRO   6:39.04  (12.9 s)
