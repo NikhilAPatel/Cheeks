@@ -181,10 +181,14 @@ final class TouchWiringTests: XCTestCase {
         try await settle()
         let hotCuesBefore = deck.track?.hotCues.count ?? 0
         // The lower-left part of the screen, with the tabs just above the pads.
-        let pads = controls(in: CGRect(x: 64, y: Self.size.height - 100, width: 320, height: 100))
+        // Only surfaces centred on the pad grid: the round CUE and PLAY reach into this area too.
+        let pads = controls(in: CGRect(x: 72, y: Self.size.height - 100, width: 320, height: 100))
+            .filter { $0.point.x > 72 }
+            .sorted { ($0.point.x, $0.point.y) < ($1.point.x, $1.point.y) }
         let tabs = controls(in: CGRect(x: 72, y: Self.size.height - 124, width: 320, height: 4))
             .sorted { $0.point.x < $1.point.x }
         let target = try XCTUnwrap(pads.first).point
+        XCTAssertEqual(hotCuesBefore, 0, "So an old page's pad would set a cue")
         XCTAssertGreaterThanOrEqual(tabs.count, 3)
 
         tabs[2].view.onDown?(tabs[2].point) // LOOP

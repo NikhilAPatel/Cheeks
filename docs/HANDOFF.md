@@ -25,6 +25,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Not yet proven, because nothing here could touch or hear it:** a real finger, especially near the screen's top and bottom edges, haptic tuning, how it sounds, headphone and split cue routing, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. The owner covers these with TEST_PLAN §2.
 
+**After the second hands-on test:** 53 of 58 passed, on 97e6a30. The 5 failures and most of the "Looks wrong" list are fixed: see the end of `docs/COMPUTER_USE_RESULTS_2.md`. The retest is at the top of `docs/COMPUTER_USE_TASK.md`, and hasn't been run. Section names were judged only from the numbers, with nobody listening.
+
 **After the first hands-on test:** 66 passed and 3 failed. Those, and the "Looks wrong" list, have been worked through: see the end of `docs/COMPUTER_USE_RESULTS.md`. Three things to know:
 - **The Undo failure was never reproduced.** The control's been rebuilt on the evidence available, so it needs the task doc's retest and the owner's finger.
 - **There's now a UI test target** (`tools/ui-tests.sh`), so a Claude without computer use can drive the real app with real touch events and take screenshots. Use it. It found bugs reading the code didn't.
@@ -34,7 +36,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
   - Stem colours show on the `STEMS` tab, and also anywhere else while a stem is muted or turned down, because the normal waveform can't show that.
 
 **How far to trust the new features:**
-- **Phrase analysis** gets the kinds and hard edges right on synthetic arrangements (`PhraseTests`). On real music it's only been run on two tracks, neither club music, with no ground truth to compare to: it came out coarse, with long CHORUS sections. Expect to tune `minimumSectionDifference` and the labelling once it's run on the owner's music. Build-ups fade in, so where an UP starts is approximate.
+- **Phrase analysis** gets the kinds and hard edges right on synthetic arrangements (`PhraseTests`). On real music it's only been run on two tracks, neither club music, with no ground truth to compare to. Sizing sections against the body of the song stopped fade-outs making everything a CHORUS, but sections can still run about 2 minutes. Expect to tune `minimumSectionDifference` and the labelling once it's run on the owner's music. Tracks already analysed keep their old names until they're analysed again. Build-ups fade in, so where an UP starts is approximate.
 - **Tempo maps:** a band-style speed-up lands within 8 ms of the kicks, and a step change is followed. The guard against false maps (`fitThreshold` in `TempoMapDetector`) rests on one real steady track that came out at a ratio of 1.17. No real live-played track has been tried. If a map's wrong, the BPM menu's "Use one steady tempo" undoes it, per track.
 - **Color FX, FX chains and sampler** are tested for being bounded, doing something, and timing (a quantized pad lands within 2 frames of the grid), but nobody has heard them. The pitch Color FX is a simple delay-line shifter and may sound watery.
 - **Library catch-up:** tracks analysed before phrases existed get re-analysed in the background, but only while no deck's playing and the phone isn't hot.

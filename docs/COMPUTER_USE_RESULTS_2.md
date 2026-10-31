@@ -205,3 +205,43 @@ The main deck screen nearly does. It's dense and consistent, and the jogs and me
 **3. Which control was hardest to find or hit?**
 - **To hit:** `UNDO`. It's 46×18 pt at the very top edge and only there for 8 seconds, when you've just made a mistake. The tab labels come next, since a tap on the right of `SAMPLE` is a tiny distance from `DEL`.
 - **To find:** `Record the Master`, which is behind `SET`, then a pad, then a sheet. `LIST` is also easy to miss, as it only appears on the `MEM` page.
+
+---
+
+## What happened next
+Everything here was checked against the code first, and each fix below has a test unless it says otherwise.
+
+**Failures, all fixed**
+- **F5, F6:** confirmed as reported. `Deck.updateTrack` ran its closure twice, so a new item got two IDs. It runs once now.
+- **F3, G2:** confirmed. A held roll or slice left its loop set. It also broke two things nobody had reported: `RELOOP` jumped into the leftover loop, and a roll threw away any loop or waiting `IN` you'd set. Now it gives back what was there.
+- **C9:** tabs keep one size, and a long label gets more room instead of shrinking. Not re-measured: see "Still to check".
+
+**Looks wrong, fixed**
+- **Tab race:** probably fixed, not proven. Pages faded over 0.12 s, which fits the 0.15 s wait that made it go away, and they now change instantly. A test that hit-tests the screen 40 ms after a tab fails with the fade and passes without it, but with the fade it found the new pad not responding yet, not the old one firing. `S1` in the retest settles this.
+- **Same track on both decks:** edits reach the other deck, including grid changes.
+- **Sliding on a lit FX pad:** it stays on. A plain tap still lets it go.
+- **`OUT` on a stopped deck:** says why.
+- **Section names:** a fade-out set the bottom of the scale, so the rest all looked big. Exhilarate is now `CHORUS VERSE CHORUS OUTRO` and Severe Tire Damage has eleven sections. This is better but not proven: nobody has compared them with the music, and the longest section is still about 2 minutes.
+- **Stale header picture, `NO TRACK` during a load, loop key stuck at 5:** fixed. The key shows a manual loop's length only while that loop's on.
+- **Held pads:** look like any other lit pad.
+- **Meter red:** it read after the limiter, with red starting at -1.5 dB. It now reads before the limiter and red starts at 0 dB, so it means the mix is really over.
+- **`DUB` (I3):** a real bug. The tail flipped to the bright side when the knob came back, which cut most of it. It now takes about 5 s to fall 40 dB on a test tone. Not yet heard.
+- **Backups:** "1 playlist", a confirmation, row order kept on restore, and today's copy now keeps up with the library, at most every 5 minutes and always on going to the background.
+- **`UNDO`:** takes touches 6 pt past its edges. It's still only 46×18 pt to look at.
+- **Color FX key:** has an arrows icon, to show that it steps.
+- **Tab labels:** brighter.
+
+**Left alone, on purpose**
+- **System sheets:** the project's rule is that browser and settings screens stay native.
+- **The keyboard's height:** it's the system's. The mixer stays put, and the list still scrolls.
+- **The loop line behind the bar counter:** dimmed, and the text stays readable.
+- **The home indicator:** the app already asks for it to be hidden, and it didn't block any press here.
+- **`Record the Master` behind `SET`, and `LIST` only on `MEM`:** the BPM menu also opens the list.
+
+**Not looked into**
+- The `UIKit.AnimationKit` faults, the `renderbox` errors and the 4 `NSPredicate` faults: none of them comes from the audio or a crash.
+- The two ignored 0.2 s presses, on `Save a Backup…` and the colour well. The report can't say if it's the tool or the app.
+- CPU with both decks playing, at 17.8%, up on the last run. The earlier number may have come from the wrong process, so there's no sign it's a regression.
+
+**Still to check:** the retest at the top of `docs/COMPUTER_USE_TASK.md`.
+

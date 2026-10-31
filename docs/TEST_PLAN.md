@@ -15,6 +15,8 @@ Tick each item. Anything that fails: note what you did, what you heard or saw, a
 - [ ] **The top edge:** do `BROWSE`, `REC`, the gear and `UNDO` all respond first time, or does a swipe from the top ever pull something down instead?
 - [ ] **The bottom edge:** the app now uses the space by the home indicator. Do `PLAY`, `CUE`, the bottom pads and the crossfader all respond first time? Does sliding the crossfader ever switch apps or bring up the home indicator? If it's a problem, tell me and I'll give that space back.
 
+- [ ] **A tab, then a pad, quickly:** on any tab, tap another tab and hit a pad straight after. The pad must belong to the new page. A synthetic touch fired the old page's pad until this was fixed.
+
 ### Feel: the things only you can judge
 Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] Keys click on the first touch and there's no perceptible delay before anything happens.

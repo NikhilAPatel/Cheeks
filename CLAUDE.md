@@ -58,6 +58,8 @@ xcrun simctl io booted screenshot screenshot.png
 - **Main-actor control:** `Deck` and `DJEngine` are `@MainActor @Observable` and hold all control state.
   - The playhead and the meters are *not* observed. The live views read them directly from the audio core.
 - **Beats go through `BeatGrid`** (`Model/BeatGrid.swift`), never `bpm` and `firstBeat` sums, because a track can change tempo. `Deck.bpm`, `beatFrames` and `firstBeatFrame` describe the section at the playhead, and `Deck.tick` tells the core when that changes. Use `beatPosition(frame)` and `frame(atBeat:)` for anything spanning more than a beat.
+- **Edit a loaded track through `Deck.updateTrack`:** its closure runs once, so anything it creates has one ID in both the deck and the library. A deck holding the same track picks the change up.
+- **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, so nothing else finds its tiny loop afterwards.
 - **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
 - **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
 - **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
@@ -81,6 +83,7 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **Hardware parts are pre-rendered once** (`Baked` in `UI/Design/Theme.swift`) and composited as bitmaps. Shadows, blurs and gradients are fine inside a bake, and should be avoided outside one, because they cost GPU time on every frame.
 - **Performance controls take touches from UIKit** through `TouchSurface`, not SwiftUI gestures: true multitouch, and they act on first contact. Browser and settings screens are ordinary SwiftUI, and should look and feel native.
 - **Anything along the screen's top edge is a `TouchSurface` key,** not a SwiftUI `Button`. A button there failed every tap in the hands-on test.
+- **Don't fade between pages of pads:** they change instantly. While they faded, a tap within about 0.15 s of changing tab fired the old page's pad in the hands-on test.
 - **Don't set a state and animate it back in one step:** SwiftUI only sees the end, so nothing's drawn. Use a keyframe track with a trigger. Pad flares were invisible for this reason.
 - **Say things through `dj.say(message, kind)`:** `.refused` shows a hand and buzzes, `.done` a green tick.
 - **Everything you touch has a feel:** add a `Haptics.shared` call when you add a control. Use the existing vocabulary instead of raw generators.
@@ -108,4 +111,4 @@ TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also 
 
 ## Testing on the device
 
-Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its results come back in `docs/COMPUTER_USE_RESULTS_2.md`. Read those if they exist. The first run's are in `docs/COMPUTER_USE_RESULTS.md`, which ends with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
+Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_3.md`. Read those if they exist. The first two runs are in `docs/COMPUTER_USE_RESULTS.md` and `docs/COMPUTER_USE_RESULTS_2.md`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.

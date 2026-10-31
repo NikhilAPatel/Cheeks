@@ -2,16 +2,18 @@
 
 **Who this is for:** a Claude session with computer use (it can see the screen, click and drag). This is the only document you need.
 
-**Your job:** check that the problems from the last hands-on test are really fixed, and try the new features nobody has touched yet. Run everything below in order and write down exactly what happens.
+**Your job:** check that the problems from the last hands-on test are really fixed. Set up as below, then run **the retest** in order and write down exactly what happens. Parts 1 to 3 passed last time: only run them if the owner asks, and use them to find your way around.
 
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-2/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-3/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_2.md` in the format at the end, with screenshots in `docs/test-results-2/`. Commit only those to `master`, with the message `Add hands-on test results, part 2`. **Don't push:** the owner decides that.
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_3.md` in the format at the end, with screenshots in `docs/test-results-3/`. Commit only those to `master`, with the message `Add hands-on test results, part 3`. **Don't push.**
+
+**Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
 ---
 
@@ -35,7 +37,7 @@ DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.cheeks data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
 xcrun simctl launch "$SIM" com.nikhilpatel.cheeks
-mkdir -p docs/test-results-2
+mkdir -p docs/test-results-3
 ```
 
 **Things the last run learned about this setup:**
@@ -50,7 +52,7 @@ mkdir -p docs/test-results-2
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-2/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-3/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Can't be tested here, so don't report as failed:** haptics, how anything sounds, and the headphone output. List them under Tooling limits.
 
 **Where things are:**
@@ -59,6 +61,44 @@ mkdir -p docs/test-results-2
 - **Decks** left and right with the **mixer** between them. Each deck has a header, a tempo fader at the outer edge, the jog, a column of keys (`BEAT SYNC`, `MASTER`, `BEAT JUMP`, `Q`, `SLIP`, `KEY`, `REV`, `−`/`+`, `KEY SYNC`), a row of controls for the current pad page, the tabs (`CUE MEM LOOP ROLL SLICER JUMP STEMS FX SAMPLE`) and eight pads. Round `CUE` and `PLAY` are in the bottom outer corner.
 
 Load one track on each deck through `BROWSE` and the `1` and `2` keys, then close the browser. Each load starts splitting stems in the background, which uses a lot of CPU for a minute or two. Let that finish before anything that measures.
+
+---
+
+## The retest
+**Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
+
+### R. Cues and loops
+1. **Delete and Undo.** On a track with nothing saved, tap `SAVE CUE` on `MEM`. Tap `DEL`, then the pad: it must leave `library.json`. Tap `UNDO`: exactly one cue is back. Reload the track: one pad. Screenshot `r1-undo`. *Last time: the file kept it, Undo made two, and it came back on reload.*
+2. **On-load switch.** Save a 4-beat loop, switch it on in `LIST`, and reload without relaunching. The file says `true` and the loop's active. *Last time: only after a relaunch.*
+3. **After a roll.** With no loop set, hold a 1/16 `ROLL` pad for 2 s and let go. `SAVE LOOP` must refuse, `RELOOP` must do nothing, and no loop shows on the waveform. *Last time: it saved a 1/16 loop.*
+4. **After a slice.** Hold a `SLICER` pad, let go, pause. `SET`, then a pad: no grab button for that deck. *Last time: a phantom grab.*
+5. **A real loop survives.** Set a 4-beat loop and exit it. Hold a `ROLL` pad and let go. `RELOOP` brings back the 4-beat loop. Do the same with `IN` waiting: the marker's still there after the roll, and `OUT` still works.
+6. **Loop key.** Make a 5-beat loop with `IN` and `OUT`. The key says 5. Exit it: the key goes back to what it said before. `RELOOP`: 5 again.
+7. **The same track on both decks.** Set a hot cue and a memory cue on deck 2. They must appear on deck 1's pads and waveform without a reload. Screenshot `r7-both`.
+
+### S. Touch
+1. **Tab then pad.** Send a tab tap and a pad tap with no pause between them, at least five times, across different pages. The pad must always belong to the new page. Screenshot `s1-tab`. *Last time: all 3 fired the old page.*
+2. **Tabs.** Measure the labels as last time, on a page showing `DEL`. All nine should be the same height, with `SAMPLE` clearly clear of `DEL`. Screenshot `s2-tabs`. *Last time: `SAMPLE` was 84% of the size, about 0.5 pt from `DEL`.*
+3. **Sliding on a lit effect.** Tap `ECHO` to latch it, then slide on it. `DEPTH` moves and it stays lit, at the new depth. A plain tap lets it go. *Last time: it went off on release.*
+4. **`UNDO`.** Press 4 pt above the key: it should still work.
+5. **Held pads.** Hold a `SLICER` pad, then a `ROLL` pad. Each should look like a lit pad in its own colour. Screenshot `s5-held`.
+
+### T. Readouts
+1. **`OUT` on a stopped deck.** A capsule with a hand says why. *Last time: nothing.*
+2. **While loading.** Record a video of loading a different track on a stopped deck. The old picture must be gone at once, and the jog says `LOADING`, not `NO TRACK`.
+3. **Header BPM.** Move a tempo fader, then sync the other deck. On each deck, the BPM in the header and on the jog must match. Tap the header's BPM: the menu's title gives the track's own speed. Screenshot `t3-bpm`. *First test: the header said 170.59 and the jog 185.16.*
+4. **Stem colours.** Once split, go to `CUE` with every stem on: normal colours. Mute a stem on `STEMS` and go back to `CUE`: stem colours stay, with the muted stem a dim ghost. Unmute it: normal colours return. Screenshot `t4-muted`.
+5. **Meters.** One deck at default levels should stay out of the red. Both decks up, with `TRIM` and `MASTER` turned up, should reach red with `LIM` lit. Screenshot `t5-meters`. *Last time: one deck reached the lowest red segment.*
+6. **Sections.** Note every section and its start on both tracks. Screenshot `t6-sections`. *Last time: Exhilarate was `CHORUS`, `OUTRO`, and Severe Tire Damage had a 5-minute `CHORUS`.* Report what you see: there's no right answer to compare with.
+7. **`DUB`.** Turn the knob well round each way, return it to the centre, then pause. The meters should keep moving for several seconds, whichever side you used. *Last time: 2.3 to 2.6 s, against 1.5 s with it off.*
+
+### U. Backups
+1. **Save.** `Save a Backup…` should end with an alert saying it's saved.
+2. **Restore.** Restore it, with one playlist in the library: it should say "1 playlist", and the browser's rows keep their order. *Last time: "1 playlists", and the rows flipped.*
+3. **Today's copy.** Note the time on today's file in `Documents/Backups/`. Set a cue, wait 6 minutes, set another: the file should now have both. Send the app to the background and check again after setting one more.
+
+### V. Anything new that looks wrong
+Note anything else, as before.
 
 ---
 

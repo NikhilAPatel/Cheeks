@@ -35,6 +35,14 @@ final class UndoAndRefusalTests: CheeksUITestCase {
         press(button("Pause"))
     }
 
+    func testUndoTakesATouchJustPastItsEdge() throws {
+        loadDeck1()
+        let undo = deleteHotCue()
+        undo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -4)).press(forDuration: 0.12)
+        sleep(1)
+        XCTAssertTrue(button("Hot cue A").exists, "4 pt above the key still counts")
+    }
+
     func testTheCapsuleStaysClearOfTheMasterTempo() throws {
         loadDeck1()
         let undo = deleteHotCue()

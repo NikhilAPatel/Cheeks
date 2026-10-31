@@ -108,7 +108,7 @@ struct PadTabs: View {
             TouchSurface(onDown: { _ in
                 guard deck.padMode != mode else { return }
                 Haptics.shared.toggle(true)
-                // No fade: pads on their way out still take touches, and would fire the old page.
+                // No fade: a pad tapped during one fired the old page in the hands-on test.
                 deck.padMode = mode
             })
         }

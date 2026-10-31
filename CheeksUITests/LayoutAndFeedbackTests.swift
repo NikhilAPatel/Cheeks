@@ -99,6 +99,41 @@ final class LayoutAndFeedbackTests: CheeksUITestCase {
         screenshot("header-bpm-menu")
     }
 
+    func testSlidingOnALatchedEffectLeavesItOn() throws {
+        loadDeck1()
+        press(button("Fx pads"))
+        let echo = button("Echo")
+        waitFor(echo)
+        press(echo)
+        sleep(1)
+        XCTAssertTrue(echo.isSelected, "A quick tap latches it")
+        echo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: echo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.5)))
+        sleep(1)
+        XCTAssertTrue(echo.isSelected, "Sliding on it adjusts it, and it stays on")
+        press(echo)
+        sleep(1)
+        XCTAssertFalse(echo.isSelected, "A plain tap still lets it go")
+        press(button("Cue pads"))
+    }
+
+    func testASliceLeavesNothingForTheSamplerToGrab() throws {
+        loadDeck1()
+        press(button("Slicer pads"))
+        let slice = button("Slice 3")
+        waitFor(slice)
+        slice.press(forDuration: 1)
+        sleep(1)
+        press(button("Pause"))
+        press(button("Sample pads"))
+        waitFor(button("SET"))
+        press(button("SET"))
+        press(button("Clap"))
+        waitFor(app.buttons["Record the Master"], seconds: 5)
+        XCTAssertFalse(app.buttons["Grab Deck 1's Loop"].exists, "There's no loop on deck 1 to grab")
+        screenshot("sampler-sheet-after-slice")
+    }
+
     func testPadsAndLayoutForALook() throws {
         loadDeck1()
         screenshot("decks-full")
