@@ -174,6 +174,14 @@ final class TouchWiringTests: XCTestCase {
         window?.isHidden = true
     }
 
+    func testFaderCapsAreCentredOnTheirValue() {
+        // The space a cap takes up is its own size, not its size less its shadow margin.
+        let host = UIHostingController(rootView: FaderCap(vertical: false, width: 26, length: 26))
+        let size = host.sizeThatFits(in: CGSize(width: 200, height: 200))
+        XCTAssertEqual(size.width, 26, accuracy: 0.5)
+        XCTAssertEqual(size.height, 26, accuracy: 0.5)
+    }
+
     func testMetersOnlySweepAtLaunch() async throws {
         let renderer = LiveRenderer.shared
         let launched = renderer.launchTime

@@ -261,21 +261,28 @@ struct JogReadout: View {
 struct DeckHeader: View {
     @Environment(\.openBrowser) private var openBrowser
     @Bindable var deck: Deck
+    /// Short of room above the browser: the title gets two lines, in place of the artist.
+    var compact = false
     @State private var showCueList = false
+
+    /// The track on its way if there is one, so the old title doesn't sit there through the load.
+    private var shownTrack: Track? { deck.loadingTrack ?? deck.track }
 
     var body: some View {
         HStack(spacing: 7) {
             DeckArt(deck: deck)
                 .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
-                Text(deck.track?.title ?? "No track loaded")
-                    .font(Theme.text(12.5, .semibold))
-                    .foregroundStyle(deck.track == nil ? Theme.textTertiary : Theme.textPrimary)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(Theme.text(10.5))
-                    .foregroundStyle(deck.loadError == nil ? Theme.textSecondary : Theme.danger)
-                    .lineLimit(1)
+                Text(shownTrack?.title ?? "No track loaded")
+                    .font(Theme.text(compact ? 11.5 : 12.5, .semibold))
+                    .foregroundStyle(shownTrack == nil ? Theme.textTertiary : Theme.textPrimary)
+                    .lineLimit(compact ? 2 : 1)
+                if !compact {
+                    Text(subtitle)
+                        .font(Theme.text(10.5))
+                        .foregroundStyle(deck.loadError == nil ? Theme.textSecondary : Theme.danger)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             gridMenu
@@ -296,8 +303,13 @@ struct DeckHeader: View {
 
     private var subtitle: String {
         if let error = deck.loadError { return error }
-        guard let track = deck.track else { return "Open the browser to load one" }
-        return track.artist.isEmpty ? "Unknown artist" : track.artist
+        guard let track = shownTrack else { return "Open the browser to load one" }
+        let artist = track.artist.isEmpty ? "Unknown artist" : track.artist
+        // The stems progress is on the STEMS page, so this is the only sign of it from anywhere else.
+        if deck.padMode != .stems, case .separating(let progress) = deck.stemStatus {
+            return artist + " · Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
+        }
+        return artist
     }
 
     /// Tap the BPM to fix the beat grid.
@@ -320,7 +332,7 @@ struct DeckHeader: View {
             Button("Cues and loops…", systemImage: "list.bullet") { showCueList = true }
         } label: {
             VStack(alignment: .trailing, spacing: 0) {
-                Text(deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "–")
+                Text(deck.isLoaded && deck.bpm > 0 ? String(format: "%.2f", deck.bpm) : "–")
                     .font(Theme.digits(13))
                     .foregroundStyle(Theme.textPrimary)
                 HStack(spacing: 2) {

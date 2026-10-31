@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(DJEngine.self) private var dj
     @Environment(Library.self) private var library
     @State var showLibrary = false
+    @State private var keyboardHeight: CGFloat = 0
     /// With no music yet, the first thing to see is where to add some.
     var opensBrowserWhenEmpty = true
 
@@ -24,6 +25,8 @@ struct ContentView: View {
                             MiniDecks()
                             BrowserView()
                                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                // Only the list makes way for the keyboard; the mixer stays put.
+                                .padding(.bottom, keyboardHeight)
                         }
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     } else {
@@ -38,10 +41,18 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 3)
-                .padding(.bottom, 3)
+                .padding(.bottom, 8)
             }
             .animation(Theme.panel, value: showLibrary)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = max(0, geo.size.height - frame.minY) }
+            }
         }
+        // The whole screen: nothing below here moves when the keyboard comes up, and the space by
+        // the home indicator is too useful to leave empty. The indicator hides itself, and swipes
+        // from that edge are deferred, so the first one doesn't leave the app.
+        .ignoresSafeArea(.all, edges: .bottom)
         .background(Theme.chassis.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .environment(\.openBrowser, { showLibrary = true })
@@ -91,10 +102,13 @@ private struct BarCounters: View {
             let x = geo.size.width * CGFloat(WaveformDisplay.playheadFraction)
             ForEach(decks, id: \.index) { deck in
                 DeckClock(deck: deck) {
-                    Text(label(deck))
+                    let text = label(deck)
+                    // On a dark backing, so a loop or cue line running through it can't cut it in half.
+                    Text(text)
                         .font(Theme.digits(10))
                         .foregroundStyle(Theme.accent)
-                        .shadow(color: .black, radius: 1.5)
+                        .padding(.horizontal, 3)
+                        .background(Capsule().fill(Color.black.opacity(text.isEmpty ? 0 : 0.72)))
                         .fixedSize()
                         .position(x: x - 36, y: deck.index == 0 ? 14 + 1 + 8 : geo.size.height - 14 - 1 - waveHeight + 8)
                 }
@@ -148,7 +162,7 @@ struct MiniDeck: View {
                 Image(systemName: deck.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 11, weight: .semibold))
             }
             .frame(width: 34)
-            DeckHeader(deck: deck)
+            DeckHeader(deck: deck, compact: true)
             Key("SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: { dj.toggleSync(deck) })
                 .frame(width: 36, height: 36)
         }
@@ -211,8 +225,10 @@ struct TopBar: View {
             // Laid out with the bar rather than floated over it, so it can't cover the tempo. Both
             // sides take the same width, which keeps the tempo in the middle of the screen.
             HStack(spacing: 5) {
-            StatusCapsule()
-                .frame(maxWidth: .infinity)
+            // On something with a size, because with no message showing the capsule has none.
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay { StatusCapsule() }
             AnalysisIndicator()
             EngineLoad()
             TimelineView(.everyMinute) { context in
@@ -235,10 +251,12 @@ struct TopBar: View {
         .sheet(isPresented: Binding(get: { dj.sampler.slotBeingEdited != nil }, set: { if !$0 { dj.sampler.slotBeingEdited = nil } })) {
             if let slot = dj.sampler.slotBeingEdited { SamplerSlotSheet(slot: slot).environment(dj) }
         }
-        .confirmationDialog("Stop recording?", isPresented: $confirmStopRecording, titleVisibility: .visible) {
+        // An alert, because on this screen a confirmation dialog becomes a popover: its arrow points at
+        // the middle of the bar, and it leaves out the cancel button.
+        .alert("Stop recording?", isPresented: $confirmStopRecording) {
+            Button("Keep recording", role: .cancel) {}
             // It may have stopped by itself (storage full) while this was open; don't start a new one.
             Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
-            Button("Keep recording", role: .cancel) {}
         }
     }
 

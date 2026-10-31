@@ -46,9 +46,11 @@ struct FaderCap: View {
     var length: CGFloat
 
     var body: some View {
+        // The artwork has a 6 pt margin for its shadow. It's drawn with that margin and takes up
+        // space without it, so the cap's own centre is where the fader's value says.
         Image(uiImage: artwork)
             .resizable()
-            .frame(width: vertical ? width : length, height: vertical ? length : width)
+            .frame(width: (vertical ? width : length) + 12, height: (vertical ? length : width) + 12)
             .padding(-6)
             .allowsHitTesting(false)
     }
@@ -160,7 +162,8 @@ struct CrossfaderControl: View {
                 }, onMove: { _, translation in
                     guard let dragStart else { return }
                     var next = min(1, max(-1, dragStart + Float(translation.width / travel) * 2))
-                    let near = abs(next) < 0.018
+                    // Catches within 3 pt either side, so it can be found by feel.
+                    let near = abs(next) < Float(6 / travel)
                     if near {
                         next = 0
                         if !inCentre { Haptics.shared.detent() }

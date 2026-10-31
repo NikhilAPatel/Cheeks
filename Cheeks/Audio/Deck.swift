@@ -129,6 +129,8 @@ final class Deck {
     /// Gain that brings this track to the target loudness, in dB, from its analysis.
     private(set) var autoGainDB: Float = 0
     private(set) var isLoading = false
+    /// The track on its way, so the header can show it straight away.
+    private(set) var loadingTrack: Track?
     /// Bumped on every load so a slow, superseded load can't replace a newer one.
     @ObservationIgnored private(set) var loadGeneration = 0
     private(set) var loadError: String?
@@ -256,6 +258,7 @@ final class Deck {
         stemJob?.cancel()
         stemJob = nil
         isLoading = true
+        loadingTrack = newTrack
         loadError = nil
         loadGeneration += 1
         let generation = loadGeneration
@@ -287,6 +290,7 @@ final class Deck {
                 await MainActor.run {
                     guard self.loadGeneration == generation else { return }
                     self.isLoading = false
+                    self.loadingTrack = nil
                     self.loadError = "Couldn't open this file"
                 }
             }
@@ -347,6 +351,7 @@ final class Deck {
         memoryPage = 0
         armSavedLoops()
         isLoading = false
+        loadingTrack = nil
         // Without the model, stems are only a rough filter split: not worth their memory until asked for.
         // When the phone's hot, leave the GPU alone until they're asked for too.
         let thermal = ProcessInfo.processInfo.thermalState

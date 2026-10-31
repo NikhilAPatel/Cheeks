@@ -1,0 +1,92 @@
+import XCTest
+
+final class LayoutAndFeedbackTests: CheeksUITestCase {
+    private func anyElement(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    func testTheKeyboardLeavesTheMixerAlone() throws {
+        openBrowser()
+        let trim = anyElement("Trim")
+        waitFor(trim)
+        let before = trim.frame
+        let search = app.textFields.firstMatch
+        waitFor(search)
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        sleep(1)
+        screenshot("keyboard-up")
+        print("UITEST: trim before \(before), with keyboard \(trim.frame)")
+        XCTAssertEqual(trim.frame.minY, before.minY, accuracy: 1, "The mixer mustn't move")
+        XCTAssertTrue(search.isHittable, "and the search field has to stay above the keyboard")
+        // Get rid of the keyboard for whatever runs next.
+        app.typeText("\n")
+        closeBrowser()
+    }
+
+    func testStoppingARecordingOffersBothAnswers() throws {
+        press(button("Record"))
+        sleep(2)
+        press(button("Stop recording"))
+        let keep = app.buttons["Keep recording"]
+        waitFor(keep, seconds: 3)
+        XCTAssertTrue(app.buttons["Stop and save"].exists)
+        screenshot("stop-recording")
+        keep.tap()
+        sleep(1)
+        XCTAssertTrue(button("Stop recording").exists, "Keep recording keeps recording")
+        press(button("Stop recording"))
+        waitFor(app.buttons["Stop and save"], seconds: 3)
+        app.buttons["Stop and save"].tap()
+        sleep(1)
+        XCTAssertTrue(button("Record").exists)
+    }
+
+    func testASoloPadLightsWhileItsSoloed() throws {
+        loadDeck1()
+        let tab = button("Stems pads")
+        waitFor(tab)
+        press(tab)
+        let solo = button("Solo Drums")
+        waitFor(solo)
+        XCTAssertFalse(solo.isSelected)
+        press(solo)
+        sleep(1)
+        XCTAssertTrue(solo.isSelected, "The pad shows it's soloed")
+        screenshot("solo-lit")
+        press(solo)
+        sleep(1)
+        XCTAssertFalse(solo.isSelected, "and stops when it's let go")
+        press(button("Cue pads"))
+    }
+
+    func testTheDepthBarCanBeDragged() throws {
+        loadDeck1()
+        let tab = button("Fx pads")
+        waitFor(tab)
+        press(tab)
+        let depth = anyElement("Depth")
+        waitFor(depth)
+        let before = depth.value as? String ?? ""
+        let start = depth.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: depth.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+        sleep(1)
+        let after = depth.value as? String ?? ""
+        print("UITEST: depth \(before) to \(after), frame \(depth.frame)")
+        XCTAssertNotEqual(before, after, "Dragging the bar should change the depth")
+        press(button("Cue pads"))
+    }
+
+    func testPadsAndLayoutForALook() throws {
+        loadDeck1()
+        screenshot("decks-full")
+        press(button("Sample pads"))
+        sleep(1)
+        press(button("Clap"))
+        screenshot("sampler-after-tap")
+        press(button("Cue pads"))
+        openBrowser()
+        screenshot("browser-full")
+        closeBrowser()
+    }
+}

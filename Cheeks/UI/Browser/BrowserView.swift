@@ -269,12 +269,15 @@ struct BrowserView: View {
         .frame(width: 56, height: 24)
     }
 
+    /// The title gets what's left: it's the column you read.
+    static let artistWidth: CGFloat = 110
+
     private var columnHeader: some View {
         HStack(spacing: 8) {
             Color.clear.frame(width: 28)
             Color.clear.frame(width: 90)
             header(.title, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            header(.artist, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            header(.artist, alignment: .leading).frame(width: Self.artistWidth, alignment: .leading)
             header(.bpm, alignment: .trailing).frame(width: 40, alignment: .trailing)
             header(.key, alignment: .center).frame(width: 30)
             header(.duration, alignment: .trailing).frame(width: 34, alignment: .trailing)
@@ -355,7 +358,7 @@ struct TrackRow: View {
                 .font(Theme.text(11))
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: BrowserView.artistWidth, alignment: .leading)
             Text(track.bpm.map { String(format: "%.1f", $0) } ?? "…")
                 .font(Theme.digits(11.5))
                 .foregroundStyle(Theme.textPrimary)
