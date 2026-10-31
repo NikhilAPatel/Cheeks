@@ -44,7 +44,7 @@ struct LoopRow: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Key("IN", color: Theme.loop, size: 9, onPress: deck.loopIn)
+            Key("IN", color: Theme.loop, lit: deck.loopInSet, size: 9, onPress: deck.loopIn)
             Key("OUT", color: Theme.loop, size: 9, onPress: deck.loopOut)
             Key(deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive, size: 8.5) {
                 deck.loopActive ? deck.exitLoop() : deck.reloop()
@@ -166,7 +166,8 @@ struct PadBank: View {
             if i < 4 {
                 StemPad(deck: deck, stem: stem)
             } else {
-                Pad(color: stem.color, accessibilityName: "Solo \(stem.label.capitalized)", onPress: { deck.soloStem(stem) }) {
+                let soloed = deck.stemsOn.indices.allSatisfy { deck.stemsOn[$0] == ($0 == stem.rawValue) }
+                Pad(color: stem.color, lit: soloed, accessibilityName: "Solo \(stem.label.capitalized)", onPress: { deck.soloStem(stem) }) {
                     VStack(spacing: 0) {
                         Text("SOLO").font(Theme.silk(8)).opacity(0.8)
                         Text(stem.short).font(Theme.silk(11))
@@ -433,7 +434,8 @@ struct SamplerPad: View {
         let sampler = dj.sampler
         let setting = sampler.slots[slot]
         let recording = sampler.recordingSlot == slot
-        Pad(color: recording ? Theme.danger : SampleBank.color(slot), lit: recording || sampler.looping.contains(slot),
+        // Lit for as long as it's sounding, so even a quick tap shows that it fired.
+        Pad(color: recording ? Theme.danger : SampleBank.color(slot), lit: recording || sampler.looping.contains(slot) || sampler.sounding.contains(slot),
             accessibilityName: sampler.name(slot).capitalized, onPress: {
                 if sampler.isSetting {
                     sampler.isSetting = false

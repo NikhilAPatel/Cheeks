@@ -44,6 +44,8 @@ final class Sampler {
     private(set) var slots = [Slot](repeating: Slot(), count: 8)
     /// Pads going round in loop mode.
     private(set) var looping: Set<Int> = []
+    /// Pads making a sound right now.
+    private(set) var sounding: Set<Int> = []
     private(set) var recordingSlot: Int?
     /// Pads start on the beat of the master deck when this is on.
     var quantize = false { didSet { saveSettings() } }
@@ -236,6 +238,8 @@ final class Sampler {
 
     /// A recording reaching its limit stops itself.
     func tick() {
+        let now = Set((0..<8).filter { isPlaying($0) })
+        if now != sounding { sounding = now }
         guard recordingSlot != nil, recordedSeconds >= Self.longestRecording else { return }
         stopRecording()
     }

@@ -246,8 +246,9 @@ final class WaveformLiveView: LiveView {
         u.sectionCount = deck.grid == nil ? 0 : Int32(sections.count)
         let r = deck.renderer
         let hasLoop = r.loopEnd > r.loopStart
-        u.loopStart = hasLoop ? Float(r.loopStart / sr) : -1
-        u.loopEnd = hasLoop ? Float(r.loopEnd / sr) : -1
+        // After IN and before OUT, a loop too short to see leaves just its start line.
+        u.loopStart = hasLoop || deck.loopInSet ? Float(r.loopStart / sr) : -1
+        u.loopEnd = hasLoop ? Float(r.loopEnd / sr) : deck.loopInSet ? Float(r.loopStart / sr) + 0.001 : -1
         u.loopActive = r.loopActive ? 1 : 0
         u.cuePoint = Float(deck.cuePoint)
         marks = deck.liveMarks
@@ -470,8 +471,8 @@ final class OverviewLiveView: LiveView {
         u.warn = Float(blink)
         let r = deck.renderer
         let hasLoop = r.loopEnd > r.loopStart
-        u.loopStart = hasLoop ? Float(r.loopStart / deck.sampleRate) : -1
-        u.loopEnd = hasLoop ? Float(r.loopEnd / deck.sampleRate) : -1
+        u.loopStart = hasLoop || deck.loopInSet ? Float(r.loopStart / deck.sampleRate) : -1
+        u.loopEnd = hasLoop ? Float(r.loopEnd / deck.sampleRate) : deck.loopInSet ? Float(r.loopStart / deck.sampleRate) + 0.001 : -1
         u.loopActive = r.loopActive ? 1 : 0
         marks = deck.liveMarks
         u.markCount = deck.liveMarkCount

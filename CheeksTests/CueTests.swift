@@ -139,6 +139,27 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(deck.memoryPage, 0, "A page that no longer exists doesn't stay selected")
     }
 
+    func testARollLeavesTheLoopKeyWhereItWas() {
+        let deck = makeDeck()
+        deck.play()
+        deck.loopBeats = 32
+        deck.rollBegin(1.0 / 8)
+        XCTAssertEqual(deck.loopBeats, 1.0 / 8)
+        deck.rollEnd()
+        XCTAssertEqual(deck.loopBeats, 32)
+    }
+
+    func testPressingINIsRememberedUntilOUT() {
+        let deck = makeDeck()
+        deck.loopIn()
+        XCTAssertTrue(deck.loopInSet)
+        deck.seek(to: 14)
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.loopOut()
+        XCTAssertFalse(deck.loopInSet)
+        XCTAssertTrue(deck.loopActive)
+    }
+
     // MARK: FX chain, on the deck
 
     func testEffectsChainUpToThreeAndTheOldestMakesWay() {

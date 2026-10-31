@@ -198,7 +198,7 @@ struct Pad<Label: View>: View {
     @ViewBuilder var label: () -> Label
 
     @State private var pressed = false
-    @State private var flare: Double = 0
+    @State private var strikes = 0
 
     var body: some View {
         ZStack {
@@ -211,8 +211,7 @@ struct Pad<Label: View>: View {
             TouchSurface(onDown: { _ in
                 pressed = true
                 Haptics.shared.pad()
-                flare = 1
-                withAnimation(.easeOut(duration: 0.34)) { flare = 0 }
+                strikes += 1
                 onPress()
             }, onMove: { _, translation in
                 onDrag?(translation)
@@ -239,11 +238,21 @@ struct Pad<Label: View>: View {
                 // The diffuser is brightest in the middle, where the LED is.
                 Image(uiImage: Self.hotspot).resizable().blendMode(.plusLighter).opacity(0.09).clipShape(shape).allowsHitTesting(false)
             } else if !dimmed {
-                shape.fill(color.opacity(0.09)).allowsHitTesting(false)
-                shape.strokeBorder(color.opacity(0.22), lineWidth: 0.75).allowsHitTesting(false)
+                // Held, it stays clearly brighter than the pads around it.
+                shape.fill(color.opacity(pressed ? 0.42 : 0.09)).allowsHitTesting(false)
+                shape.strokeBorder(color.opacity(pressed ? 0.7 : 0.22), lineWidth: 0.75).allowsHitTesting(false)
             }
-            if flare > 0.001 {
-                shape.fill(Color.white.opacity(flare * 0.55)).allowsHitTesting(false)
+        }
+        // A keyframe track, because it runs on the strike itself. Setting a value and animating it
+        // back in one go never gets drawn at all.
+        .keyframeAnimator(initialValue: 0.0, trigger: strikes) { face, flare in
+            face.overlay {
+                if flare > 0.001 { shape.fill(Color.white.opacity(flare * 0.55)).allowsHitTesting(false) }
+            }
+        } keyframes: { _ in
+            KeyframeTrack {
+                MoveKeyframe(1)
+                CubicKeyframe(0, duration: 0.34)
             }
         }
     }

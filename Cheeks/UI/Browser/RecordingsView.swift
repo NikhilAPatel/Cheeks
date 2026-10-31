@@ -138,11 +138,12 @@ struct RecordingsView: View {
             for (old, new) in zip(oldCompanions, newCompanions) where FileManager.default.fileExists(atPath: old.path) {
                 try? FileManager.default.moveItem(at: old, to: new)
             }
-            // The CUE sheet names its audio file; point it at the new name.
-            let cue = newCompanions[1]
-            if let text = try? String(contentsOf: cue, encoding: .utf8) {
-                try? text.replacingOccurrences(of: url.lastPathComponent, with: target.lastPathComponent)
-                    .write(to: cue, atomically: true, encoding: .utf8)
+            // The CUE sheet and tracklist both name the mix inside them, so they change with it.
+            let oldName = url.deletingPathExtension().lastPathComponent
+            for companion in newCompanions {
+                guard let text = try? String(contentsOf: companion, encoding: .utf8) else { continue }
+                try? text.replacingOccurrences(of: oldName, with: name)
+                    .write(to: companion, atomically: true, encoding: .utf8)
             }
         } catch {}
         reload()

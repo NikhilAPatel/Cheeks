@@ -197,6 +197,7 @@ extension Deck {
         }
         let length = frame(atBeat: beatPosition(start) + beats) - start
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
+        loopInSet = false
         renderer.setLoop(start: start, end: start + length, active: true)
         if renderer.playhead >= start + length || renderer.playhead < start {
             renderer.playhead = start + max(0, renderer.playhead - start).truncatingRemainder(dividingBy: length)
@@ -210,6 +211,7 @@ extension Deck {
         let start = snap(renderer.playhead)
         renderer.setLoop(start: start, end: start, active: false)
         loopActive = false
+        loopInSet = true
     }
 
     func loopOut() {
@@ -219,6 +221,7 @@ extension Deck {
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true
+        loopInSet = false
         if beatFrames > 0 { loopBeats = beatPosition(end) - beatPosition(renderer.loopStart) }
     }
 
@@ -260,7 +263,10 @@ extension Deck {
     /// Momentary loop: the track keeps running underneath and resumes in time on release.
     func rollBegin(_ beats: Double) {
         guard isLoaded, beatFrames > 0 else { return }
-        if heldMomentaryPads == 0 { renderer.engageSlip() }
+        if heldMomentaryPads == 0 {
+            renderer.engageSlip()
+            loopBeatsBeforePad = loopBeats
+        }
         heldMomentaryPads += 1
         renderer.loopActive = false
         loopActive = false
@@ -276,6 +282,9 @@ extension Deck {
         renderer.loopActive = false
         loopActive = false
         renderer.releaseSlip()
+        // A roll borrows the loop for a moment. The loop key goes back to what you'd set it to.
+        if let saved = loopBeatsBeforePad { loopBeats = saved }
+        loopBeatsBeforePad = nil
     }
 
     // MARK: Slicer

@@ -159,6 +159,10 @@ final class Deck {
     var shift = false
     var loopActive = false
     var loopBeats: Double = 4
+    /// IN has been pressed, and OUT hasn't yet.
+    var loopInSet = false
+    /// What the loop key said before a roll borrowed it.
+    @ObservationIgnored var loopBeatsBeforePad: Double?
     var jumpBeats: Double = 4
     var stemStatus: StemStatus = .unavailable
     var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
@@ -317,7 +321,11 @@ final class Deck {
         library?.update(id) { $0.playCount += 1 }
 
         renderer.isPlaying = false
-        renderer.loopActive = false
+        // The whole loop, not just its switch, or the last track's loop shows on this one.
+        renderer.setLoop(start: 0, end: 0, active: false)
+        loopInSet = false
+        heldMomentaryPads = 0
+        loopBeatsBeforePad = nil
         renderer.cancelSlip()
         renderer.endScratch()
         renderer.reachedEnd = false
@@ -338,8 +346,7 @@ final class Deck {
         stemLevels = [1, 1, 1, 1]
         stemsBeforeSolo = nil
         keyShift = 0
-        autoGainDB = track?.loudness.map { Float(Self.targetLoudness - $0) } ?? 0
-        autoGainDB = max(-12, min(9, autoGainDB))
+        autoGainDB = Self.autoGain(for: track?.loudness)
         onMixChange?()
         Task { [weak self] in
             let image = await ArtworkStore.image(id)
@@ -365,6 +372,12 @@ final class Deck {
     static let targetLoudness = -11.0
 
     func setLoadingForTesting(_ loading: Bool) { isLoading = loading }
+    func setAutoGainForTesting(loudness: Double?) { autoGainDB = Self.autoGain(for: loudness) }
+
+    /// Brings a track to the target loudness, within reason.
+    static func autoGain(for loudness: Double?) -> Float {
+        max(-12, min(9, loudness.map { Float(targetLoudness - $0) } ?? 0))
+    }
 
     /// The section of the song at a position in the track, and when it started.
     func phrase(atFrame frame: Double) -> Phrase? {
