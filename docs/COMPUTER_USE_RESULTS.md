@@ -329,4 +329,7 @@ Fixed on the `features` branch. "UI test" means the real app driven by real touc
 **Not changed**
 - **Waiting on the owner:** white knob arcs, stem colours only on the `STEMS` tab, and the header's BPM.
 - **By design, left alone:** the loop keys aren't on the `STEMS` and `FX` pages, and when a track ends the other deck becomes master and its sync turns off.
-- **Not looked into:** the `UIKit.AnimationKit:DebugAssertion` faults (none in about an hour of UI tests, so probably the drag or context menu), and the launch `renderbox` errors (not in the commonest errors in my runs). Decks come back empty after a crash, and renaming a recording stops its playback.
+- **Not looked into:**
+  - the `UIKit.AnimationKit:DebugAssertion` faults: none in about an hour of UI tests, but those don't drag rows or open context menus, so they may still be there
+  - the launch `renderbox` errors: still there
+  - decks coming back empty after a crash, and renaming a recording stopping its playback

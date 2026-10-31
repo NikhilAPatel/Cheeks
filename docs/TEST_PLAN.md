@@ -2,7 +2,7 @@
 
 **Automated (run by Claude):** `CheeksTests` renders the engine offline. See CLAUDE.md for the commands.
 
-**Hands-on in the simulator (run by a Claude with computer use):** `docs/COMPUTER_USE_TEST.md`.
+**Hands-on in the simulator (run by a Claude with computer use):** `docs/COMPUTER_USE_TASK.md`.
 
 **On the phone (the owner):** below. Picking a signing team in Xcode once is all the setup it needs.
 

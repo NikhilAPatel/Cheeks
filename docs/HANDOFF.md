@@ -99,7 +99,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - **Git:** commit in small, validated steps with clear messages. The owner said (2026-10-30) to commit straight to `master` and gave full push access. Never force-push.
 - **Realtime rules** (CLAUDE.md): nothing on the render path in `DSP/` may allocate, lock (except the existing `TryLock`), or call Swift.
 - **DSP changes:** update `tools/analysis-check/` and the tests together.
-- **Testing:** for anything needing hands on the UI, extend `docs/COMPUTER_USE_TEST.md`. For ears and fingers on the phone, ask the owner, and be specific about what to listen or feel for.
+- **Testing:** for anything needing hands on the UI, use the UI tests (`tools/ui-tests.sh`) first, and extend `docs/COMPUTER_USE_TASK.md` for what they can't judge. For ears and fingers on the phone, ask the owner, and be specific about what to listen or feel for.
 - **Keep the docs current:** `README.md`, `docs/TEST_PLAN.md`, `docs/ROADMAP.md`, and this file.
 
 ## 9. Open questions for the owner
