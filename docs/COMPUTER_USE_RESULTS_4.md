@@ -173,3 +173,44 @@ There's a second, short mix in Recordings from 13:16, from the Y5 rerun.
 
 ## First impressions
 Not run, as the task says to run part 3 only if the owner asks.
+
+## What happened next
+
+Every lead was checked against the code first. All of them were right, apart from `CRUSH`, below. Each fix has a test, and the new tests were run against the old code first: 81 failed assertions on the loops, the end of a track and FX levels, and 8 on the shared split.
+
+**Fixed**
+- **The end of a track (P3):** `PLAY` now goes back to the cue and plays. `CUE` goes back to the cue and leaves it where it was. If the cue is in the last half second too, `PLAY` starts from the top of the track. Hot cues and `RELOOP` still go where they say.
+- **A seek during a roll:** a seek, a hot cue, a memory cue or a recalled loop now ends a roll or slice. `ROLL` goes out, the way back is forgotten, whatever loop was set before comes back, and letting go of a held pad afterwards does nothing. The lead was right about the slip surviving, and a held `ROLL` pad and a slice had the same bug.
+- **`REV` in a running loop:** it now holds, wrapping from the loop's start back to its end, through the declicker. A loop waiting further on doesn't catch the deck, and the jog still goes where the hand takes it. A roll during `REV` carries on backwards underneath. Turning `REV` off in a slip loop no longer throws the deck out of it.
+- **A waiting loop's size pad:** no longer lit, and tapping it starts a loop where the deck is.
+- **`SLIP` during a running loop:** starts the slip timeline from that moment, so leaving the loop returns to where the track's got to.
+- **Beat FX levels:** the phaser was the worst, because of its resonance, with flanger, filter, reverb and the echoes after it. All have been turned down to suit. An echo out's tail stays at its old level, since there's nothing left playing to make room for.
+- **Nothing shows FX are on:** the `FX` tab has a small blue dot while effects are on. VoiceOver reads "effects on".
+- **The same track on both decks:** shares one split and its memory. It stops only when both decks have let go of it.
+
+| Default levels, about 13 s from the same spots as Y1 | Meter top before | After | In the red before | After | Level against dry, before | After |
+|---|---|---|---|---|---|---|
+| Exhilarate, dry | -5.4 dB | -5.4 dB | 0% | 0% | | |
+| Exhilarate, `PHASER` | +1.1 dB | -2.1 dB | under 1% | 0% | +2.7 dB | -0.4 dB |
+| Exhilarate, `CRUSH` and `PHASER` | +1.3 dB | -1.8 dB | under 1% | 0% | +2.4 dB | -0.7 dB |
+| Exhilarate, `SPIRAL` | +1.3 dB | -2.7 dB | 2% | 0% | +3.3 dB | +0.8 dB |
+| Severe Tire Damage, dry | -1.8 dB | -1.8 dB | 0% | 0% | | |
+| Severe Tire Damage, `PHASER` | +3.0 dB | -0.2 dB | 14% | 0% | +3.0 dB | +0.7 dB |
+| Severe Tire Damage, `FLANGER` | +3.0 dB | +0.9 dB | 4% | under 1% | +1.7 dB | -0.1 dB |
+| Severe Tire Damage, `CRUSH` and `PHASER` | +2.8 dB | -0.4 dB | 10% | 0% | +3.1 dB | +0.6 dB |
+
+At full depth some still reach the red, at most 5% of the time on these tracks, for `PHASER` alone and for `CRUSH`, `PHASER` and `FLANGER` together, which was 62%. The limiter is what those have left.
+
+**The `CRUSH` reading wasn't reproduced.** Alone, at the default depth and at full depth, it adds nothing here: the meter top is the same as dry, or lower, on both tracks, and the level's the same. A likely reason for the 9.4%: an effect let go with quantize on keeps running until its beat, and up to 3 s if a roll means that beat never comes, which would also explain the row with `ROLL` straight after `PHASER`. That isn't confirmed. This measurement used the full mix rather than stems, and an offline render instead of the screen.
+
+**Deck 2 stopping by itself: a likely cause, not a confirmed one.** Exhilarate is 2:25 long. With a seek during a held roll, the roll's slip timeline carried on from where it was, and letting go jumped there: 02:16.4 in the report's example. A bit later and that's past the end, which stops the deck where it is, and the next overview tap then moves a stopped deck to 0:53. That fits what the report saw: `ROLL` lit, `ROLL` off, then a stopped deck at 00:52.7. It also fits the repeats not doing it, since they'd have had less time on that timeline. A test shows the stop happens when a roll outlasts the track. The seek fix removes this route, since the slip timeline no longer survives a seek. Nothing proves it's what happened on that run.
+
+**Worth knowing:**
+- A roll held until the track would have finished still stops the deck when it's let go. That's what slip means, and `PLAY` now gets out of it.
+- If a new roll starts while a finger is still down on a pad whose roll a seek ended, lifting the old finger ends the new roll. It takes three fingers and a seek, so it's been left.
+- `BEAT JUMP` during a held roll still moves the roll's loop and not the way back. That wasn't in the report, and it isn't obviously wrong.
+
+**Not fixed**
+- **`LIM` lighting below the red, tab spacing in two sizes, and `LIST`'s wording about a loop past the load point:** none were in this batch. They're small, and the first needs a decision about what the two should agree on.
+- **Nobody has heard any of this:** turning effects down could leave some too weak, and the wrap in reverse is new. Both are on the owner's listening list in `docs/TEST_PLAN.md` §2.
+

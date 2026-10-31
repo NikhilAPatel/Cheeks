@@ -27,6 +27,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Hands-on testing is a loop now:** the owner told the two Claude sessions to work directly and keep going until told to stop. The computer-use session runs `docs/COMPUTER_USE_TASK.md` and commits its results to local `master`. This side merges, fixes, verifies, pushes, and messages it what to retest. Stay off a simulator while it's testing there.
 
+**After the fourth hands-on test:** 23 of 24 passed, on edd906b, with no crashes. See the end of `docs/COMPUTER_USE_RESULTS_4.md`. The next retest is at the top of `docs/COMPUTER_USE_TASK.md`.
+
 **After the third hands-on test:** 21 of 22 passed, on 05feeed, and the tab race held on 29 of 29 synthetic tries. See the end of `docs/COMPUTER_USE_RESULTS_3.md`, which also has a bug nobody had reported: with every knob centred, the channel's EQ was raising loud masters' peaks by up to 5 dB. The next retest, including a harder round, is at the top of `docs/COMPUTER_USE_TASK.md`. Section names have only been judged from the numbers, with nobody listening.
 
 **After the second hands-on test:** 53 of 58 passed, on 97e6a30. See the end of `docs/COMPUTER_USE_RESULTS_2.md`.

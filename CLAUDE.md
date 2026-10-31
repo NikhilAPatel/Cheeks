@@ -59,10 +59,14 @@ xcrun simctl io booted screenshot screenshot.png
   - The playhead and the meters are *not* observed. The live views read them directly from the audio core.
 - **Beats go through `BeatGrid`** (`Model/BeatGrid.swift`), never `bpm` and `firstBeat` sums, because a track can change tempo. `Deck.bpm`, `beatFrames` and `firstBeatFrame` describe the section at the playhead, and `Deck.tick` tells the core when that changes. Use `beatPosition(frame)` and `frame(atBeat:)` for anything spanning more than a beat.
 - **Edit a loaded track through `Deck.updateTrack`:** its closure runs once, so anything it creates has one ID in both the deck and the library. A deck holding the same track picks the change up.
-- **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, running or not, so nothing else finds its tiny loop afterwards. A loop that was running comes back where it would have got to.
+- **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, running or not, so nothing else finds its tiny loop afterwards. A loop that was running comes back where it would have got to. Going somewhere else during one (a seek, a cue, a recalled loop) ends it through `endMomentaryPads`, and letting go of the pad afterwards does nothing.
+- **A running loop holds in reverse too,** wrapping from its start back to its end. Only a deck that was in the loop gets caught, so a loop waiting further on doesn't, and a jog goes where the hand takes it.
+- **A deck that's run out starts again from its cue, on `PLAY` or `CUE`,** and `CUE` doesn't move the cue while it's at the end. A roll held past the end of the track does stop the deck on release, because that's where the track would have got to.
+- **The same track on both decks shares one split** (`StemJob.shared`), with the same buffers. It stops only when every deck waiting for it has gone.
 - **A loop can be waiting up ahead** (`Deck.isLoopAhead`): on, but the deck hasn't reached it. Anything that moves the deck or the loop has to allow for that. Go through `leaveLoop(ifGoingTo:)` when moving the deck, or a loop behind it pulls it straight back.
 - **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
 - **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
+- **Beat FX are level-compensated:** at their default depth they stay out of the red on the test tracks, and within about 1.5 dB of dry. `LevelTests.testBeatFXLevels` measures it with real music. An echo out's tail goes back to full level, because there's nothing left to leave room for.
 - **The isolator is out of the path with every band at 1.** Its bands add back flat but with the phase turned, which raised a loud master's peaks by 5 dB. It crossfades in as the first knob leaves centre.
 - **A deck's meter is `Deck.level`:** after TRIM and loudness matching, ahead of the fader, and read 3 dB down. The master meters read ahead of the limiter. Red on either means it's really too hot.
 - **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
@@ -94,6 +98,7 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **Knob arcs:** white on level knobs (`TRIM`, `MASTER`, `CUE/MST`, `LEVEL`), blue on tone knobs (EQ, filter).
 - **A deck's BPM is always the tempo it's playing at,** in the header and on the jog. The track's own speed is in the BPM menu and the browser.
 - **Stem colours show on the `STEMS` tab, and anywhere while `Deck.stemsAltered`,** because the 3-band waveform can't show that part of the track is missing.
+- **The `FX` tab shows a blue dot while effects are on,** because they stay on when you leave the page.
 - **Respect the system:** `UIAccessibility.isReduceMotionEnabled` for decorative motion, accessibility labels and adjustable actions on controls, continuous corners everywhere.
 - **Deck 2 is mirrored** so each deck's tempo fader and CUE/PLAY sit at the screen edge.
 - **The Duo has a centre crease when unfolded**, so the mixer sits across it and the waveform playhead sits off-centre.
@@ -114,4 +119,4 @@ TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also 
 
 ## Testing on the device
 
-Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_4.md`. Read those if they exist. Earlier runs are in `docs/COMPUTER_USE_RESULTS.md`, `_2` and `_3`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
+Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_5.md`. Read those if they exist. Earlier runs are in `docs/COMPUTER_USE_RESULTS.md`, `_2`, `_3` and `_4`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
