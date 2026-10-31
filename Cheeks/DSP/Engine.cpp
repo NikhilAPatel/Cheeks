@@ -339,7 +339,7 @@ private:
                 put(fxReleaseBeat[l], kNoSeek);
                 put(fxOn[l], false);
             }
-            fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]));
+            fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]), relaxed(sourceCut));
         }
         const double cutAt = relaxed(cutAtBeat);
         if (std::isnan(cutAt)) {

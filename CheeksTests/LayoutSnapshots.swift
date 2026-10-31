@@ -71,8 +71,11 @@ final class LayoutSnapshots: XCTestCase {
                 _ = dj.renderOffline(frames: 2048)
             }
             if mode == .fx { dj.decks[0].fxEngage(.echo) }
+            // Deck 2 has an effect on from another page, so the FX tab has to say so.
+            if mode == .hotCue { dj.decks[1].fxEngage(.phaser) }
             try await snapAll("decks-\(mode.id.lowercased().replacingOccurrences(of: " ", with: "-"))", ContentView(opensBrowserWhenEmpty: false))
             if mode == .fx { dj.decks[0].fxRelease() }
+            if mode == .hotCue { dj.decks[1].fxRelease() }
         }
         try await writeAppIcon(to: dir)
         dj.decks.forEach { $0.padMode = .hotCue }

@@ -301,6 +301,91 @@ final class EngineTests: XCTestCase {
         }
     }
 
+    /// A kick, a bass note and a bright noisy part: a loud track's peaks are in its low end.
+    private func musicLike(seconds: Double) -> [Float] {
+        var seed: UInt32 = 12345
+        return (0..<Int(seconds * sr)).map { i in
+            let t = Double(i) / sr
+            let beat = t.truncatingRemainder(dividingBy: 0.5)
+            let kick = 0.5 * Float(exp(-beat * 18) * sin(2 * .pi * 60 * beat))
+            let bass = 0.18 * Float(sin(2 * .pi * 55 * t))
+            seed = seed &* 1664525 &+ 1013904223
+            let noise = (Float(seed >> 16 & 0x7fff) / 16384 - 1) * 0.12
+            let chord = 0.12 * Float(sin(2 * .pi * 440 * t) + sin(2 * .pi * 660 * t))
+            return kick + bass + noise + chord
+        }
+    }
+
+    func testBeatEffectsDontAddLevelAtTheirDefaultDepth() {
+        let source = stereo(musicLike(seconds: 16))
+        func measure(_ type: CheeksFXType?) -> (level: Float, peak: Float) {
+            let r = DeckRenderer(sampleRate: sr)
+            r.setSources([source])
+            r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+            if let type { r.setFX(type, on: true, beats: 0.5, depth: 0.6, stemMask: 0xF) }
+            r.isPlaying = true
+            let out = r.renderOffline(frames: Int(sr * 14)).left[Int(sr * 4)...]
+            return (rms(out), out.map(abs).max() ?? 0)
+        }
+        let dry = measure(nil)
+        let effects: [(CheeksFXType, String)] = [(CheeksFXEcho, "echo"), (CheeksFXPingPong, "ping pong"), (CheeksFXSpiral, "spiral"), (CheeksFXReverb, "reverb"),
+                                                 (CheeksFXFlanger, "flanger"), (CheeksFXPhaser, "phaser"), (CheeksFXFilterLFO, "filter"), (CheeksFXGate, "gate"), (CheeksFXCrush, "crush")]
+        for (type, name) in effects {
+            let wet = measure(type)
+            print("FXGUARD: \(name) level \(String(format: "%+.1f", dB(wet.level) - dB(dry.level))) dB, peak \(String(format: "%+.1f", dB(wet.peak) - dB(dry.peak))) dB")
+            // Repeats on this steady signal land on each other in a way real music's don't: on real
+            // music all of these are within about 1 dB of dry (see LevelTests).
+            let limit: Float = type == CheeksFXSpiral ? 5.5 : type == CheeksFXEcho || type == CheeksFXPingPong ? 4.5 : 1
+            XCTAssertLessThan(dB(wet.level) - dB(dry.level), limit, "\(name) adds level")
+            XCTAssertLessThan(dB(wet.peak) - dB(dry.peak), 3.2, "\(name) adds peak")
+        }
+    }
+
+    func testAnEchoOutsTailIsLouderThanAnEchoReleasedOverTheTrack() {
+        // The track stops at 4 s either way, so all that's left to measure is the tail.
+        let source = stereo(sine(440, seconds: 4) + [Float](repeating: 0, count: Int(sr * 4)))
+        func tail(cut: Bool) -> Float {
+            let r = DeckRenderer(sampleRate: sr)
+            r.setSources([source])
+            r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+            r.setFXLink(0, type: CheeksFXEcho, on: true, beats: 1, depth: 0.7)
+            r.isPlaying = true
+            r.releaseFX(link: 0, atBeat: 8)
+            if cut { r.cutSource(atBeat: 8) }
+            return rms(r.renderOffline(frames: Int(sr * 5)).left[Int(sr * 4.05)...])
+        }
+        let difference = dB(tail(cut: true)) - dB(tail(cut: false))
+        print("FXGUARD: echo out tail \(String(format: "%+.1f", difference)) dB")
+        XCTAssertGreaterThan(difference, 3, "With nothing else playing there's no level to leave room for")
+    }
+
+    func testAnEffectLeavingTheChainDoesntStep() {
+        for type in [CheeksFXPhaser, CheeksFXFlanger, CheeksFXFilterLFO] {
+            let r = DeckRenderer(sampleRate: sr)
+            r.setSources([stereo(sine(220, seconds: 6))])
+            r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+            r.setFX(type, on: true, beats: 1, depth: 0.6, stemMask: 0xF)
+            r.isPlaying = true
+            _ = r.renderOffline(frames: Int(sr))
+            r.setFX(type, on: false, beats: 1, depth: 0.6, stemMask: 0xF)
+            let out = r.renderOffline(frames: Int(sr))
+            XCTAssertLessThan(largestStep(out.left[...]), 0.14, "\(type)")
+        }
+    }
+
+    func testAReverseLoopWrapDoesNotClick() {
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([stereo(sine(997, seconds: 4))])
+        r.setLoop(start: 10_000, end: 20_037, active: true)
+        r.playhead = 15_000
+        r.isPlaying = true
+        r.reverse = true
+        let out = r.renderOffline(frames: 80_000)
+        XCTAssertEqual(r.playhead, 15_000, accuracy: 10_100)
+        XCTAssertGreaterThanOrEqual(r.playhead, 10_000)
+        XCTAssertLessThan(largestStep(out.left[1000...]), 0.14)
+    }
+
     // MARK: Whole mix
 
     @MainActor

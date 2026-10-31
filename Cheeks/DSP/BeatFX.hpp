@@ -29,11 +29,12 @@ public:
         echoTone[0] = echoTone[1] = Biquad::lowpass(6000, 0.7, rate);
     }
 
-    void set(CheeksFXType newType, bool isOn, double newBeats, float newDepth) {
+    void set(CheeksFXType newType, bool isOn, double newBeats, float newDepth, bool isSourceCut) {
         type = newType;
         on = isOn;
         beats = newBeats > 0 ? newBeats : 1;
         depth = newDepth;
+        sourceCut = isSourceCut;
     }
 
     void process(float *left, float *right, int n, const Clock &clock) {
@@ -65,7 +66,12 @@ private:
         const bool spiral = type == CheeksFXSpiral;
         const double wanted = std::min(double(kEchoLength - 8), std::max(64.0, beats * clock.beatSamples));
         const float gateTarget = active ? 1 : 0;
-        const float wetTarget = active ? 0.35f + 0.65f * depth : echoWet;
+        // Repeats build on each other, so the more of them there are the quieter each one has to be
+        // to leave the track's level where it was. A spiral barely dies away at all. In an echo out
+        // the repeats are all that's left, with no level to leave room for.
+        const float wetTarget = sourceCut ? 0.35f + 0.65f * depth
+            : !active ? echoWet
+            : spiral ? 0.18f + 0.22f * depth : 0.25f + 0.35f * depth;
         // Feedback rises with depth; a spiral runs nearly self-sustaining and then bends down.
         const float feedback = spiral ? 0.86f + 0.1f * depth : 0.3f + 0.52f * depth;
         // Starting from silence there's nothing to glide from.
@@ -111,7 +117,7 @@ private:
             reverbDecay[l] = float(std::pow(10.0, -3.0 * kReverbLengths[l] / (rt60 * sampleRate)));
         }
         const float gateTarget = active ? 1 : 0;
-        const float wetTarget = active ? 0.2f + 0.7f * depth : reverbWet;
+        const float wetTarget = active ? 0.2f + 0.45f * depth : reverbWet;
         const float damping = 0.3f;
         float loudest = 0;
         for (int i = 0; i < n; ++i) {
@@ -187,7 +193,8 @@ private:
             const float a = flangeLine[c][whole & kFlangeMask], b = flangeLine[c][(whole + 1) & kFlangeMask];
             const float delayed = a + (b - a) * frac;
             flangeLine[c][flangeWrite] = x + delayed * feedback;
-            x = (x + delayed) * 0.7f;
+            // A short delay added back doubles the lows, where a loud track's peaks are.
+            x = (x + delayed) * (0.62f - 0.12f * depth);
         }
         flangeWrite = (flangeWrite + 1) & kFlangeMask;
     }
@@ -209,7 +216,8 @@ private:
                 v = y;
             }
             phaserLast[c] = v;
-            x = (x + v) * 0.7f;
+            // Allow for the resonance, or it takes a loud track into the limiter.
+            x = (x + v) * (0.56f - 0.12f * depth);
         }
     }
 
@@ -222,11 +230,13 @@ private:
             lfoFilter[0].set(g, k);
             lfoFilter[1].set(g, k);
         }
+        // The resonance lifts whatever the sweep's passing, most of all a kick.
+        const float makeup = 1 - 0.25f * depth;
         float low, band, high;
         lfoFilter[0].process(l, low, band, high);
-        l = low;
+        l = low * makeup;
         lfoFilter[1].process(r, low, band, high);
-        r = low;
+        r = low * makeup;
     }
 
     inline void gate(float &l, float &r, double phase) {
@@ -251,7 +261,7 @@ private:
 
     double sampleRate = 44100;
     CheeksFXType type = CheeksFXNone, modType = CheeksFXNone;
-    bool on = false;
+    bool on = false, sourceCut = false;
     double beats = 1;
     float depth = 0.5f;
 

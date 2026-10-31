@@ -117,6 +117,28 @@ final class LayoutAndFeedbackTests: CheeksUITestCase {
         press(button("Cue pads"))
     }
 
+    func testTheFXTabSaysWhenEffectsAreOn() throws {
+        loadDeck1()
+        let tab = button("Fx pads")
+        waitFor(tab)
+        XCTAssertEqual(tab.value as? String ?? "", "")
+        press(tab)
+        let echo = button("Echo")
+        waitFor(echo)
+        press(echo)
+        sleep(1)
+        press(button("Cue pads"))
+        sleep(1)
+        XCTAssertEqual(tab.value as? String, "effects on", "Something has to say so from the other pages")
+        screenshot("fx-on-from-another-page")
+        press(tab)
+        waitFor(echo)
+        press(echo)
+        sleep(1)
+        XCTAssertEqual(tab.value as? String ?? "", "")
+        press(button("Cue pads"))
+    }
+
     func testASliceLeavesNothingForTheSamplerToGrab() throws {
         loadDeck1()
         // The track may have a real loop saved on it from earlier, so compare before and after.

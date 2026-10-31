@@ -90,12 +90,21 @@ struct PadTabs: View {
 
     private func tab(_ mode: PadMode) -> some View {
         let selected = deck.padMode == mode
+        // Effects stay on when you leave their page, so the tab has to say so from the others.
+        let effectsOn = mode == .fx && (deck.fxOn || deck.echoingOut)
         return ZStack {
             Text(mode.rawValue)
                 .font(Theme.silk(8.5))
                 .tracking(0.3)
                 .lineLimit(1)
                 .foregroundStyle(selected ? Color.white : Theme.textSecondary)
+                .overlay(alignment: .topTrailing) {
+                    if effectsOn {
+                        Circle().fill(Theme.accent)
+                            .frame(width: 4, height: 4)
+                            .offset(x: 5, y: -2)
+                    }
+                }
             VStack {
                 Spacer(minLength: 0)
                 Capsule().fill(selected ? Theme.accent : Color.clear)
@@ -115,6 +124,7 @@ struct PadTabs: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(mode.rawValue.capitalized + " pads")
+        .accessibilityValue(effectsOn ? "effects on" : "")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { deck.padMode = mode }
     }
