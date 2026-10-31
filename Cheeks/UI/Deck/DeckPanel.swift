@@ -276,9 +276,9 @@ struct DeckHeader: View {
                 Text(shownTrack?.title ?? "No track loaded")
                     .font(Theme.text(compact ? 11.5 : 12.5, .semibold))
                     .foregroundStyle(shownTrack == nil ? Theme.textTertiary : Theme.textPrimary)
-                    .lineLimit(compact ? 2 : 1)
-                if !compact {
-                    Text(subtitle)
+                    .lineLimit(compact && stemsProgress == nil ? 2 : 1)
+                if !compact || stemsProgress != nil {
+                    Text(compact ? stemsProgress ?? "" : subtitle)
                         .font(Theme.text(10.5))
                         .foregroundStyle(deck.loadError == nil ? Theme.textSecondary : Theme.danger)
                         .lineLimit(1)
@@ -305,11 +305,13 @@ struct DeckHeader: View {
         if let error = deck.loadError { return error }
         guard let track = shownTrack else { return "Open the browser to load one" }
         let artist = track.artist.isEmpty ? "Unknown artist" : track.artist
-        // The stems progress is on the STEMS page, so this is the only sign of it from anywhere else.
-        if deck.padMode != .stems, case .separating(let progress) = deck.stemStatus {
-            return artist + " · Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
-        }
-        return artist
+        return stemsProgress.map { artist + " · " + $0 } ?? artist
+    }
+
+    /// The stems page shows this itself, so it's only needed from everywhere else.
+    private var stemsProgress: String? {
+        guard deck.padMode != .stems, case .separating(let progress) = deck.stemStatus else { return nil }
+        return "Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
     }
 
     /// Tap the BPM to fix the beat grid.

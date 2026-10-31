@@ -139,7 +139,9 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
             const float scales[4] = {1.0, 0.92, 0.72, 0.56};
             for (int k = 0; k < 4; ++k) {
                 const int stem = order[k];
-                const float height = pow(s[stem], 0.86) * scales[k];
+                // A sustained part sits near its peak all the time. A higher power spreads those
+                // top values out, so instruments show their shape rather than a flat band.
+                const float height = pow(s[stem], stem == 1 ? 1.8 : 0.86) * scales[k];
                 const float gain = u.stemGains[stem];
                 const float3 base = u.stemColors[stem].rgb * (0.16 + 0.84 * gain);
                 const float coverage = shapeCoverage(y, height, aa) * (0.35 + 0.65 * gain);
