@@ -35,6 +35,12 @@ constexpr int kMaxFeed = 1536;
 constexpr int kSeekBuffer = 1 << 15;
 constexpr int kStems = 4;
 constexpr double kNoSeek = std::numeric_limits<double>::quiet_NaN();
+// Named differently on Intel, which the generic simulator build includes.
+#if defined(__x86_64__)
+const fenv_t *const kNoDenormals = FE_DFL_DISABLE_SSE_DENORMS_ENV;
+#else
+const fenv_t *const kNoDenormals = FE_DFL_DISABLE_DENORMS_ENV;
+#endif
 
 inline double clampd(double x, double lo, double hi) { return std::max(lo, std::min(hi, x)); }
 
@@ -739,7 +745,7 @@ struct CheeksEngine {
         // Denormals from decaying filters and echo tails can cost a lot of CPU on the render thread.
         fenv_t savedEnv;
         fegetenv(&savedEnv);
-        fesetenv(FE_DFL_DISABLE_DENORMS_ENV);
+        fesetenv(kNoDenormals);
         int done = 0;
         while (done < n) {
             const int chunk = std::min(n - done, kBlock);
@@ -1024,14 +1030,14 @@ int64_t cheeks_deck_frames(const CheeksDeck *deck) { return relaxed(deck->publis
 void cheeks_deck_render_source(CheeksDeck *deck, float *left, float *right, int frames) {
     fenv_t saved;
     fegetenv(&saved);
-    fesetenv(FE_DFL_DISABLE_DENORMS_ENV);
+    fesetenv(kNoDenormals);
     deck->renderSource(left, right, frames);
     fesetenv(&saved);
 }
 void cheeks_deck_render_channel(CheeksDeck *deck, float *left, float *right, int frames) {
     fenv_t saved;
     fegetenv(&saved);
-    fesetenv(FE_DFL_DISABLE_DENORMS_ENV);
+    fesetenv(kNoDenormals);
     int done = 0;
     while (done < frames) {
         const int chunk = std::min(frames - done, kBlock);
