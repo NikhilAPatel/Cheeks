@@ -36,7 +36,8 @@ final class JogLiveView: LiveView {
         self.deck = deck
         super.init(frame: .zero)
         isMultipleTouchEnabled = false
-        wakeStart = CACurrentMediaTime()
+        // Only the first time: closing the browser builds a new jog, and that isn't the deck waking up.
+        wakeStart = LiveRenderer.shared.launchTime
         uniforms.ledColor = Theme.accent.simd
     }
 

@@ -199,7 +199,11 @@ final class Deck {
     var sampleRate: Double { AudioConfig.sampleRate }
     var tempoRatio: Double { 1 + tempo / 100 }
     var effectiveBPM: Double { bpm * tempoRatio }
-    var isLoaded: Bool { renderer.frameCount > 0 && !isLoading }
+    var isLoaded: Bool {
+        // Read first, so a view that asks while the deck's empty still hears about the load finishing.
+        let loading = isLoading
+        return renderer.frameCount > 0 && !loading
+    }
     /// Current playhead in seconds. Not observed; views poll it from a TimelineView.
     var position: Double { renderer.playhead / sampleRate }
     /// Where the audio coming out of the speakers is right now, in frames: the published position,
@@ -351,6 +355,8 @@ final class Deck {
 
     /// Tracks are brought to about this loudness (LUFS), which leaves headroom for mixing two together.
     static let targetLoudness = -11.0
+
+    func setLoadingForTesting(_ loading: Bool) { isLoading = loading }
 
     /// The section of the song at a position in the track, and when it started.
     func phrase(atFrame frame: Double) -> Phrase? {

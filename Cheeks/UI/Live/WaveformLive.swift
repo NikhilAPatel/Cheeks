@@ -604,7 +604,8 @@ final class MeterLiveView: LiveView {
     private var peaks: [Float]
     private var holds: [Double]
     private var last: CFTimeInterval = 0
-    private let created = CACurrentMediaTime()
+    /// How long the meters run up and back when the app starts, like hardware powering on.
+    static let sweepSeconds: CFTimeInterval = 1.1
 
     init(bars: Int, vertical: Bool = true, read: @escaping @MainActor () -> [Float]) {
         self.read = read
@@ -618,6 +619,9 @@ final class MeterLiveView: LiveView {
     }
 
     override func forceRedraw() { needsDraw = true }
+
+    /// What the meter's showing, 0...1 per bar.
+    var shownLevels: [Float] { eased }
 
     /// dB scale: -42 dB at the bottom, +3 dB at the top. 0 dBFS sits where the red begins.
     private func position(_ level: Float) -> Float {
@@ -639,10 +643,11 @@ final class MeterLiveView: LiveView {
                     pp.withMemoryRebound(to: Float.self, capacity: 4) { p in
                         for i in 0..<min(levels.count, 4) {
                             var target = position(levels[i])
-                            // The meters run up and back when the app starts, like hardware powering on.
-                            let age = now - created
-                            if age < 1.1 && !UIAccessibility.isReduceMotionEnabled && !LiveRenderer.shared.captureMode {
-                                target = max(target, Float(sin(.pi * age / 1.1)))
+                            // Timed from launch, not from this view being built, because the mixer can
+                            // be rebuilt at any time and a meter moving with no audio is a lie.
+                            let age = now - LiveRenderer.shared.launchTime
+                            if age < Self.sweepSeconds && !UIAccessibility.isReduceMotionEnabled && !LiveRenderer.shared.captureMode {
+                                target = max(target, Float(sin(.pi * age / Self.sweepSeconds)))
                             }
                             // Fast attack, slow release, like real meter ballistics.
                             let rate: Float = target > eased[i] ? 1 : Float(min(1, dt * 7))

@@ -26,11 +26,13 @@ struct ContentView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                         }
                         .transition(.move(edge: .leading).combined(with: .opacity))
-                        MixerPanel().frame(width: mixerWidth)
                     } else {
                         DeckPanel(deck: dj.decks[0])
                             .transition(.move(edge: .leading).combined(with: .opacity))
-                        MixerPanel().frame(width: mixerWidth)
+                    }
+                    // Stays the same view when the browser opens, so its meters and knobs carry on.
+                    MixerPanel().frame(width: mixerWidth)
+                    if !showLibrary {
                         DeckPanel(deck: dj.decks[1])
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }

@@ -19,6 +19,8 @@ final class LiveRenderer {
     private let views = NSHashTable<LiveView>.weakObjects()
     private var link: CADisplayLink?
 
+    /// When the app started, for things that only happen once, at launch.
+    var launchTime = CACurrentMediaTime()
     /// Seconds per host-clock tick, for placing the playhead between audio callbacks.
     let secondsPerTick: Double
     /// True while something's moving, which unlocks the display's highest refresh rate.

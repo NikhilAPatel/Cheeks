@@ -174,6 +174,38 @@ final class TouchWiringTests: XCTestCase {
         window?.isHidden = true
     }
 
+    func testMetersOnlySweepAtLaunch() async throws {
+        let renderer = LiveRenderer.shared
+        let launched = renderer.launchTime
+        defer { renderer.launchTime = launched }
+
+        // Long after launch, a meter being built with nothing playing stays at rest.
+        renderer.launchTime = CACurrentMediaTime() - 60
+        let late = MeterLiveView(bars: 4) { [0, 0, 0, 0] }
+        _ = late.update(hostTime: mach_absolute_time())
+        try await Task.sleep(for: .milliseconds(300))
+        _ = late.update(hostTime: mach_absolute_time())
+        XCTAssertEqual(late.shownLevels, [0, 0, 0, 0])
+
+        // While the app's just started, it does run up. Skipped under Reduce Motion, where it doesn't.
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        renderer.launchTime = CACurrentMediaTime()
+        let early = MeterLiveView(bars: 1) { [0] }
+        _ = early.update(hostTime: mach_absolute_time())
+        try await Task.sleep(for: .milliseconds(300))
+        _ = early.update(hostTime: mach_absolute_time())
+        XCTAssertGreaterThan(early.shownLevels[0], 0.1)
+    }
+
+    func testTheDeckNoticesATrackFinishingLoadingWhileItWasEmpty() {
+        let deck = Deck(index: 0)
+        // A view reading this while the deck's empty has to get told when loading ends.
+        var told = false
+        withObservationTracking { _ = deck.isLoaded } onChange: { told = true }
+        deck.setLoadingForTesting(true)
+        XCTAssertTrue(told)
+    }
+
     func testTheJogAndWaveformsAreReachable() async throws {
         let (_, _) = try await makeScreen()
         let window = try XCTUnwrap(window)
