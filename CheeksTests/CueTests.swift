@@ -235,7 +235,140 @@ final class CueTests: XCTestCase {
 
     func testEchoOutNeedsAPlayingDeck() {
         let deck = makeDeck()
+        var said: [(String, StatusKind)] = []
+        deck.onMessage = { said.append(($0, $1)) }
         deck.toggleEchoOut()
         XCTAssertFalse(deck.echoingOut)
+        XCTAssertEqual(said.first?.1, .refused, "It says why")
+    }
+
+    // MARK: Edits have to reach the library
+
+    private func deckInLibrary() -> (Deck, Library) {
+        let library = Library()
+        library.playlists = []
+        library.missingFiles = []
+        let deck = makeDeck()
+        library.tracks = [deck.track!]
+        deck.library = library
+        return (deck, library)
+    }
+
+    func testDeletingAJustSavedMemoryCueRemovesItFromTheLibrary() {
+        let (deck, library) = deckInLibrary()
+        let id = deck.track!.id
+        deck.saveMemoryCue(at: 12)
+        XCTAssertEqual(deck.track?.memoryCues.map(\.id), library.track(id)?.memoryCues.map(\.id), "It's the same cue in both")
+        deck.delete(deck.memoryItems[0])
+        XCTAssertEqual(library.track(id)?.memoryCues.count, 0)
+    }
+
+    func testUndoingADeleteBringsBackOneCue() {
+        let (deck, library) = deckInLibrary()
+        let id = deck.track!.id
+        var undo: (() -> Void)?
+        deck.offerUndo = { _, action in undo = action }
+        deck.saveMemoryCue(at: 12)
+        deck.delete(deck.memoryItems[0])
+        undo?()
+        XCTAssertEqual(library.track(id)?.memoryCues.count, 1)
+        XCTAssertEqual(deck.track?.memoryCues.count, 1)
+    }
+
+    func testTheOnAtLoadSwitchReachesALoopSavedSinceTheTrackLoaded() {
+        let (deck, library) = deckInLibrary()
+        let id = deck.track!.id
+        deck.setLoop(beats: 4, resizeExisting: false)
+        deck.saveCurrentLoop()
+        let loop = deck.track!.savedLoops[0]
+        // What the list's switch does.
+        deck.updateTrack { t in
+            for i in t.savedLoops.indices { t.savedLoops[i].activeOnLoad = t.savedLoops[i].id == loop.id }
+        }
+        XCTAssertEqual(library.track(id)?.savedLoops.first?.activeOnLoad, true)
+    }
+
+    func testTheSameTrackOnBothDecksStaysInStep() {
+        let library = Library()
+        library.playlists = []
+        library.missingFiles = []
+        let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        let track = Track(id: UUID(), title: "T", artist: "", fileName: "none", duration: 120, bpm: 120, firstBeat: 0)
+        library.tracks = [track]
+        for deck in dj.decks {
+            deck.renderer.setSources([PCM16Stereo(frames: Int(sr * 120))])
+            deck.track = track
+        }
+        dj.decks[1].saveMemoryCue(at: 12)
+        XCTAssertEqual(dj.decks[0].track?.memoryCues.count, 1, "A cue made on one deck shows on the other")
+        dj.decks[1].scaleBPM(2)
+        XCTAssertEqual(dj.decks[0].bpm, 240, accuracy: 0.001, "and so does a change to the grid")
+    }
+
+    // MARK: Rolls and slices borrow the loop
+
+    func testARollLeavesNoLoopBehind() {
+        let deck = makeDeck()
+        var messages: [String] = []
+        deck.onMessage = { text, _ in messages.append(text) }
+        deck.play()
+        deck.rollBegin(1.0 / 16)
+        _ = deck.renderer.renderOffline(frames: 2048)
+        deck.rollEnd()
+        XCTAssertFalse(deck.renderer.loopEnd > deck.renderer.loopStart, "There's no loop to find afterwards")
+        deck.saveCurrentLoop()
+        XCTAssertEqual(deck.track?.savedLoops.count, 0)
+        XCTAssertEqual(messages, ["Set a loop first, then save it."])
+    }
+
+    func testASliceLeavesNoLoopBehind() {
+        let deck = makeDeck()
+        deck.play()
+        deck.sliceBegin(2)
+        _ = deck.renderer.renderOffline(frames: 2048)
+        deck.sliceEnd()
+        XCTAssertFalse(deck.renderer.loopEnd > deck.renderer.loopStart)
+        XCTAssertFalse(deck.loopActive)
+    }
+
+    func testARollGivesBackTheLoopThatWasSet() {
+        let deck = makeDeck()
+        deck.setLoop(beats: 4, resizeExisting: false)
+        let start = deck.renderer.loopStart, end = deck.renderer.loopEnd
+        deck.exitLoop()
+        deck.rollBegin(1.0 / 4)
+        deck.rollEnd()
+        XCTAssertEqual(deck.renderer.loopStart, start)
+        XCTAssertEqual(deck.renderer.loopEnd, end, "RELOOP still has the loop you set")
+        XCTAssertFalse(deck.renderer.loopActive)
+        XCTAssertEqual(deck.loopBeats, 4)
+    }
+
+    func testARollKeepsAWaitingIN() {
+        let deck = makeDeck()
+        deck.loopIn()
+        let start = deck.renderer.loopStart
+        deck.rollBegin(1.0 / 4)
+        deck.rollEnd()
+        XCTAssertTrue(deck.loopInSet)
+        XCTAssertEqual(deck.renderer.loopStart, start)
+    }
+
+    func testAManualLoopShowsItsLengthAndTheKeyGoesBackAfterwards() {
+        let deck = makeDeck(at: 10)
+        deck.quantize = false
+        deck.loopBeats = 8
+        deck.loopIn()
+        deck.seek(to: 12.5) // 5 beats at 120
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.loopOut()
+        XCTAssertEqual(deck.loopBeats, 5, accuracy: 0.05, "The key shows this loop's length")
+        deck.exitLoop()
+        XCTAssertEqual(deck.loopBeats, 8, "and goes back to the length you'd chosen")
+        deck.reloop()
+        XCTAssertEqual(deck.loopBeats, 5, accuracy: 0.05, "and shows it again when the loop comes back")
+        deck.exitLoop()
+        XCTAssertEqual(deck.loopBeats, 8)
     }
 }

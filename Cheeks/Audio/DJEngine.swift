@@ -107,6 +107,9 @@ final class DJEngine {
             deck.library = library
             deck.onMixChange = { [weak self] in self?.updateVolumes() }
             deck.onMessage = { [weak self] message, kind in self?.say(message, kind) }
+            deck.onTrackEdited = { [weak self, weak deck] in
+                self?.decks.filter { $0 !== deck && $0.track?.id == deck?.track?.id }.forEach { $0.refreshTrack() }
+            }
             deck.offerUndo = { [weak self] message, undo in
                 self?.statusMessage = message
                 self?.undoAction = undo

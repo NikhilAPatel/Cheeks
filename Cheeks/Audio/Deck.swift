@@ -90,6 +90,14 @@ enum StemStatus: Equatable {
 
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
 /// Realtime audio lives in `renderer`; this class is the main-thread control surface.
+/// The loop a held roll or slice takes over.
+struct BorrowedLoop {
+    var start: Double
+    var end: Double
+    var beats: Double
+    var inSet: Bool
+}
+
 @MainActor
 @Observable
 final class Deck {
@@ -103,6 +111,8 @@ final class Deck {
     /// A message for the status capsule.
     @ObservationIgnored var onMessage: (@MainActor (String, StatusKind) -> Void)?
     @ObservationIgnored var stemJob: StemJob?
+    /// Called when the track's been edited, for a deck holding the same track to pick it up.
+    @ObservationIgnored var onTrackEdited: (@MainActor () -> Void)?
     /// Called after something destructive, to offer a way back.
     @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
 
@@ -157,12 +167,20 @@ final class Deck {
     /// Roll and slicer pads being held, so letting go of one doesn't end the other.
     @ObservationIgnored var heldMomentaryPads = 0
     var shift = false
-    var loopActive = false
+    var loopActive = false {
+        didSet {
+            guard !loopActive, let chosen = chosenLoopBeats else { return }
+            chosenLoopBeats = nil
+            loopBeats = chosen
+        }
+    }
     var loopBeats: Double = 4
+    /// The length chosen on the loop key, while the key's showing a manual or saved loop's own.
+    @ObservationIgnored var chosenLoopBeats: Double?
     /// IN has been pressed, and OUT hasn't yet.
     var loopInSet = false
-    /// What the loop key said before a roll borrowed it.
-    @ObservationIgnored var loopBeatsBeforePad: Double?
+    /// What a held roll or slice took over, to give back when it's let go.
+    @ObservationIgnored var borrowedLoop: BorrowedLoop?
     var jumpBeats: Double = 4
     var stemStatus: StemStatus = .unavailable
     var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
@@ -327,7 +345,7 @@ final class Deck {
         renderer.setLoop(start: 0, end: 0, active: false)
         loopInSet = false
         heldMomentaryPads = 0
-        loopBeatsBeforePad = nil
+        borrowedLoop = nil
         renderer.cancelSlip()
         renderer.endScratch()
         renderer.reachedEnd = false
@@ -394,11 +412,18 @@ final class Deck {
         track = fresh
     }
 
+    /// Changes the track on this deck and in the library. `change` only runs once, so anything it
+    /// creates is the same item in both, and can be found again by its ID.
     func updateTrack(_ change: (inout Track) -> Void) {
         guard var current = track else { return }
-        change(&current)
-        track = current
-        library?.update(current.id, change)
+        if let library, library.track(current.id) != nil {
+            library.update(current.id, change)
+            track = library.track(current.id)
+        } else {
+            change(&current)
+            track = current
+        }
+        onTrackEdited?()
         onMixChange?() // BPM may have changed; keep beat-synced FX in time
     }
 

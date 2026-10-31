@@ -134,7 +134,7 @@ extension Deck {
         }
         renderer.setLoop(start: startFrame, end: endFrame, active: true)
         loopActive = true
-        if beatFrames > 0 { loopBeats = beatPosition(endFrame) - beatPosition(startFrame) }
+        showLength(ofLoopFrom: startFrame, to: endFrame)
         if !isPlaying { play() }
     }
 
@@ -171,7 +171,7 @@ extension Deck {
         let ahead = cuePoint < loop.end
         renderer.setLoop(start: loop.start * sampleRate, end: loop.end * sampleRate, active: ahead)
         loopActive = ahead
-        if beatFrames > 0 { loopBeats = beatPosition(loop.end * sampleRate) - beatPosition(loop.start * sampleRate) }
+        if ahead { showLength(ofLoopFrom: loop.start * sampleRate, to: loop.end * sampleRate) }
     }
 
     // MARK: Loops
@@ -187,6 +187,7 @@ extension Deck {
     func setLoop(beats: Double, resizeExisting: Bool = true) {
         guard isLoaded, beatFrames > 0 else { return }
         let start: Double
+        if !(resizeExisting && loopActive) { chosenLoopBeats = nil }
         if resizeExisting && loopActive {
             start = renderer.loopStart
         } else if quantize {
@@ -222,7 +223,17 @@ extension Deck {
         renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true
         loopInSet = false
-        if beatFrames > 0 { loopBeats = beatPosition(end) - beatPosition(renderer.loopStart) }
+        showLength(ofLoopFrom: renderer.loopStart, to: end)
+    }
+
+    /// A manual or saved loop shows its own length on the key. The length you chose comes back when
+    /// the loop ends, so one loop you set by hand doesn't change what the key does next.
+    private func showLength(ofLoopFrom start: Double, to end: Double) {
+        guard beatFrames > 0 else { return }
+        let length = beatPosition(end) - beatPosition(start)
+        guard abs(length - loopBeats) > 0.0001 else { return }
+        if chosenLoopBeats == nil { chosenLoopBeats = loopBeats }
+        loopBeats = length
     }
 
     func exitLoop() {
@@ -236,6 +247,7 @@ extension Deck {
         renderer.playhead = renderer.loopStart
         renderer.loopActive = true
         loopActive = true
+        showLength(ofLoopFrom: renderer.loopStart, to: renderer.loopEnd)
         if !isPlaying { play() }
     }
 
@@ -263,10 +275,7 @@ extension Deck {
     /// Momentary loop: the track keeps running underneath and resumes in time on release.
     func rollBegin(_ beats: Double) {
         guard isLoaded, beatFrames > 0 else { return }
-        if heldMomentaryPads == 0 {
-            renderer.engageSlip()
-            loopBeatsBeforePad = loopBeats
-        }
+        borrowLoop()
         heldMomentaryPads += 1
         renderer.loopActive = false
         loopActive = false
@@ -275,16 +284,27 @@ extension Deck {
 
     func rollEnd() { momentaryPadReleased() }
 
-    /// When the last held pad comes up, the track returns to where it would have been.
+    /// A held roll or slice takes over the loop for a moment, so remember what it's replacing.
+    private func borrowLoop() {
+        guard heldMomentaryPads == 0 else { return }
+        renderer.engageSlip()
+        borrowedLoop = BorrowedLoop(start: renderer.loopStart, end: renderer.loopEnd, beats: chosenLoopBeats ?? loopBeats, inSet: loopInSet)
+    }
+
+    /// When the last held pad comes up, the track returns to where it would have been. Whatever loop
+    /// was set before comes back as it was, or else RELOOP and SAVE LOOP would find the roll's.
     private func momentaryPadReleased() {
         heldMomentaryPads = max(0, heldMomentaryPads - 1)
         guard heldMomentaryPads == 0 else { return }
         renderer.loopActive = false
         loopActive = false
         renderer.releaseSlip()
-        // A roll borrows the loop for a moment. The loop key goes back to what you'd set it to.
-        if let saved = loopBeatsBeforePad { loopBeats = saved }
-        loopBeatsBeforePad = nil
+        if let borrowed = borrowedLoop {
+            renderer.setLoop(start: borrowed.start, end: borrowed.end, active: false)
+            loopBeats = borrowed.beats
+            loopInSet = borrowed.inSet
+        }
+        borrowedLoop = nil
     }
 
     // MARK: Slicer
@@ -299,7 +319,7 @@ extension Deck {
         let start = frame(atBeat: barStart + Double(slice) / 2)
         let length = frame(atBeat: barStart + Double(slice + 1) / 2) - start
         // A second pad while one's held plays that slice; the return point stays where it was.
-        if heldMomentaryPads == 0 { renderer.engageSlip() }
+        borrowLoop()
         heldMomentaryPads += 1
         renderer.setLoop(start: start, end: start + length, active: true)
         renderer.playhead = start
@@ -528,7 +548,7 @@ extension Deck {
             return
         }
         guard isPlaying, beatFrames > 0 else {
-            Haptics.shared.deny()
+            onMessage?("Echo out needs the deck playing.", .refused)
             return
         }
         echoingOut = true
