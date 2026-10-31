@@ -251,8 +251,12 @@ enum PhraseAnalyzer {
         guard let smallest = sizes.min(), let largest = sizes.max(), largest > smallest else {
             return [Phrase(start: 0, kind: .chorus)]
         }
-        let relative = sizes.map { ($0 - smallest) / (largest - smallest) }
-        let isBig = relative.map { $0 >= 0.72 }
+        // Measured against the body of the song. A fade-out is far quieter than anything else, and
+        // would make the whole of the rest look equally big. Sections only a little apart are just
+        // the same level, which the floor allows for.
+        let body = sizes.count > 2 ? sizes.dropFirst().dropLast() : sizes[...]
+        let floor = min(body.min() ?? smallest, largest * 0.8)
+        let isBig = sizes.map { ($0 - floor) / (largest - floor) >= 0.72 }
         // A breakdown takes the low end away; a verse is smaller than a chorus but its kick keeps going.
         let lowEnd = sections.map { range -> Float in bars[range].reduce(0) { $0 + $1.bass } / Float(range.count) }
         let fullest = max(lowEnd.max() ?? 0, 1e-6)

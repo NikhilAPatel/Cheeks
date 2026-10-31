@@ -128,6 +128,18 @@ final class PhraseTests: XCTestCase {
         XCTAssertLessThanOrEqual(phrases.count, 2, "Got \(phrases)")
     }
 
+    func testAFadeOutDoesntTurnTheWholeSongIntoAChorus() throws {
+        // Full all the way, a somewhat smaller section with no kick, full again, then the track dies away.
+        let full = Part(bars: 32, kick: true, hats: true, bass: true, chords: true)
+        let parts = [full, Part(bars: 16, kick: false, hats: true, bass: true, chords: true), full,
+                     Part(bars: 8, kick: false, hats: false, bass: false, chords: false)]
+        let result = TrackAnalyzer.analyze(render(parts, bpm: 128, chords: [[57, 60, 64]]), knownGrid: BeatGrid(bpm: 128, firstBeat: 0))
+        let kinds = try XCTUnwrap(result.phrases).map(\.kind)
+        print("PHRASE: fade-out \(kinds.map(\.rawValue))")
+        XCTAssertEqual(kinds.filter { $0 == .chorus }.count, 2, "The smaller section in the middle isn't a chorus. Got \(kinds)")
+        XCTAssertEqual(kinds.last, .outro)
+    }
+
     func testAVeryShortClipHasNoSections() {
         let result = TrackAnalyzer.analyze(Synth.track(bpm: 120, firstBeat: 0, seconds: 6, chords: Synth.aMinor))
         XCTAssertNil(result.phrases)
