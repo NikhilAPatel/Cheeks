@@ -97,7 +97,8 @@ struct PadTabs: View {
                     TouchSurface(onDown: { _ in
                         guard deck.padMode != mode else { return }
                         Haptics.shared.toggle(true)
-                        withAnimation(.easeOut(duration: 0.12)) { deck.padMode = mode }
+                        // No fade: pads on their way out still take touches, and would fire the old page.
+                        deck.padMode = mode
                     })
                 }
                 .accessibilityElement(children: .ignore)

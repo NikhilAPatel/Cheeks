@@ -174,6 +174,33 @@ final class TouchWiringTests: XCTestCase {
         window?.isHidden = true
     }
 
+    func testAPadTappedRightAfterATabBelongsToTheNewPage() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.padMode = .hotCue
+        try await settle()
+        let hotCuesBefore = deck.track?.hotCues.count ?? 0
+        // The lower-left part of the screen, with the tabs just above the pads.
+        let pads = controls(in: CGRect(x: 64, y: Self.size.height - 100, width: 320, height: 100))
+        let tabs = controls(in: CGRect(x: 72, y: Self.size.height - 124, width: 320, height: 4))
+            .sorted { $0.point.x < $1.point.x }
+        let target = try XCTUnwrap(pads.first).point
+        XCTAssertGreaterThanOrEqual(tabs.count, 3)
+
+        tabs[2].view.onDown?(tabs[2].point) // LOOP
+        tabs[2].view.onUp?()
+        XCTAssertEqual(deck.padMode, .beatLoop)
+        // A quick second tap: less than a tenth of a second later.
+        try await Task.sleep(for: .milliseconds(40))
+        let hit = window?.hitTest(target, with: nil) as? TouchSurfaceView
+        hit?.onDown?(target)
+        hit?.onUp?()
+        XCTAssertEqual(deck.track?.hotCues.count ?? 0, hotCuesBefore, "The old page's pad must not fire")
+        XCTAssertTrue(deck.loopActive, "The new page's pad does")
+        deck.exitLoop()
+        window?.isHidden = true
+    }
+
     func testFaderCapsAreCentredOnTheirValue() {
         // The space a cap takes up is its own size, not its size less its shadow margin.
         let host = UIHostingController(rootView: FaderCap(vertical: false, width: 26, length: 26))
