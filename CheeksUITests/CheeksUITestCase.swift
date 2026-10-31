@@ -11,6 +11,11 @@ class CheeksUITestCase: XCTestCase {
         app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        // The app's landscape only. A simulator that thinks it's upright reports frames sideways.
+        if app.windows.firstMatch.frame.height > app.windows.firstMatch.frame.width {
+            XCUIDevice.shared.orientation = .landscapeLeft
+            sleep(1)
+        }
         // The sampler's sounds and the launch sweep settle down in the first moments.
         sleep(2)
     }

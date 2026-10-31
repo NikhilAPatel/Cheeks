@@ -104,7 +104,13 @@ Run them with ⌘U in Xcode, or:
 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
-Hands-on testing is scripted in [docs/COMPUTER_USE_TEST.md](docs/COMPUTER_USE_TEST.md), and on-device checks in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
+`CheeksUITests/` drives the real app with real touch events, on either screen size:
+
+```sh
+tools/ui-tests.sh "iPhone Duo"
+```
+
+Hands-on testing is scripted in [docs/COMPUTER_USE_TASK.md](docs/COMPUTER_USE_TASK.md), and on-device checks in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 
 ## Code map
 

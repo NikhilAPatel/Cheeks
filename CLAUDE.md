@@ -26,6 +26,13 @@ TEST_RUNNER_CHEEKS_MEMORY=1 xcodebuild test -project Cheeks.xcodeproj -scheme Ch
 # the real stem model, in the simulator on the CPU: separates a clip, and runs a deck through split, cache and reload (opt-in)
 TEST_RUNNER_CHEEKS_STEM_MODEL=1 xcodebuild test -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build -only-testing:CheeksTests/StemModelTests
 
+# the real app driven by real touch events (see CheeksUITests/). Prints UITEST: lines, and screenshots go to $CHEEKS_UI_SHOTS
+tools/ui-tests.sh "iPhone Duo"
+tools/ui-tests.sh "iPad Air 13-inch (M4)" -only-testing:CheeksUITests/UndoAndRefusalTests
+
+# CPU in each state, on this simulator's own process (it takes a few minutes)
+tools/measure-cpu.sh "iPhone Duo"
+
 # run in the simulator and screenshot
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null
 xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build build
@@ -35,7 +42,8 @@ xcrun simctl io booted screenshot screenshot.png
 ```
 
 - **Simulator names:** list the installed ones with `xcrun simctl list devices available`. Xcode 27 here has no standalone Simulator.app; use `simctl` or the Claude simulator panel.
-- **iPhone Duo simulator:** it boots folded, so the app shows on the 466-pt-tall cover screen and the inner screen stays black. Neither `simctl` nor the Claude simulator panel can unfold it (toggling screen power crashes SpringBoard), and the cramped cover-screen layout there is expected. Use the layout snapshots for the unfolded size, and the 13-inch iPad simulator for live tapping. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
+- **iPhone Duo simulator:** it boots folded, so the app shows on the 466-pt-tall cover screen and the inner screen stays black. `simctl` can't unfold it (toggling screen power crashes SpringBoard), but it's currently unfolded on this Mac, and UI tests reach it at 951×669. If a UI test prints a different window size, use the layout snapshots for the unfolded size. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
+- **Measuring the app:** other simulators can be running their own `Cheeks`, so never use `pgrep -x Cheeks`. Get the PID from that simulator's `launchctl list`, matching `UIKitApplication:com\.nikhilpatel\.cheeks\[`, since the UI test runner's name starts the same way.
 - **Installing on the phone:** this needs a signing team (`DEVELOPMENT_TEAM`). The owner sets it once in Xcode; don't invent one.
 
 ## Architecture rules
@@ -53,6 +61,8 @@ xcrun simctl io booted screenshot screenshot.png
 - **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
 - **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
 - **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
+- **Two decks' positions come from `DJEngine.positions`,** not one `playhead` each: those can be read between two decks being published, a whole block apart. The engine publishes them together under a sequence lock, and the render thread never waits.
+- **Audio session calls stay off the main thread,** including `AVAudioPlayer.play()`, which activates the session. `RecordingPlayer` has its own queue for that.
 - **Sample rate and memory:** internal audio is 44.1 kHz (`AudioConfig.sampleRate`).
   - Files decode straight into interleaved Int16 (`PCM16Stereo`). Analysis and stem separation stream over that buffer, so never materialise full-length Float copies.
   - Stems are stored at `stemHeadroom` (×0.5).
@@ -67,8 +77,12 @@ xcrun simctl io booted screenshot screenshot.png
 The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**. The owner rejected flat grey versions as "unpolished" and cheap skeuomorphism as "really bad". What works is density, thin lines, small precise type, and real materials on the hero parts.
 
 - **Anything that moves is drawn in Metal** (`UI/Live/`), by a shared display link that skips any view whose uniforms didn't change. An idle screen costs nothing. Don't put per-frame work in SwiftUI: no `TimelineView(.animation)`, no observed playhead.
+- **No `TimelineView` shorter than about 0.25 s, even when it's only updating a label.** It keeps SwiftUI's display link running, which re-renders the whole view graph every frame: this was most of the app's idle CPU. Use `DeckClock`, or an observed value set from `DJEngine.tick` that only changes when the number on screen would.
 - **Hardware parts are pre-rendered once** (`Baked` in `UI/Design/Theme.swift`) and composited as bitmaps. Shadows, blurs and gradients are fine inside a bake, and should be avoided outside one, because they cost GPU time on every frame.
 - **Performance controls take touches from UIKit** through `TouchSurface`, not SwiftUI gestures: true multitouch, and they act on first contact. Browser and settings screens are ordinary SwiftUI, and should look and feel native.
+- **Anything along the screen's top edge is a `TouchSurface` key,** not a SwiftUI `Button`. A button there failed every tap in the hands-on test.
+- **Don't set a state and animate it back in one step:** SwiftUI only sees the end, so nothing's drawn. Use a keyframe track with a trigger. Pad flares were invisible for this reason.
+- **Say things through `dj.say(message, kind)`:** `.refused` shows a hand and buzzes, `.done` a green tick.
 - **Everything you touch has a feel:** add a `Haptics.shared` call when you add a control. Use the existing vocabulary instead of raw generators.
 - **One blue (`Theme.accent`) for every "on" state.** Hot cues, stems and FX families have their own colours, and they match across pads, waveforms and flags.
 - **Respect the system:** `UIAccessibility.isReduceMotionEnabled` for decorative motion, accessibility labels and adjustable actions on controls, continuous corners everywhere.
@@ -91,4 +105,4 @@ TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also 
 
 ## Testing on the device
 
-Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TEST.md`, and its results come back in `docs/COMPUTER_USE_RESULTS.md`. Read those results if they exist. Things only the owner can judge (haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
+Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its results come back in `docs/COMPUTER_USE_RESULTS_2.md`. Read those if they exist. The first run's are in `docs/COMPUTER_USE_RESULTS.md`, which ends with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.

@@ -10,6 +10,11 @@
 
 Tick each item. Anything that fails: note what you did, what you heard or saw, and which track.
 
+### First: things that need your finger
+- [ ] **Undo on a deleted hot cue:** set a cue on the `CUE` tab, tap `DEL`, tap the cue, then tap `UNDO` in the top bar. Does it come back every time? It failed every synthetic tap in the first hands-on test, couldn't be reproduced another way, and has been rebuilt, so your finger is the real test.
+- [ ] **The top edge:** do `BROWSE`, `REC`, the gear and `UNDO` all respond first time, or does a swipe from the top ever pull something down instead?
+- [ ] **The bottom edge:** the app now uses the space by the home indicator. Do `PLAY`, `CUE`, the bottom pads and the crossfader all respond first time? Does sliding the crossfader ever switch apps or bring up the home indicator? If it's a problem, tell me and I'll give that space back.
+
 ### Feel: the things only you can judge
 Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] Keys click on the first touch and there's no perceptible delay before anything happens.

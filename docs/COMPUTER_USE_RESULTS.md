@@ -289,3 +289,44 @@ On the decks screen, at first glance, yes. The platters, dense layout and meters
 - the key shift `−` and `+` buttons and the beat jump arrows, at about 20 pt
 - `DEL`, squeezed in at the end of the tab row
 - the small `CUE/MST` and `LEVEL` knobs
+
+---
+
+## What happened next (added by the engineer, not the tester)
+
+Fixed on the `features` branch. "UI test" means the real app driven by real touch events through `tools/ui-tests.sh`, which now runs at both the Duo and 13-inch iPad sizes. None of this has had a real finger on it yet, and nothing has been heard or felt.
+
+**The failures**
+| Item | What was actually wrong | What changed | Checked by |
+|---|---|---|---|
+| D3 Undo | **Not confirmed.** Seven combinations of deck state and press length all worked under XCUITest, so it doesn't reproduce with that tool. But it was the only SwiftUI `Button` on that bar, and every `TouchSurface` key at that height worked under both tools | Rebuilt as a `TouchSurface` key acting on first contact. Stays up 8 s instead of 5 | UI test, paused and playing. **Needs the task doc's retest and a real finger** |
+| C5 refused load | The tap did reach the key, which only buzzed. Nothing said why | Key shakes and says why. Refusals show a hand, not a green tick | UI test (message), screenshot. The shake itself wasn't filmed |
+| N2 idle CPU | Six 0.1 s `TimelineView`s kept SwiftUI's display link running, re-rendering its whole view graph every frame: about 11% of the main thread | The clocks read an observed clock that only changes when a number would | Duo simulator, pinned process: idle about 4.4%, paused about 4.1%, playing 13 to 15%. The drawing the report called out was never the cost |
+
+**Looks wrong**
+| Item | Cause | Result | Checked by |
+|---|---|---|---|
+| Fake meter movement | The launch sweep was timed from each meter being built, and the mixer was rebuilt when the browser opened or closed | Timed from launch, and the mixer stays one view. The jog's ring had the same problem | Unit test, UI test screenshots |
+| Capsule covering `MASTER` | It floated over the bar | Laid out in the bar, so it can't overlap | UI test |
+| Fader caps 6 pt off | Their 6 pt shadow margin was taken out of the space they used, but not added to what was drawn, so they were also too small | Index line on the tick and LED | Full-resolution crops |
+| Mixer overflow with keyboard | The whole layout shrank | Only the list makes way | UI test, at both sizes |
+| Stop-recording popover | On this screen a confirmation dialog becomes a popover, which drops its cancel button | An alert with both answers | UI test |
+| `SOLO` not lighting | Never told to | Lights while soloed | UI test |
+| Sampler taps showing nothing | **Real bug:** the flare was set and animated away in one step, so it was never drawn on any pad | A keyframe track, and sampler pads stay lit while sounding | Screenshot |
+| Sync marker amber | **Real bug, and more than cosmetic:** a read could land between the two decks being published, showing 256 frames of drift that wasn't there. The sync follower could act on it too | Positions published together under a sequence lock. The render thread never waits | Test rendering on another thread: 256 frames apart before, 0 after. The marker itself still needs watching |
+| `LIM` on at default levels | Measured with real tracks: one deck reaches 0.4 dB at worst. Both at full go over 0.5 dB for 11% of the time, 3.2 dB at worst | **Not changed:** that's the limiter doing its job | `LevelTests` |
+| Unused strip | The home indicator's safe area, about 38 pt | Used. Needs a real finger near that edge | Screenshot |
+| Others | | `IN` marker, stale header, truncated titles, loop line through the label, `SAMPLER` label, roll changing the loop key, flat `INST` band, recording rename, stems progress on compact decks | Unit tests and screenshots |
+| `AVAudioSession` warning | `AVAudioPlayer.play()` on the main thread in Recordings. Reproduced within a second of pressing play. The engine's own session calls were already off the main thread: 20 launches, no warning | Playback has its own queue | UI test plus the log: none with playback running |
+
+**Found while checking, not in the report**
+- **The jog said `NO TRACK` with a track playing** if it was built while the deck was loading, because `isLoaded` didn't read `isLoading` when the deck was empty.
+- **The previous track's loop was drawn on a newly loaded track**, because a load only cleared the loop's switch.
+
+**Doesn't reproduce**
+- **`DEPTH` not dragging:** a UI test drags it from 60% to 100% at both sizes. It's in the task doc to settle.
+
+**Not changed**
+- **Waiting on the owner:** white knob arcs, stem colours only on the `STEMS` tab, and the header's BPM.
+- **By design, left alone:** the loop keys aren't on the `STEMS` and `FX` pages, and when a track ends the other deck becomes master and its sync turns off.
+- **Not looked into:** the `UIKit.AnimationKit:DebugAssertion` faults (none in about an hour of UI tests, so probably the drag or context menu), and the launch `renderbox` errors (not in the commonest errors in my runs). Decks come back empty after a crash, and renaming a recording stops its playback.

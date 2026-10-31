@@ -2,7 +2,7 @@
 
 You're picking up **Cheeks**, a standalone iOS DJ app.
 
-Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features), `docs/TEST_PLAN.md`, `docs/COMPUTER_USE_TEST.md`, `docs/COMPUTER_USE_RESULTS.md` if it exists, and `docs/ROADMAP.md`.
+Also read: `CLAUDE.md` (commands and architecture rules), `README.md` (features), `docs/TEST_PLAN.md`, `docs/COMPUTER_USE_RESULTS.md` (the first hands-on test, and what was done about it at the end), `docs/COMPUTER_USE_RESULTS_2.md` if it exists, and `docs/ROADMAP.md`. The next hands-on task is `docs/COMPUTER_USE_TASK.md`.
 
 ## Status after the rebuild (2026-10-30)
 
@@ -23,7 +23,12 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - Stems match PyTorch to within 0.005 dB per stem on 34 s clips. A separate scoring script on six MUSDB songs joined into one clip gave drums 8.9 dB, bass 6.6, instruments 5.5, vocals 4.9, against -2 to -7 dB for no separation, and the stems sum back to the mix.
 - A 6-minute track takes 15.7 s on this M1 Pro's GPU, using about 575 MB beyond the audio buffers. A cached track comes back in about 0.02 s (12 s clip).
 
-**Not yet proven, because nothing here could touch or hear it:** real touch delivery, haptic tuning, how it sounds, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. `docs/COMPUTER_USE_TEST.md` covers touch. The owner covers the rest with TEST_PLAN §2.
+**Not yet proven, because nothing here could touch or hear it:** a real finger, especially near the screen's top and bottom edges, haptic tuning, how it sounds, headphone and split cue routing, and everything on the phone: frame rate, thermals, and above all **how long stems take on the phone's GPU, and whether its Neural Engine behaves as it does on the Mac**. The stems fallback to the CPU when the GPU is unavailable in the background is only tested with a fake loader. The owner covers these with TEST_PLAN §2.
+
+**After the first hands-on test:** 66 passed and 3 failed. Those, and the "Looks wrong" list, have been worked through: see the end of `docs/COMPUTER_USE_RESULTS.md`. Three things to know:
+- **The Undo failure was never reproduced.** The control's been rebuilt on the evidence available, so it needs the task doc's retest and the owner's finger.
+- **There's now a UI test target** (`tools/ui-tests.sh`), so a Claude without computer use can drive the real app with real touch events and take screenshots. Use it. It found bugs reading the code didn't.
+- **Waiting on the owner:** white knob arcs, stem colours only on the `STEMS` tab, and whether the header BPM should follow the tempo.
 
 **How far to trust the new features:**
 - **Phrase analysis** gets the kinds and hard edges right on synthetic arrangements (`PhraseTests`). On real music it's only been run on two tracks, neither club music, with no ground truth to compare to: it came out coarse, with long CHORUS sections. Expect to tune `minimumSectionDifference` and the labelling once it's run on the owner's music. Build-ups fade in, so where an UP starts is approximate.
@@ -43,7 +48,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - The iPhone Duo is a real simulator here (iOS 27.2).
   - Inner screen: 2007×2853 px @3x, which is **669×951 pt (951×669 landscape)**.
   - Cover screen: 466×678 pt.
-  - It boots folded and `simctl` can't unfold it, so the layout snapshot test is the way to see the unfolded size.
+  - It boots folded and `simctl` can't unfold it. On this Mac it's currently unfolded, and UI tests reach the inner screen. If one prints a window that isn't 951×669, it's folded again.
+  - `XCUIScreen.main` is the cover screen, which is black. UI tests screenshot the app's window instead, and those can come out rotated.
 - Xcode 27 ships no standalone Simulator.app.
 - Metal layers don't appear in `drawHierarchy`, so the snapshot test sets `LiveRenderer.captureMode` and each live view paints itself into an image overlay. Animations that start from zero (waveform reveal, ring sweep) skip to the end in that mode.
 - `origin` is an HTTPS remote and this shell has no credentials for it, but the owner's SSH key works: `git push git@github.com:NikhilAPatel/Cheeks.git master:master`.
@@ -62,6 +68,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 | Area | Files | Notes |
 |---|---|---|
+| UI tests | `CheeksUITests/`, `tools/ui-tests.sh`, `tools/measure-cpu.sh` | The real app, real touch events, either screen size. `measure-cpu.sh` measures each state on a pinned process. |
 | Realtime core | `DSP/Engine.cpp`, `Primitives.hpp`, `BeatFX.hpp`, `ColorFX.hpp`, `CheeksDSP.h` | Decks, stretcher, isolator EQ, filter, FX chain, Color FX, mixer, limiter, recording ring, sampler with capture, preview. One callback, one clock. |
 | Deck control | `Audio/DeckRenderer.swift`, `Deck.swift`, `Deck+Performance.swift` | `DeckRenderer` is a facade over the core. `Deck` is `@MainActor @Observable`: load (generation-guarded), CDJ cue, tempo, hot cues, loops, rolls, slicer, jump, sync, stems, FX, grid editing. |
 | Mixer and engine | `Audio/DJEngine.swift` | Hosts the core in one `AVAudioSourceNode`. Mix controls, crossfader, master tracking, sync follower, on-air tracking, recording, preview. |

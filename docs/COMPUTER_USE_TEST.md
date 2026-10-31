@@ -1,5 +1,7 @@
 # Cheeks: hands-on test script
 
+> **This one's been run:** see `docs/COMPUTER_USE_RESULTS.md`. The current task is `docs/COMPUTER_USE_TASK.md`.
+
 **Who this is for:** a Claude session with computer use (it can see the screen, click and drag). Whoever built this could compile and run unit tests, but couldn't tap anything, so every result in here is new information.
 
 **Your job:** run every test below in order and write down exactly what happens. **Don't change any code, even if you can see the fix.** A precise description of a bug is what's wanted. If something blocks a test, record it and move on to the next one.
