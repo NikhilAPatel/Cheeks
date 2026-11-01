@@ -46,6 +46,20 @@ struct TrackMap: Codable, Hashable {
     func seconds(atBar bar: Int) -> Double { firstBar + Double(bar) * barSeconds }
 }
 
+/// Maps are saved beside the stems, so a track only gets mapped once.
+enum TrackMapStore {
+    static func map(for id: UUID, stems: [PCM16Stereo]) -> TrackMap? {
+        let url = StemCache.shared.directory.appendingPathComponent(id.uuidString).appendingPathExtension("map")
+        if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode(TrackMap.self, from: data),
+           saved.version == TrackMap.currentVersion {
+            return saved
+        }
+        guard let map = TrackMapper.map(stems: stems) else { return nil }
+        if let data = try? JSONEncoder().encode(map) { try? data.write(to: url, options: .atomic) }
+        return map
+    }
+}
+
 enum TrackMapper {
     private static let rate = AudioConfig.sampleRate
     private static let hop = 256

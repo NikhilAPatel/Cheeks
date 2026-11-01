@@ -668,6 +668,8 @@ extension Deck {
                     }
                 }
                 let waves = StemWaveformData(stems: stems)
+                // The frequency split has no real drums stem to go by.
+                let map = label == "AI" ? TrackMapStore.map(for: id, stems: stems) : nil
                 await MainActor.run {
                     StemJob.finished()
                     guard let self, self.loadGeneration == generation, self.track?.id == id else { return }
@@ -675,6 +677,7 @@ extension Deck {
                     self.applyStemGains()
                     self.stemWaveform = waves
                     self.stemStatus = .ready(label)
+                    if let map { self.applyTrackMap(map) }
                 }
             } catch {
                 let wasCancelled = error is CancellationError
@@ -688,6 +691,33 @@ extension Deck {
         }
     }
 
+    // MARK: Track map
+
+    /// The stems show where the kicks really are. A grid from the first analysis can be 100 ms late, or have the
+    /// wrong 1, so it's replaced, once. A grid someone set by hand or brought from rekordbox stays, and so does one on
+    /// a track with no steady kick to go by.
+    func applyTrackMap(_ map: TrackMap) {
+        trackMap = map
+        guard let track, track.gridSource == .analysis, map.isSteady else { return }
+        let id = track.id
+        updateTrack { t in
+            t.bpm = map.bpm
+            t.firstBeat = map.firstBar
+            t.tempoMarkers = nil
+            t.gridSource = .drums
+        }
+        // Phrases are counted in bars, so they have to be counted again.
+        guard let mix = renderer.mixSource else { return }
+        let grid = BeatGrid(bpm: map.bpm, firstBeat: map.firstBar)
+        Task.detached(priority: .utility) { [weak self] in
+            let phrases = TrackAnalyzer.analyze(mix, knownGrid: grid).phrases
+            await MainActor.run {
+                guard let self, self.track?.id == id else { return }
+                self.updateTrack { $0.phrases = phrases }
+            }
+        }
+    }
+
     // MARK: Beat grid editing
 
     private var barSeconds: Double { bpm > 0 ? 4 * 60 / bpm : 0 }
@@ -696,6 +726,7 @@ extension Deck {
     func scaleBPM(_ multiplier: Double) {
         guard let current = track?.bpm else { return }
         updateTrack { t in
+            t.gridSource = .person
             t.bpm = current * multiplier
             t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time, bpm: $0.bpm * multiplier, beatInBar: $0.beatInBar) }
         }
@@ -703,7 +734,10 @@ extension Deck {
 
     func nudgeBPM(by delta: Double) {
         guard let current = track?.bpm, track?.tempoMarkers == nil else { return }
-        updateTrack { $0.bpm = max(40, ((current + delta) * 100).rounded() / 100) }
+        updateTrack {
+            $0.bpm = max(40, ((current + delta) * 100).rounded() / 100)
+            $0.gridSource = .person
+        }
     }
 
     /// Slides the whole grid earlier/later.
@@ -713,6 +747,7 @@ extension Deck {
         var moved = (first + milliseconds / 1000).truncatingRemainder(dividingBy: bar)
         if moved < 0 { moved += bar }
         updateTrack { t in
+            t.gridSource = .person
             t.firstBeat = moved
             t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time + milliseconds / 1000, bpm: $0.bpm, beatInBar: $0.beatInBar) }
         }
@@ -725,6 +760,7 @@ extension Deck {
             // The beats stay where they are; only which one counts as the "1" changes.
             let offset = Int(beatPosition(snap(renderer.playhead)).rounded())
             updateTrack { t in
+                t.gridSource = .person
                 t.tempoMarkers = t.tempoMarkers?.map { m in
                     TempoMarker(time: m.time, bpm: m.bpm, beatInBar: ((m.beatInBar - offset) % 4 + 4) % 4)
                 }
@@ -735,13 +771,17 @@ extension Deck {
         let here = snap(renderer.playhead) / sampleRate
         var first = here.truncatingRemainder(dividingBy: bar)
         if first < 0 { first += bar }
-        updateTrack { $0.firstBeat = first }
+        updateTrack {
+            $0.firstBeat = first
+            $0.gridSource = .person
+        }
     }
 
     /// Replaces tempo changes with one steady tempo, for when the detected changes are wrong.
     func flattenGrid() {
         guard let first = grid?.seconds(atBeat: 0), let average = track?.bpm else { return }
         updateTrack { t in
+            t.gridSource = .person
             t.tempoMarkers = nil
             t.firstBeat = first
             t.bpm = average

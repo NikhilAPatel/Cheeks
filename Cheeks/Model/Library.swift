@@ -195,6 +195,7 @@ final class Library {
             t.bpm = nil
             t.key = nil
             t.tempoMarkers = nil
+            t.gridSource = .analysis
             t.phrases = nil
         }
         enqueueAnalysis(track.id)

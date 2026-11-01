@@ -180,6 +180,7 @@ extension Library {
             if let first = entry.firstBeat {
                 t.firstBeat = first
                 t.tempoMarkers = entry.tempoMarkers
+                t.gridSource = .person
                 // Phrases are counted in bars, so a new grid means counting them again.
                 t.phrases = nil
             }

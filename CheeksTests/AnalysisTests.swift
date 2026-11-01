@@ -76,4 +76,112 @@ final class AnalysisTests: XCTestCase {
             XCTAssertEqual(sum, audio.left(i), accuracy: 0.0005)
         }
     }
+
+    // MARK: Track map
+
+    /// Four stems of a little club track: a kick on every beat and a clap on 2 and 4, a bass and chords that change on
+    /// the 1, and a melody that comes in at bar 16 and a singer at bar 32.
+    private func clubStems(bpm: Double, firstBar: Double, bars: Int, jitter: Double = 0) -> [PCM16Stereo] {
+        let sr = Synth.sampleRate, beat = 60 / bpm
+        let count = Int((firstBar + Double(bars) * 4 * beat + 1) * sr)
+        var vocals = [Float](repeating: 0, count: count), melody = vocals, bass = vocals, drums = vocals
+        var random = SystemRandomNumberGenerator()
+        for bar in 0..<bars {
+            let root = [45, 41, 48, 43][(bar / 2) % 4]
+            for b in 0..<4 {
+                let nudge = jitter > 0 ? Double.random(in: -jitter...jitter, using: &random) : 0
+                let start = Int((firstBar + Double(bar * 4 + b) * beat + nudge) * sr)
+                for k in 0..<Int(0.14 * sr) where start + k >= 0 && start + k < count {
+                    let t = Double(k) / sr
+                    drums[start + k] += Float(0.9 * sin(2 * .pi * (55 + 90 * exp(-t * 40)) * t) * exp(-t * 18))
+                    if b % 2 == 1, k < Int(0.09 * sr) { drums[start + k] += Float.random(in: -0.35...0.35, using: &random) * Float(exp(-t * 30)) }
+                }
+            }
+            let barStart = Int((firstBar + Double(bar * 4) * beat) * sr), barLength = Int(4 * beat * sr)
+            for k in 0..<barLength where barStart + k < count {
+                let t = Double(k) / sr
+                bass[barStart + k] = Float(0.35 * sin(2 * .pi * Synth.frequency(midi: root - 12) * t))
+                if bar >= 16 {
+                    melody[barStart + k] = Float(0.12 * (sin(2 * .pi * Synth.frequency(midi: root + 12) * t) + sin(2 * .pi * Synth.frequency(midi: root + 15) * t)
+                        + sin(2 * .pi * Synth.frequency(midi: root + 19) * t)))
+                }
+                if bar >= 32, bar < 48 { vocals[barStart + k] = Float(0.3 * sin(2 * .pi * Synth.frequency(midi: root + 24) * t)) }
+            }
+        }
+        let g = PCM16Stereo.stemHeadroom
+        return [vocals, melody, bass, drums].map { stem in
+            let scaled = stem.map { $0 * g }
+            return PCM16Stereo(left: scaled, right: scaled)
+        }
+    }
+
+    func testTrackMapFindsTheKicksAndTheBars() throws {
+        let bpm = 124.0, firstBar = 1.32
+        let map = try XCTUnwrap(TrackMapper.map(stems: clubStems(bpm: bpm, firstBar: firstBar, bars: 64)))
+        XCTAssertEqual(map.bpm, bpm, accuracy: 0.02)
+        XCTAssertTrue(map.isSteady, "drift \(map.drift) ms")
+        let beat = 60 / bpm
+        var kick = (map.firstBeat - firstBar).truncatingRemainder(dividingBy: beat)
+        if kick > beat / 2 { kick -= beat }
+        if kick < -beat / 2 { kick += beat }
+        XCTAssertLessThan(abs(kick), 0.008, "The grid should be on the kick's attack, and it's \(kick * 1000) ms off")
+        var barError = (map.firstBar - firstBar).truncatingRemainder(dividingBy: 4 * beat)
+        if barError > 2 * beat { barError -= 4 * beat }
+        if barError < -2 * beat { barError += 4 * beat }
+        XCTAssertLessThan(abs(barError), 0.02, "Bar lines should be on the 1, and they're \(barError / beat) beats off")
+
+        func mapBar(_ n: Int) -> Int { Int(((firstBar + Double(n) * 4 * beat - map.firstBar) / (4 * beat)).rounded()) }
+        XCTAssertFalse(map.on[Stem.melody.rawValue][mapBar(8)], "No melody yet")
+        XCTAssertTrue(map.on[Stem.melody.rawValue][mapBar(20)], "Melody's in")
+        XCTAssertLessThan(map.vocal[mapBar(20)], 0.25, "Nobody's singing yet")
+        XCTAssertGreaterThan(map.vocal[mapBar(40)], 0.75, "Someone's singing")
+        XCTAssertTrue(map.hasKick[mapBar(8)])
+        XCTAssertTrue(map.boundaries.contains { abs($0 - mapBar(32)) <= 1 }, "The vocal coming in is a change: \(map.boundaries)")
+    }
+
+    func testTrackMapWontCallLooseDrumsSteady() throws {
+        let map = try XCTUnwrap(TrackMapper.map(stems: clubStems(bpm: 124, firstBar: 0.5, bars: 40, jitter: 0.04)))
+        XCTAssertFalse(map.isSteady, "Kicks up to 40 ms off a straight grid drift \(map.drift) ms")
+    }
+
+    @MainActor
+    private func deckWithMap(source: GridSource, markers: [TempoMarker]? = nil) throws -> (Deck, TrackMap) {
+        let stems = clubStems(bpm: 124, firstBar: 1.32, bars: 40)
+        let map = try XCTUnwrap(TrackMapper.map(stems: stems))
+        let deck = Deck(index: 0)
+        var track = Track(id: UUID(), title: "T", artist: "", fileName: "t.mp3")
+        track.bpm = 123.5
+        track.firstBeat = 0.1
+        track.tempoMarkers = markers
+        track.gridSource = source
+        deck.track = track
+        return (deck, map)
+    }
+
+    @MainActor
+    func testStemsCorrectAnAnalysedGridOnce() throws {
+        let (deck, map) = try deckWithMap(source: .analysis, markers: [TempoMarker(time: 0.1, bpm: 123), TempoMarker(time: 9, bpm: 124)])
+        deck.applyTrackMap(map)
+        XCTAssertEqual(deck.track?.bpm, map.bpm)
+        XCTAssertEqual(deck.track?.firstBeat, map.firstBar)
+        XCTAssertNil(deck.track?.tempoMarkers, "A steady track doesn't keep a tempo map")
+        XCTAssertEqual(deck.track?.gridSource, .drums)
+        XCTAssertNotNil(deck.trackMap)
+    }
+
+    @MainActor
+    func testStemsLeaveAGridSomeoneSet() throws {
+        let (deck, map) = try deckWithMap(source: .person)
+        deck.applyTrackMap(map)
+        XCTAssertEqual(deck.track?.bpm, 123.5)
+        XCTAssertEqual(deck.track?.firstBeat, 0.1)
+        XCTAssertNotNil(deck.trackMap, "The map's still there for planning")
+    }
+
+    @MainActor
+    func testEditingAGridMarksItAsSomeonesOwn() throws {
+        let (deck, _) = try deckWithMap(source: .analysis)
+        deck.shiftGrid(milliseconds: 10)
+        XCTAssertEqual(deck.track?.gridSource, .person)
+    }
 }

@@ -131,6 +131,8 @@ final class Deck {
     var waveform: WaveformData? { didSet { waveRevision += 1 } }
     /// Per-stem waveforms, available once the track has been split.
     var stemWaveform: StemWaveformData? { didSet { stemWaveRevision += 1 } }
+    /// What the track does in each bar, worked out once its stems are ready.
+    var trackMap: TrackMap?
     var artwork: CGImage?
     /// Bumped when a waveform changes, so the live views know to rebuild their textures.
     @ObservationIgnored private(set) var waveRevision = 0
@@ -384,6 +386,7 @@ final class Deck {
         track = library?.track(id)
         self.waveform = waveform
         stemWaveform = nil
+        trackMap = nil
         artwork = nil
         isPlaying = false
         loopActive = false

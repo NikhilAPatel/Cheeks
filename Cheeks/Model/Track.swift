@@ -15,6 +15,8 @@ struct Track: Identifiable, Codable, Hashable {
     var firstBeat: Double = 0
     /// Set when the tempo changes through the track. The grid comes from these instead of `bpm` and `firstBeat`.
     var tempoMarkers: [TempoMarker]?
+    /// Where the grid came from, which decides whether the stems may correct it.
+    var gridSource: GridSource = .analysis
     /// Camelot notation, e.g. "8A".
     var key: String?
     /// Integrated loudness in LUFS, from analysis. Used to bring tracks to a matched level.
@@ -53,6 +55,7 @@ extension Track {
         bpm = try c.decodeIfPresent(Double.self, forKey: .bpm)
         firstBeat = try c.decodeIfPresent(Double.self, forKey: .firstBeat) ?? 0
         tempoMarkers = try c.decodeIfPresent([TempoMarker].self, forKey: .tempoMarkers)
+        gridSource = try c.decodeIfPresent(GridSource.self, forKey: .gridSource) ?? .analysis
         key = try c.decodeIfPresent(String.self, forKey: .key)
         loudness = try c.decodeIfPresent(Double.self, forKey: .loudness)
         hotCues = try c.decodeIfPresent([Int: Double].self, forKey: .hotCues) ?? [:]
@@ -125,6 +128,12 @@ enum MemoryItem: Identifiable, Hashable {
         case .loop(let loop): loop.name
         }
     }
+}
+
+/// `analysis` is the first guess from the mix. `drums` has been corrected from the drums stem. `person` was set by
+/// hand or came from rekordbox, and is never overwritten.
+enum GridSource: String, Codable {
+    case analysis, drums, person
 }
 
 /// A section of the song, from the phrase analysis.
