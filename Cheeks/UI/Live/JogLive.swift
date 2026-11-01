@@ -221,6 +221,12 @@ final class JogLiveView: LiveView {
         activeTouch = nil
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Opening the browser takes the deck away, with a hand still on the platter perhaps.
+        if window == nil, activeTouch != nil { DispatchQueue.main.async { self.finish() } }
+    }
+
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if let activeTouch, touches.contains(activeTouch) { finish() }
     }

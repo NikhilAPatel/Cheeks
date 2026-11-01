@@ -73,6 +73,24 @@ final class TouchSurfaceView: UIView {
         onMove?(point, CGSize(width: point.x - start.x, height: point.y - start.y))
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
+        if window != nil {
+            NotificationCenter.default.addObserver(self, selector: #selector(letGo), name: UIApplication.willResignActiveNotification, object: nil)
+        } else {
+            // Not during the update that's removing it, which may be SwiftUI's.
+            DispatchQueue.main.async { self.letGo() }
+        }
+    }
+
+    /// A finger that's no longer going to be heard from: its view has gone, or a call has come in.
+    @objc private func letGo() {
+        guard active != nil else { return }
+        active = nil
+        onUp?()
+    }
+
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { end(touches) }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { end(touches) }
 

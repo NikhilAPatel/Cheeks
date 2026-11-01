@@ -64,6 +64,12 @@ struct KeyFace: View {
 
 // MARK: Key
 
+/// Whether a finger's on a control. `pressed` is for drawing, and a state's new value isn't there to
+/// read until the next update. A pad and a tab can be pressed in one go, and then it would be too late.
+private final class Hold {
+    var down = false
+}
+
 /// A hardware key. It acts on the finger's first contact, moves like a real key, and clicks.
 struct Key<Label: View>: View {
     var color: Color = Theme.accent
@@ -81,6 +87,7 @@ struct Key<Label: View>: View {
     @ViewBuilder var label: () -> Label
 
     @State private var pressed = false
+    @State private var hold = Hold()
     @State private var refused = 0
 
     var body: some View {
@@ -101,17 +108,15 @@ struct Key<Label: View>: View {
                         if let onRefused { onRefused() } else { Haptics.shared.deny() }
                         return
                     }
+                    hold.down = true
                     pressed = true
                     feel.down(willBeLit: !lit)
                     onPress()
-                }, onUp: {
-                    guard pressed else { return }
-                    pressed = false
-                    feel.up()
-                    onRelease()
-                })
+                }, onUp: released)
                 .padding(-touchMargin)
             }
+            // The page can change with a finger still on it, and the touch never ends then.
+            .onDisappear(perform: released)
             // Otherwise the glow's margin counts towards the key's frame for VoiceOver.
             .contentShape(.accessibility, Rectangle())
             .accessibilityElement(children: .ignore)
@@ -121,6 +126,14 @@ struct Key<Label: View>: View {
                 onPress()
                 onRelease()
             }
+    }
+
+    private func released() {
+        guard hold.down else { return }
+        hold.down = false
+        pressed = false
+        feel.up()
+        onRelease()
     }
 
     private var legendColor: Color {
@@ -201,6 +214,7 @@ struct Pad<Label: View>: View {
     @ViewBuilder var label: () -> Label
 
     @State private var pressed = false
+    @State private var hold = Hold()
     @State private var strikes = 0
 
     var body: some View {
@@ -212,17 +226,17 @@ struct Pad<Label: View>: View {
         .animation(Theme.press, value: pressed)
         .overlay {
             TouchSurface(onDown: { _ in
+                hold.down = true
                 pressed = true
                 Haptics.shared.pad()
                 strikes += 1
                 onPress()
             }, onMove: { _, translation in
                 onDrag?(translation)
-            }, onUp: {
-                pressed = false
-                onRelease()
-            })
+            }, onUp: released)
         }
+        // The page can change with a finger still on it, and the touch never ends then.
+        .onDisappear(perform: released)
         .contentShape(.accessibility, Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
@@ -231,6 +245,13 @@ struct Pad<Label: View>: View {
             onPress()
             onRelease()
         }
+    }
+
+    private func released() {
+        guard hold.down else { return }
+        hold.down = false
+        pressed = false
+        onRelease()
     }
 
     /// Held down, a pad looks like any other that's on.
@@ -283,6 +304,7 @@ struct TransportButton<Label: View>: View {
     @ViewBuilder var label: () -> Label
 
     @State private var pressed = false
+    @State private var hold = Hold()
 
     var body: some View {
         GeometryReader { geo in
@@ -301,17 +323,16 @@ struct TransportButton<Label: View>: View {
             .position(x: geo.size.width / 2, y: geo.size.height / 2)
             .overlay {
                 TouchSurface(onDown: { _ in
+                    hold.down = true
                     pressed = true
                     Haptics.shared.pad()
                     onPress()
-                }, onUp: {
-                    pressed = false
-                    Haptics.shared.keyUp()
-                    onRelease()
-                }, circular: true)
+                }, onUp: released, circular: true)
                 .frame(width: side, height: side)
             }
         }
+        // Opening the browser takes the decks away, with a finger still on it perhaps.
+        .onDisappear(perform: released)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(.isButton)
@@ -319,6 +340,14 @@ struct TransportButton<Label: View>: View {
             onPress()
             onRelease()
         }
+    }
+
+    private func released() {
+        guard hold.down else { return }
+        hold.down = false
+        pressed = false
+        Haptics.shared.keyUp()
+        onRelease()
     }
 
     private static var outerScale: CGFloat { 1.3 }
