@@ -27,6 +27,7 @@ public:
         for (int i = 0; i < 2; ++i) diffuser[i].assign(size_t(kDiffuserLengths[i]), 0);
         echoLowCut[0] = echoLowCut[1] = Biquad::highpass(120, 0.7, rate);
         echoTone[0] = echoTone[1] = Biquad::lowpass(6000, 0.7, rate);
+        flangeLowCoefficient = float(1 - std::exp(-2 * kPi * 300 / rate));
     }
 
     void set(CheeksFXType newType, bool isOn, double newBeats, float newDepth, bool isSourceCut) {
@@ -71,7 +72,7 @@ private:
         // the repeats are all that's left, with no level to leave room for.
         const float wetTarget = sourceCut ? 0.35f + 0.65f * depth
             : !active ? echoWet
-            : spiral ? 0.18f + 0.22f * depth : 0.25f + 0.35f * depth;
+            : spiral ? 0.18f + 0.22f * depth : pingPong ? 0.21f + 0.31f * depth : 0.25f + 0.33f * depth;
         // Feedback rises with depth; a spiral runs nearly self-sustaining and then bends down.
         const float feedback = spiral ? 0.86f + 0.1f * depth : 0.3f + 0.52f * depth;
         // Starting from silence there's nothing to glide from.
@@ -117,7 +118,7 @@ private:
             reverbDecay[l] = float(std::pow(10.0, -3.0 * kReverbLengths[l] / (rt60 * sampleRate)));
         }
         const float gateTarget = active ? 1 : 0;
-        const float wetTarget = active ? 0.2f + 0.45f * depth : reverbWet;
+        const float wetTarget = active ? 0.2f + 0.38f * depth : reverbWet;
         const float damping = 0.3f;
         float loudest = 0;
         for (int i = 0; i < n; ++i) {
@@ -192,9 +193,12 @@ private:
             const float frac = position - float(whole);
             const float a = flangeLine[c][whole & kFlangeMask], b = flangeLine[c][(whole + 1) & kFlangeMask];
             const float delayed = a + (b - a) * frac;
-            flangeLine[c][flangeWrite] = x + delayed * feedback;
-            // A short delay added back doubles the lows, where a loud track's peaks are.
-            x = (x + delayed) * (0.62f - 0.12f * depth);
+            // A short delay added back would double the lows, where a loud track's peaks are, so
+            // only what's above them goes through it.
+            flangeLow[c] += (x - flangeLow[c]) * flangeLowCoefficient;
+            const float high = x - flangeLow[c];
+            flangeLine[c][flangeWrite] = high + delayed * feedback;
+            x = flangeLow[c] + (high + delayed) * (0.7f - 0.1f * depth);
         }
         flangeWrite = (flangeWrite + 1) & kFlangeMask;
     }
@@ -217,7 +221,7 @@ private:
             }
             phaserLast[c] = v;
             // Allow for the resonance, or it takes a loud track into the limiter.
-            x = (x + v) * (0.56f - 0.12f * depth);
+            x = (x + v) * (0.54f - 0.15f * depth);
         }
     }
 
@@ -281,6 +285,7 @@ private:
     float modMix = 0;
     std::vector<float> flangeLine[2];
     int flangeWrite = 0;
+    float flangeLow[2] = {}, flangeLowCoefficient = 0.03f;
     float phaserState[2][4] = {}, phaserLast[2] = {}, phaserCoefficient = 0;
     SVF lfoFilter[2];
     float gateGain = 1;

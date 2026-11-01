@@ -341,6 +341,19 @@ final class EngineTests: XCTestCase {
         }
     }
 
+    func testTheFlangerMostlyLeavesTheLowsAlone() {
+        // Doubling them is what took a loud track's kick into the red.
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([stereo(sine(60, seconds: 8, level: 0.7))])
+        r.setGrid(beatFrames: sr / 2, firstBeatFrame: 0)
+        r.setFX(CheeksFXFlanger, on: true, beats: 0.5, depth: 0.6, stemMask: 0xF)
+        r.isPlaying = true
+        let out = r.renderOffline(frames: Int(sr * 6)).left[Int(sr * 2)...]
+        let lift = dB(out.map(abs).max() ?? 0) - dB(0.7)
+        print("FXGUARD: flanger on a bass note \(String(format: "%+.1f", lift)) dB")
+        XCTAssertLessThan(abs(lift), 2, "A bass note stays about where it was")
+    }
+
     func testAnEchoOutsTailIsLouderThanAnEchoReleasedOverTheTrack() {
         // The track stops at 4 s either way, so all that's left to measure is the tail.
         let source = stereo(sine(440, seconds: 4) + [Float](repeating: 0, count: Int(sr * 4)))
