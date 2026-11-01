@@ -432,6 +432,12 @@ private:
             }
         } else if (position < 0) {
             position = 0;
+            // Going backwards it stops at the start, as it does at the end going forward.
+            if (relaxed(playing) && relaxed(reverse) && !relaxed(scratching)) {
+                put(playing, false);
+                wasPlaying = false;
+                declick.trigger();
+            }
         }
         return wrapped;
     }

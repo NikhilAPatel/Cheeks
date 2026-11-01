@@ -98,11 +98,13 @@ extension Deck {
 
     /// Saves the loop that's set, on or off.
     func saveCurrentLoop() {
-        guard isLoaded, renderer.loopEnd > renderer.loopStart + sampleRate * 0.01 else {
+        // During a held roll or slice the loop that's set is the one it borrowed, not its own.
+        let startFrame = borrowedLoop?.start ?? renderer.loopStart, endFrame = borrowedLoop?.end ?? renderer.loopEnd
+        guard isLoaded, endFrame > startFrame + sampleRate * 0.01 else {
             onMessage?("Set a loop first, then save it.", .refused)
             return
         }
-        let start = renderer.loopStart / sampleRate, end = renderer.loopEnd / sampleRate
+        let start = startFrame / sampleRate, end = endFrame / sampleRate
         guard track?.savedLoops.contains(where: { abs($0.start - start) < 0.01 && abs($0.end - end) < 0.01 }) == false else {
             onMessage?("This loop's already saved.", .refused)
             return
@@ -125,7 +127,8 @@ extension Deck {
     }
 
     func isCurrentLoop(start: Double, end: Double) -> Bool {
-        loopActive && abs(renderer.loopStart / sampleRate - start) < 0.01 && abs(renderer.loopEnd / sampleRate - end) < 0.01
+        _ = loopMarks // So a pad that asks this redraws when they change.
+        return loopActive && abs(renderer.loopStart / sampleRate - start) < 0.01 && abs(renderer.loopEnd / sampleRate - end) < 0.01
     }
 
     private func toggleLoop(start: Double, end: Double) {

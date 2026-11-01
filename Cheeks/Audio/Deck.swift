@@ -195,6 +195,9 @@ final class Deck {
     }
     /// The same thing as `isLoopAhead`, for the keys to watch. It's set from `tick`.
     private(set) var loopArmed = false
+    /// The renderer's loop marks, for the pads to watch. They can change with `loopActive` staying
+    /// on, going straight from one saved loop to another. It's set from `tick`.
+    private(set) var loopMarks: (start: Double, end: Double) = (0, 0)
     var loopBeats: Double = 4
     /// The length chosen on the loop key, while the key's showing a manual or saved loop's own.
     @ObservationIgnored var chosenLoopBeats: Double?
@@ -472,6 +475,11 @@ final class Deck {
         cuePreviewing = false
         // A deck that's run out has nothing left to play, so it starts again from the cue.
         if isAtEnd { seek(to: restartPoint) }
+        // Backwards from the very start it would only stop again, unless a loop starting there holds it.
+        if reverse && renderer.playhead <= 0 && (!renderer.loopActive || isLoopAhead) {
+            onMessage?("Deck \(index + 1) is at the start. Turn REV off to play it forward.", .refused)
+            return
+        }
         renderer.reachedEnd = false
         renderer.isPlaying = true
         isPlaying = true
@@ -579,6 +587,7 @@ final class Deck {
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if loopArmed != isLoopAhead { loopArmed = isLoopAhead }
+        if loopMarks != (renderer.loopStart, renderer.loopEnd) { loopMarks = (renderer.loopStart, renderer.loopEnd) }
         if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
         // A deck that's stopped itself, by reaching the end or by a brake, has finished its echo out too.
         if echoingOut && !isPlaying { endEchoOut() }
