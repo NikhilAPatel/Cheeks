@@ -346,7 +346,7 @@ private:
                 put(fxReleaseBeat[l], kNoSeek);
                 put(fxOn[l], false);
             }
-            fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]));
+            fx[l].set(CheeksFXType(relaxed(fxType[l])), relaxed(fxOn[l]), relaxed(fxBeats[l]), relaxed(fxDepth[l]), relaxed(sourceCut));
         }
         const double cutAt = relaxed(cutAtBeat);
         if (std::isnan(cutAt)) {
@@ -421,6 +421,12 @@ private:
         if (loopNow && rate > 0 && position >= loopEndNow && loopEndNow > loopStartNow) {
             position -= loopEndNow - loopStartNow;
             wrapped = true;
+        } else if (loopNow && rate < 0 && position < loopStartNow && position - rate >= loopStartNow
+                   && loopEndNow > loopStartNow && !relaxed(scratching)) {
+            // Going backwards it holds too, but only a deck that was in it: one waiting for the
+            // loop further on isn't caught, and a jog goes where the hand takes it.
+            position += loopEndNow - loopStartNow;
+            wrapped = true;
         }
         const double last = double(frames - 1);
         if (position >= last) {
@@ -433,6 +439,12 @@ private:
             }
         } else if (position < 0) {
             position = 0;
+            // Going backwards it stops at the start, as it does at the end going forward.
+            if (relaxed(playing) && relaxed(reverse) && !relaxed(scratching)) {
+                put(playing, false);
+                wasPlaying = false;
+                declick.trigger();
+            }
         }
         return wrapped;
     }

@@ -72,6 +72,10 @@ Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] Two tracks at full level don't distort on the master, and the LIM light comes on.
 - [ ] Tracks at different loudness come in at about the same level with "Match track loudness" on.
 - [ ] Crossfader: SMOOTH has no volume dip at centre; SCRATCH cuts in sharply at the edges.
+- [ ] Beat FX levels: `PHASER`, `FLANGER`, `FILTER`, `REVERB` and the echoes were turned down so they don't add level. Do any now sound too weak against the track? The echoes are the likeliest: each repeat is about 4 dB quieter while the track's playing, and an echo out's tail is as loud as before.
+- [ ] `FLANGER`: the bass and kick now mostly stay out of it, with the effect on what's above about 300 Hz. Does it still sound like a flanger on a whole track, and is the low end steadier or just dull?
+- [ ] A real finger holding a `ROLL` pad and changing tab with another: does the roll end straight away, and does the deck land in the right place?
+- [ ] `REV` in a running loop: it now holds there, wrapping from the loop's start back to its end. Does the wrap sound clean, and is that what you'd want?
 - [ ] Each of the 12 Beat FX sounds right: ECHO and PING PONG in time at 1/2 and 1 beat, tails ring out on release, ROLL and BRAKE and BACKSPIN behave.
 - [ ] REC for 10+ minutes across 3+ tracks, then stop. "Saving mix…" appears, then the mix, `.txt` and `.cue` show up in Recordings (and in Files → Cheeks → Recordings).
 - [ ] The tracklist times match when each track came in (±10 s). A track only previewed in the headphones (fader down) is *not* listed.

@@ -355,18 +355,26 @@ extension StatusKind {
 struct StatusCapsule: View {
     @Environment(DJEngine.self) private var dj
 
+    private var shown: (text: String, symbol: String?, tint: Color)? {
+        if let error = dj.engineError { return (error, StatusKind.problem.symbol, StatusKind.problem.tint) }
+        if let message = dj.statusMessage {
+            return dj.undoAction != nil ? (message, "trash.circle.fill", Theme.textSecondary) : (message, dj.statusKind.symbol, dj.statusKind.tint)
+        }
+        return dj.savingRecordings > 0 ? ("Saving your mix…", nil, Theme.accent) : nil
+    }
+
     var body: some View {
-        Group {
-            if let error = dj.engineError {
-                capsule(error, symbol: StatusKind.problem.symbol, tint: StatusKind.problem.tint)
-            } else if let message = dj.statusMessage {
-                if dj.undoAction != nil {
-                    capsule(message, symbol: "trash.circle.fill", tint: Theme.textSecondary)
-                } else {
-                    capsule(message, symbol: dj.statusKind.symbol, tint: dj.statusKind.tint)
-                }
-            } else if dj.savingRecordings > 0 {
-                capsule("Saving your mix…", symbol: nil, tint: Theme.accent)
+        ZStack {
+            if let shown {
+                capsule(shown.text, symbol: shown.symbol, tint: shown.tint)
+                    .transition(.asymmetric(insertion: .scale(scale: 0.5, anchor: .top).combined(with: .opacity),
+                                            removal: .scale(scale: 0.8, anchor: .top).combined(with: .opacity)))
+            }
+            // The key's touch is in a copy that's laid out the same and never moves, so a press lands
+            // on it from the first frame, while the capsule's still arriving.
+            if let shown, dj.undoAction != nil {
+                row(shown.text, symbol: shown.symbol, tint: shown.tint, touchOnly: true)
+                    .transition(.identity)
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.statusMessage)
@@ -383,31 +391,45 @@ struct StatusCapsule: View {
     }
 
     private func capsule(_ text: String, symbol: String?, tint: Color) -> some View {
+        row(text, symbol: symbol, tint: tint, touchOnly: false)
+            .background(Capsule().fill(.black))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.6), radius: 8, y: 3)
+    }
+
+    private func row(_ text: String, symbol: String?, tint: Color, touchOnly: Bool) -> some View {
         HStack(spacing: 6) {
-            if let symbol {
-                Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
-                    .symbolEffect(.bounce, value: text)
-            } else {
-                ProgressView().controlSize(.mini)
+            Group {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
+                        .symbolEffect(.bounce, value: text)
+                } else {
+                    ProgressView().controlSize(.mini)
+                }
+                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.75)
             }
-            Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.75)
+            .opacity(touchOnly ? 0 : 1)
             if dj.undoAction != nil {
-                // A key like every other on this bar, acting on first contact. These sit right at
-                // the screen's top edge, where a SwiftUI button didn't reliably get the tap.
-                Key("UNDO", color: Theme.accent, size: 8.5, feel: .none, accessibilityName: "Undo", touchMargin: 6, onPress: {
-                    Haptics.shared.confirm()
-                    dj.performUndo()
-                })
-                .frame(width: 46, height: 18)
+                if touchOnly {
+                    Color.clear.frame(width: 46, height: 18).overlay {
+                        TouchSurface(onDown: { _ in undo() }).padding(-6)
+                    }
+                } else {
+                    // A key like every other on this bar, acting on first contact. These sit right at
+                    // the screen's top edge, where a SwiftUI button didn't reliably get the tap.
+                    Key("UNDO", color: Theme.accent, size: 8.5, feel: .none, accessibilityName: "Undo", touchMargin: 6, onPress: undo)
+                        .frame(width: 46, height: 18)
+                }
             }
         }
         .padding(.leading, 10)
         .padding(.trailing, dj.undoAction == nil ? 10 : 3)
         .frame(height: 24)
-        .background(Capsule().fill(.black))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.6), radius: 8, y: 3)
-        .transition(.asymmetric(insertion: .scale(scale: 0.5, anchor: .top).combined(with: .opacity),
-                                removal: .scale(scale: 0.8, anchor: .top).combined(with: .opacity)))
+        .accessibilityHidden(touchOnly)
+    }
+
+    private func undo() {
+        Haptics.shared.confirm()
+        dj.performUndo()
     }
 }

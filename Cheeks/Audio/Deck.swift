@@ -160,7 +160,16 @@ final class Deck {
     var cuePoint: Double = 0
     @ObservationIgnored var cuePreviewing = false
     var quantize = true
-    var slipMode = false { didSet { if !slipMode { renderer.cancelSlip() } } }
+    var slipMode = false {
+        didSet {
+            if !slipMode {
+                renderer.cancelSlip()
+            } else if renderer.loopActive && !isLoopAhead && !renderer.slipEngaged {
+                // Slip starts when a loop does, so in one that's already running it starts from now.
+                renderer.engageSlip()
+            }
+        }
+    }
     var reverse = false { didSet { setReverse() } }
 
     // Tempo
@@ -186,6 +195,9 @@ final class Deck {
     }
     /// The same thing as `isLoopAhead`, for the keys to watch. It's set from `tick`.
     private(set) var loopArmed = false
+    /// The renderer's loop marks, for the pads to watch. They can change with `loopActive` staying
+    /// on, going straight from one saved loop to another. It's set from `tick`.
+    private(set) var loopMarks: (start: Double, end: Double) = (0, 0)
     var loopBeats: Double = 4
     /// The length chosen on the loop key, while the key's showing a manual or saved loop's own.
     @ObservationIgnored var chosenLoopBeats: Double?
@@ -461,6 +473,13 @@ final class Deck {
     func play() {
         guard isLoaded else { return }
         cuePreviewing = false
+        // A deck that's run out has nothing left to play, so it starts again from the cue.
+        if isAtEnd { seek(to: restartPoint) }
+        // Backwards from the very start it would only stop again, unless a loop starting there holds it.
+        if reverse && renderer.playhead <= 0 && (!renderer.loopActive || isLoopAhead) {
+            onMessage?("Deck \(index + 1) is at the start. Turn REV off to play it forward.", .refused)
+            return
+        }
         renderer.reachedEnd = false
         renderer.isPlaying = true
         isPlaying = true
@@ -472,9 +491,16 @@ final class Deck {
         endEchoOut()
     }
 
+    /// The deck has run out, or been sent to the very last frame.
+    private var isAtEnd: Bool { renderer.frameCount > 0 && renderer.playhead >= Double(renderer.frameCount - 1) }
+
+    /// Where a deck that's run out goes back to: the cue, unless that's at the end as well.
+    private var restartPoint: Double { cuePoint < duration - 0.5 ? cuePoint : 0 }
+
     func seek(to seconds: Double) {
         let maxFrame = Double(max(renderer.frameCount - 1, 0))
         let target = max(0, min(seconds * sampleRate, maxFrame))
+        endMomentaryPads()
         leaveLoop(ifGoingTo: target)
         renderer.playhead = target
         renderer.reachedEnd = false
@@ -488,7 +514,10 @@ final class Deck {
             pause()
             seek(to: cuePoint)
         } else {
-            if abs(position - cuePoint) > 0.01 {
+            // At the end there's nothing worth marking, and the cue is where you'd want to go back to.
+            if isAtEnd {
+                cuePoint = restartPoint
+            } else if abs(position - cuePoint) > 0.01 {
                 cuePoint = snap(renderer.playhead) / sampleRate
             }
             seek(to: cuePoint)
@@ -545,7 +574,8 @@ final class Deck {
 
     private func setReverse() {
         renderer.reverse = reverse
-        guard slipMode else { return }
+        // A running loop holds in reverse, and its slip is for leaving the loop, not for this.
+        guard slipMode, !renderer.loopActive || isLoopAhead else { return }
         if reverse { renderer.engageSlip() } else { renderer.releaseSlip() }
     }
 
@@ -557,6 +587,7 @@ final class Deck {
         if isPlaying != renderer.isPlaying && !cuePreviewing { isPlaying = renderer.isPlaying }
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if loopArmed != isLoopAhead { loopArmed = isLoopAhead }
+        if loopMarks != (renderer.loopStart, renderer.loopEnd) { loopMarks = (renderer.loopStart, renderer.loopEnd) }
         if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
         // A deck that's stopped itself, by reaching the end or by a brake, has finished its echo out too.
         if echoingOut && !isPlaying { endEchoOut() }

@@ -603,6 +603,98 @@ final class StemCacheTests: XCTestCase {
         XCTAssertTrue(StemCache().directory.path.contains("/Caches/"))
         XCTAssertEqual(StemCache.defaultCapacity, 8 * 1024 * 1024 * 1024)
     }
+
+    // MARK: The same track on both decks
+
+    /// Runs two callers of the same split at once, the second joining while the first is working.
+    private func runTwoSplits(cancelFirst: Bool = false, cancelSecond: Bool = false) throws -> (runs: Int, first: Result<String, Error>, second: Result<String, Error>, sawProgress: Bool, stopped: Bool) {
+        let lock = NSLock()
+        var runs = 0, sawProgress = false, stopped = false
+        let working = DispatchSemaphore(value: 0), carryOn = DispatchSemaphore(value: 0)
+        let firstJob = StemJob(), secondJob = StemJob()
+        let key = UUID().uuidString
+        func split(_ job: StemJob, progress: @escaping (Double) -> Void) -> Result<String, Error> {
+            Result {
+                try StemJob.shared(key: key, job: job, progress: progress) { report, isCancelled in
+                    lock.withLock { runs += 1 }
+                    working.signal()
+                    carryOn.wait()
+                    report(0.5)
+                    if isCancelled() {
+                        lock.withLock { stopped = true }
+                        throw CancellationError()
+                    }
+                    return "stems"
+                }
+            }
+        }
+        let group = DispatchGroup()
+        var first: Result<String, Error>?, second: Result<String, Error>?
+        group.enter()
+        DispatchQueue.global().async {
+            let r = split(firstJob) { _ in }
+            lock.withLock { first = r }
+            group.leave()
+        }
+        working.wait()
+        group.enter()
+        DispatchQueue.global().async {
+            let r = split(secondJob) { _ in lock.withLock { sawProgress = true } }
+            lock.withLock { second = r }
+            group.leave()
+        }
+        Thread.sleep(forTimeInterval: 0.25)
+        if cancelFirst { firstJob.cancel() }
+        if cancelSecond { secondJob.cancel() }
+        Thread.sleep(forTimeInterval: 0.25)
+        carryOn.signal()
+        XCTAssertEqual(group.wait(timeout: .now() + 10), .success)
+        carryOn.signal() // In case a second split started, which the count would show.
+        return (runs, try XCTUnwrap(first), try XCTUnwrap(second), sawProgress, stopped)
+    }
+
+    func testTheSameTrackOnBothDecksSplitsOnce() throws {
+        let result = try runTwoSplits()
+        XCTAssertEqual(result.runs, 1)
+        XCTAssertEqual(try result.first.get(), "stems")
+        XCTAssertEqual(try result.second.get(), "stems")
+        XCTAssertTrue(result.sawProgress, "The second deck hears how it's going")
+    }
+
+    func testOneDeckLeavingDoesntStopTheSplitForTheOther() throws {
+        let result = try runTwoSplits(cancelFirst: true)
+        XCTAssertEqual(result.runs, 1)
+        XCTAssertFalse(result.stopped)
+        XCTAssertEqual(try result.second.get(), "stems")
+    }
+
+    func testTheDeckWaitingCanLeaveWithoutStoppingTheOther() throws {
+        let result = try runTwoSplits(cancelSecond: true)
+        XCTAssertEqual(result.runs, 1)
+        XCTAssertFalse(result.stopped)
+        XCTAssertEqual(try result.first.get(), "stems")
+        XCTAssertThrowsError(try result.second.get())
+    }
+
+    func testBothDecksLeavingStopsTheSplit() throws {
+        let result = try runTwoSplits(cancelFirst: true, cancelSecond: true)
+        XCTAssertEqual(result.runs, 1)
+        XCTAssertTrue(result.stopped)
+        XCTAssertThrowsError(try result.first.get())
+        XCTAssertThrowsError(try result.second.get())
+    }
+
+    func testASplitAfterAFinishedOneStartsAgain() throws {
+        var runs = 0
+        let key = UUID().uuidString
+        for _ in 0..<2 {
+            _ = try StemJob.shared(key: key, job: StemJob(), progress: { _ in }) { _, _ in
+                runs += 1
+                return "stems"
+            }
+        }
+        XCTAssertEqual(runs, 2, "Nothing's kept here: the cache does that")
+    }
 }
 
 /// Opt-in: runs the real model, on the CPU in the simulator. It needs `Cheeks/Stems.mlpackage` in

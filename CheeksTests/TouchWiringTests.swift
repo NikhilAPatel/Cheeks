@@ -268,4 +268,159 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertEqual(overviews, 2)
         window.isHidden = true
     }
+
+    // MARK: A held pad's view going away
+
+    /// Deck 1's first pad on this page, held down.
+    private func holdFirstPad(of deck: Deck, on page: PadMode) async throws {
+        deck.padMode = page
+        try await settle()
+        let pads = controls(in: CGRect(x: 72, y: Self.size.height - 100, width: 320, height: 100))
+            .filter { $0.point.x > 72 }
+            .sorted { ($0.point.x, $0.point.y) < ($1.point.x, $1.point.y) }
+        let pad = try XCTUnwrap(pads.first)
+        pad.view.onDown?(pad.view.convert(pad.point, from: window))
+    }
+
+    /// The track's place, and the deck's state, after a held roll or slice has gone.
+    private func assertRollEnded(_ deck: Deck, dj: DJEngine, heldFrom start: Double, frames: Int, line: UInt = #line) {
+        XCTAssertEqual(deck.heldMomentaryPads, 0, line: line)
+        XCTAssertFalse(deck.loopActive, line: line)
+        XCTAssertFalse(deck.renderer.slipEngaged, line: line)
+        _ = dj.renderOffline(frames: 1024)
+        XCTAssertEqual(deck.renderer.playhead, start + Double(frames) + 1024, accuracy: 4096, "It lands where the track's got to", line: line)
+    }
+
+    func testChangingTabWithARollHeldEndsTheRoll() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.play()
+        let start = deck.renderer.playhead
+        try await holdFirstPad(of: deck, on: .roll)
+        XCTAssertEqual(deck.heldMomentaryPads, 1)
+        XCTAssertTrue(deck.loopActive)
+        _ = dj.renderOffline(frames: 44_100)
+        deck.padMode = .hotCue
+        try await settle(1500)
+        assertRollEnded(deck, dj: dj, heldFrom: start, frames: 44_100)
+        // And the next one isn't left stuck.
+        let here = deck.renderer.playhead
+        deck.rollBegin(0.25)
+        _ = dj.renderOffline(frames: 4096)
+        deck.rollEnd()
+        assertRollEnded(deck, dj: dj, heldFrom: here, frames: 4096)
+    }
+
+    func testChangingTabWithASliceHeldEndsTheSlice() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.play()
+        let start = deck.renderer.playhead
+        try await holdFirstPad(of: deck, on: .slicer)
+        XCTAssertEqual(deck.heldMomentaryPads, 1)
+        _ = dj.renderOffline(frames: 44_100)
+        deck.padMode = .memory
+        try await settle(1500)
+        assertRollEnded(deck, dj: dj, heldFrom: start, frames: 44_100)
+    }
+
+    /// Presses the BROWSE key, where it is at the top left, and waits for the decks to slide away.
+    private func pressBrowse() async throws {
+        let key = try XCTUnwrap(window?.hitTest(CGPoint(x: 112, y: 12), with: nil) as? TouchSurfaceView)
+        key.onDown?(.zero)
+        key.onUp?()
+        try await settle(2000)
+    }
+
+    func testOpeningTheBrowserWithARollHeldEndsTheRoll() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.play()
+        let start = deck.renderer.playhead
+        try await holdFirstPad(of: deck, on: .roll)
+        _ = dj.renderOffline(frames: 44_100)
+        try await pressBrowse()
+        assertRollEnded(deck, dj: dj, heldFrom: start, frames: 44_100)
+    }
+
+    func testOpeningTheBrowserWithCueHeldEndsThePreview() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        let cue = try XCTUnwrap(window?.hitTest(CGPoint(x: 36, y: 544), with: nil) as? TouchSurfaceView)
+        cue.onDown?(.zero)
+        XCTAssertTrue(deck.cuePreviewing, "It's the CUE key")
+        try await pressBrowse()
+        XCTAssertFalse(deck.cuePreviewing, "Nothing's holding it any more")
+        XCTAssertFalse(deck.isPlaying)
+    }
+
+    func testAnEffectHeldWhenItsPageGoesEndsLikeALift() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.play()
+        try await holdFirstPad(of: deck, on: .fx)
+        let effect = try XCTUnwrap(deck.activeFX.first?.effect)
+        try await Task.sleep(for: .milliseconds(300)) // Long enough to be a hold, not a latch.
+        deck.padMode = .hotCue
+        try await settle()
+        XCTAssertFalse(deck.isFXOn(effect))
+    }
+
+    func testAPadLeftOnScreenStillEndsOnItsOwnLift() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0]
+        deck.play()
+        let start = deck.renderer.playhead
+        try await holdFirstPad(of: deck, on: .roll)
+        _ = dj.renderOffline(frames: 4096)
+        let pads = controls(in: CGRect(x: 72, y: Self.size.height - 100, width: 320, height: 100))
+            .filter { $0.point.x > 72 }
+            .sorted { ($0.point.x, $0.point.y) < ($1.point.x, $1.point.y) }
+        pads.first?.view.onUp?()
+        assertRollEnded(deck, dj: dj, heldFrom: start, frames: 4096)
+        deck.padMode = .hotCue
+        try await settle()
+        XCTAssertEqual(deck.heldMomentaryPads, 0, "and going away afterwards does nothing more")
+    }
+
+    // MARK: The Undo key
+
+    func testTheUndoKeysTouchStaysStillWhileTheCapsuleArrives() async throws {
+        let (dj, _) = try await makeScreen()
+        let strip = CGRect(x: 300, y: 0, width: 650, height: 30)
+        let before = Set(controls(in: strip).map { ObjectIdentifier($0.view) })
+        // Where the key ends up, with the capsule settled.
+        dj.decks[0].offerUndo?("Deleted hot cue A") {}
+        try await settle(800)
+        let settled = try XCTUnwrap(controls(in: strip).first { !before.contains(ObjectIdentifier($0.view)) })
+        var undone = 0
+        dj.statusMessage = nil
+        dj.undoAction = nil
+        try await settle(800)
+        XCTAssertTrue(controls(in: strip).allSatisfy { before.contains(ObjectIdentifier($0.view)) }, "It's gone again")
+
+        // From the first frame on, a touch there has to land on the key.
+        dj.decks[0].offerUndo?("Deleted hot cue A") { undone += 1 }
+        var frames = 0, missed = 0
+        var pressed = false
+        for _ in 0..<40 {
+            await Task.yield()
+            window?.layoutIfNeeded()
+            frames += 1
+            let hit = window?.hitTest(settled.point, with: nil)
+            if let hit = hit as? TouchSurfaceView, !before.contains(ObjectIdentifier(hit)) {
+                if frames > 25, !pressed {
+                    hit.onDown?(.zero)
+                    hit.onUp?()
+                    pressed = true
+                }
+            } else {
+                missed += 1
+            }
+            if pressed { break }
+            try await Task.sleep(for: .milliseconds(12))
+        }
+        XCTAssertEqual(missed, 0, "A touch on it lands on it the whole time, out of \(frames) frames")
+        XCTAssertEqual(undone, 1)
+    }
 }
