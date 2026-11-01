@@ -26,6 +26,8 @@ final class DeckRenderer {
 
     /// The full-mix buffer while no stems are loaded. Main thread only (it's the only writer).
     var mixSource: PCM16Stereo? { sources.count == 1 ? sources[0] : nil }
+    /// The four stems, once they're in. Main thread only, for the same reason.
+    var stemSources: [PCM16Stereo]? { sources.count == 4 ? sources : nil }
 
     /// Replaces the audio being played. Pass one buffer (full mix) or four (stems).
     func setSources(_ newSources: [PCM16Stereo]) {

@@ -52,6 +52,9 @@ struct MixerPanel: View {
             }
             .frame(height: 20)
             .padding(.top, 1)
+            AutoKey()
+                .frame(height: 22)
+                .padding(.top, 1)
             Spacer(minLength: 2)
             LimiterLight()
             CentreMeters()
@@ -66,6 +69,16 @@ struct MixerPanel: View {
             CrossfaderControl(value: $dj.crossfader)
             Text("2").silk(9)
         }
+    }
+}
+
+/// Plans and performs a transition to the waiting deck. It's lit from when it's chosen its moment until the move is over.
+private struct AutoKey: View {
+    @Environment(DJEngine.self) private var dj
+
+    var body: some View {
+        let auto = dj.autoDJ!
+        Key(auto.legend, lit: auto.isActive, size: 8, feel: .toggle, accessibilityName: "Auto DJ", onPress: { auto.press() })
     }
 }
 

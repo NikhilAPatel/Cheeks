@@ -53,4 +53,41 @@ enum Synth {
         x = x.map { $0 / peak * 0.9 }
         return PCM16Stereo(left: x, right: x)
     }
+
+    /// Four stems of a little club track: a kick on every beat and a clap on 2 and 4, a bass and chords that change on
+    /// the 1, and a melody that comes in at bar 16 and a singer at bar 32.
+    static func clubStems(bpm: Double, firstBar: Double, bars: Int, jitter: Double = 0) -> [PCM16Stereo] {
+        let sr = sampleRate, beat = 60 / bpm
+        let count = Int((firstBar + Double(bars) * 4 * beat + 1) * sr)
+        var vocals = [Float](repeating: 0, count: count), melody = vocals, bass = vocals, drums = vocals
+        var random = SystemRandomNumberGenerator()
+        for bar in 0..<bars {
+            let root = [45, 41, 48, 43][(bar / 2) % 4]
+            for b in 0..<4 {
+                let nudge = jitter > 0 ? Double.random(in: -jitter...jitter, using: &random) : 0
+                let start = Int((firstBar + Double(bar * 4 + b) * beat + nudge) * sr)
+                for k in 0..<Int(0.14 * sr) where start + k >= 0 && start + k < count {
+                    let t = Double(k) / sr
+                    drums[start + k] += Float(0.9 * sin(2 * .pi * (55 + 90 * exp(-t * 40)) * t) * exp(-t * 18))
+                    if b % 2 == 1, k < Int(0.09 * sr) { drums[start + k] += Float.random(in: -0.35...0.35, using: &random) * Float(exp(-t * 30)) }
+                }
+            }
+            let barStart = Int((firstBar + Double(bar * 4) * beat) * sr), barLength = Int(4 * beat * sr)
+            for k in 0..<barLength where barStart + k < count {
+                let t = Double(k) / sr
+                bass[barStart + k] = Float(0.35 * sin(2 * .pi * frequency(midi: root - 12) * t))
+                if bar >= 16 {
+                    melody[barStart + k] = Float(0.12 * (sin(2 * .pi * frequency(midi: root + 12) * t) + sin(2 * .pi * frequency(midi: root + 15) * t)
+                        + sin(2 * .pi * frequency(midi: root + 19) * t)))
+                }
+                if bar >= 32, bar < 48 { vocals[barStart + k] = Float(0.3 * sin(2 * .pi * frequency(midi: root + 24) * t)) }
+            }
+        }
+        // About as loud as a mastered track gets after loudness matching.
+        let g = PCM16Stereo.stemHeadroom * 0.6
+        return [vocals, melody, bass, drums].map { stem in
+            let scaled = stem.map { $0 * g }
+            return PCM16Stereo(left: scaled, right: scaled)
+        }
+    }
 }

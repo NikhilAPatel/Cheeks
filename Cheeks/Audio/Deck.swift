@@ -133,6 +133,44 @@ final class Deck {
     var stemWaveform: StemWaveformData? { didSet { stemWaveRevision += 1 } }
     /// What the track does in each bar, worked out once its stems are ready.
     var trackMap: TrackMap?
+    /// Someone moved a control Auto DJ may be moving, so it should leave that one alone from now on.
+    var onManualControl: ((CheeksAutoKind, Int) -> Void)?
+    /// True while Auto DJ is moving the controls, which isn't someone taking them.
+    private var followingAuto = false
+
+    private func tookControl(_ kind: CheeksAutoKind, _ index: Int) {
+        if !followingAuto { onManualControl?(kind, index) }
+    }
+
+    /// Whether stems are being split or read, so a map's on its way.
+    var stemsAreOnTheWay: Bool {
+        switch stemStatus {
+        case .separating, .reading: true
+        default: false
+        }
+    }
+
+    /// Shows what Auto DJ has done to a control, from what the audio core reports.
+    func followAuto(_ kind: CheeksAutoKind, index: Int, value: Float) {
+        followingAuto = true
+        defer { followingAuto = false }
+        switch kind {
+        case CheeksAutoStem:
+            if abs(stemLevels[index] - value) > 0.005 || (value == 1 && stemLevels[index] != 1) || (value == 0 && stemLevels[index] != 0) { stemLevels[index] = value }
+            if !stemsOn[index] { stemsOn[index] = true }
+        case CheeksAutoEQ:
+            let knob: Float = value <= 0 ? -1 : value < 1 ? 20 * log10(value) / 26 : 20 * log10(value) / 6
+            switch index {
+            case 0: if abs(eqLow - knob) > 0.005 || knob == 0 && eqLow != 0 { eqLow = knob }
+            case 1: if abs(eqMid - knob) > 0.005 || knob == 0 && eqMid != 0 { eqMid = knob }
+            default: if abs(eqHigh - knob) > 0.005 || knob == 0 && eqHigh != 0 { eqHigh = knob }
+            }
+        case CheeksAutoFilter:
+            if abs(filter - value) > 0.005 || value == 0 && filter != 0 { filter = value }
+        default:
+            break
+        }
+    }
     var artwork: CGImage?
     /// Bumped when a waveform changes, so the live views know to rebuild their textures.
     @ObservationIgnored private(set) var waveRevision = 0
@@ -209,9 +247,19 @@ final class Deck {
     @ObservationIgnored var borrowedLoop: BorrowedLoop?
     var jumpBeats: Double = 4
     var stemStatus: StemStatus = .unavailable
-    var stemsOn: [Bool] = [true, true, true, true] { didSet { applyStemGains() } }
+    var stemsOn: [Bool] = [true, true, true, true] {
+        didSet {
+            for i in stemsOn.indices where stemsOn[i] != oldValue[i] { tookControl(CheeksAutoStem, i) }
+            applyStemGains()
+        }
+    }
     /// Each stem's level (0...1), on top of its on/off state.
-    var stemLevels: [Float] = [1, 1, 1, 1] { didSet { applyStemGains() } }
+    var stemLevels: [Float] = [1, 1, 1, 1] {
+        didSet {
+            for i in stemLevels.indices where stemLevels[i] != oldValue[i] { tookControl(CheeksAutoStem, i) }
+            applyStemGains()
+        }
+    }
     /// Part of the track is missing or turned down, which the ordinary waveform has no way to show.
     var stemsAltered: Bool { stemsOn.contains(false) || stemLevels.contains { $0 < 1 } }
     /// Set when the stems were last heard all on, for restoring after a solo.
@@ -232,10 +280,10 @@ final class Deck {
 
     // Mixer channel (knobs are -1...1, 0 = centre)
     var trim: Float = 0 { didSet { onMixChange?() } }
-    var eqHigh: Float = 0 { didSet { applyEQ() } }
-    var eqMid: Float = 0 { didSet { applyEQ() } }
-    var eqLow: Float = 0 { didSet { applyEQ() } }
-    var filter: Float = 0 { didSet { applyFilter() } }
+    var eqHigh: Float = 0 { didSet { tookControl(CheeksAutoEQ, 2); applyEQ() } }
+    var eqMid: Float = 0 { didSet { tookControl(CheeksAutoEQ, 1); applyEQ() } }
+    var eqLow: Float = 0 { didSet { tookControl(CheeksAutoEQ, 0); applyEQ() } }
+    var filter: Float = 0 { didSet { tookControl(CheeksAutoFilter, 0); applyFilter() } }
     /// What the COLOR knob does. Shared between channels, like a mixer's Color FX buttons.
     var colorFX: ColorEffect = .filter { didSet { applyFilter() } }
     var fader: Float = 0.85 { didSet { onMixChange?() } }

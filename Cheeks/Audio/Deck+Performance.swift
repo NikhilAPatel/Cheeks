@@ -677,7 +677,7 @@ extension Deck {
                     self.applyStemGains()
                     self.stemWaveform = waves
                     self.stemStatus = .ready(label)
-                    if let map { self.applyTrackMap(map) }
+                    if let map { self.applyTrackMap(map, mix: mix) }
                 }
             } catch {
                 let wasCancelled = error is CancellationError
@@ -696,7 +696,7 @@ extension Deck {
     /// The stems show where the kicks really are. A grid from the first analysis can be 100 ms late, or have the
     /// wrong 1, so it's replaced, once. A grid someone set by hand or brought from rekordbox stays, and so does one on
     /// a track with no steady kick to go by.
-    func applyTrackMap(_ map: TrackMap) {
+    func applyTrackMap(_ map: TrackMap, mix: PCM16Stereo? = nil) {
         trackMap = map
         guard let track, track.gridSource == .analysis, map.isSteady else { return }
         let id = track.id
@@ -707,7 +707,7 @@ extension Deck {
             t.gridSource = .drums
         }
         // Phrases are counted in bars, so they have to be counted again.
-        guard let mix = renderer.mixSource else { return }
+        guard let mix else { return }
         let grid = BeatGrid(bpm: map.bpm, firstBeat: map.firstBar)
         Task.detached(priority: .utility) { [weak self] in
             let phrases = TrackAnalyzer.analyze(mix, knownGrid: grid).phrases

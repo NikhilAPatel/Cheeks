@@ -22,6 +22,8 @@ final class DJEngine {
     let sampler: Sampler
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private let core: OpaquePointer
+    /// The AUTO key.
+    @ObservationIgnored private(set) var autoDJ: AutoDJ!
     @ObservationIgnored private var sourceNode: AVAudioSourceNode?
     /// Session and engine calls can block for a while, so they stay off the main thread.
     @ObservationIgnored private let audioQueue = DispatchQueue(label: "com.nikhilpatel.cheeks.audio-session", qos: .userInitiated)
@@ -115,6 +117,9 @@ final class DJEngine {
                 self?.undoAction = undo
             }
         }
+        autoDJ = AutoDJ(core: core, decks: decks, say: { [weak self] message, kind in self?.say(message, kind) }, prepareMixer: { [weak self] incoming in
+            self?.openChannel(for: incoming)
+        })
         buildGraph()
         updateVolumes()
         startAudio()
@@ -235,6 +240,13 @@ final class DJEngine {
         case .scratch:
             return (x > 0.97 ? 0 : 1, x < 0.03 ? 0 : 1)
         }
+    }
+
+    /// Makes sure a deck Auto DJ's bringing in can be heard: the crossfader's centred, and its fader's up.
+    private func openChannel(for deck: Deck) {
+        if crossfader != 0 { crossfader = 0 }
+        let other = decks.first { $0 !== deck }?.fader ?? 0.85
+        if deck.fader < max(other, 0.5) { deck.fader = max(other, 0.5) }
     }
 
     func updateVolumes() {
@@ -387,6 +399,7 @@ final class DJEngine {
 
     private func tick() {
         decks.forEach { $0.tick() }
+        autoDJ.tick()
         sampler.tick()
         let working = limiterReduction > 0.5
         if working != limiterWorking { limiterWorking = working }
