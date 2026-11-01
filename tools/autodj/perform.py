@@ -10,6 +10,8 @@ import engine as E
 
 CACHE = E.CACHE
 TARGET_LUFS = -11.0  # Deck.targetLoudness
+STRETCH_LAG = 0.125  # seconds, measured: what the stretcher adds to a stem-gain change
+GAIN_OPENING = 0.03  # seconds for a stem's gain to be mostly open after a step
 
 
 def k_weighted_lufs(mix):
@@ -135,8 +137,20 @@ class Performance:
         total_blocks = int(self.length * frames_per_beat / E.BLOCK) + 1
         out_l, out_r = np.zeros(total_blocks * E.BLOCK, np.float32), np.zeros(total_blocks * E.BLOCK, np.float32)
         limiter = np.zeros(total_blocks, np.float32)
-        events = sorted(score.events, key=lambda e: e[0])
-        ramps = list(score.ramps)
+        # Stems and beat FX go in ahead of the stretcher, so on a stretched deck they're heard STRETCH_LAG late.
+        # A stem's gain also takes a moment to open. Send them early, or a drop's first kick is gone.
+        def early(deck_name):
+            stretched = deck_name == "B" and (abs(self.rate_b - 1) > 1e-9 or self.b_shift != 0)
+            return (STRETCH_LAG if stretched else 0) * E.SR / frames_per_beat
+        step = GAIN_OPENING * E.SR / frames_per_beat
+        events = sorted(((at - early(deck) if action in ("fx", "fx_stems", "cut") else at, deck, action, args)
+                         for at, deck, action, args in score.events), key=lambda e: e[0])
+        ramps = []
+        for start, end, deck_name, control, v0, v1, curve in score.ramps:
+            if control.startswith("stem:"):
+                lead = early(deck_name) + (step if end <= start else 0)
+                start, end = max(0.0, start - lead), max(0.0, end - lead)
+            ramps.append((start, end, deck_name, control, v0, v1, curve))
         next_event = 0
         values = {}
         filters = {"A": 0.0, "B": 0.0}
