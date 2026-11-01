@@ -111,3 +111,26 @@ class Mixer:
 
     def close(self):
         lib.cheeks_engine_destroy(self.handle)
+
+
+# The core's own score, for checking it does what the lab's block-by-block Performance does.
+class AutoStep(C.Structure):
+    _fields_ = [("startBeat", C.c_double), ("endBeat", C.c_double), ("a", C.c_double), ("b", C.c_double), ("c", C.c_double),
+                ("from_", C.c_float), ("to", C.c_float), ("deck", C.c_int), ("kind", C.c_int), ("index", C.c_int), ("effect", C.c_int), ("curve", C.c_int)]
+
+
+AUTO = {"stem": 0, "eq": 1, "filter": 2, "color": 3, "level": 4, "start": 5, "stop": 6, "loop": 7, "loop_off": 8, "fx": 9, "cut": 10, "brake": 11}
+for name, (res, args) in {
+    "cheeks_engine_auto_load": (C.c_bool, [_d, C.POINTER(AutoStep), C.c_int, C.c_double, C.c_double]),
+    "cheeks_engine_auto_start": (None, [_d, C.c_double]),
+    "cheeks_engine_auto_arm": (None, [_d, C.c_double, C.c_int, C.c_double]),
+    "cheeks_engine_auto_stop": (None, [_d]),
+    "cheeks_engine_auto_running": (C.c_bool, [_d]),
+    "cheeks_engine_auto_armed": (C.c_bool, [_d]),
+    "cheeks_engine_auto_beat": (C.c_double, [_d]),
+    "cheeks_engine_auto_release": (None, [_d, C.c_int, C.c_int, C.c_int]),
+    "cheeks_engine_auto_value": (C.c_float, [_d, C.c_int, C.c_int, C.c_int]),
+    "cheeks_deck_stem_lag": (C.c_double, [_d, C.c_double]),
+}.items():
+    fn = getattr(lib, name)
+    fn.restype, fn.argtypes = res, args

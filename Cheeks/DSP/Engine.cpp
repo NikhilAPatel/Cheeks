@@ -16,6 +16,7 @@
 #include "Primitives.hpp"
 #include "signalsmith-stretch/signalsmith-stretch.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cfloat>
 #include <cmath>
@@ -34,6 +35,9 @@ constexpr int kBlock = 256;
 constexpr int kMaxFeed = 1536;
 constexpr int kSeekBuffer = 1 << 15;
 constexpr int kStems = 4;
+constexpr int kAutoSteps = 256;
+constexpr int kAutoKinds = 5;
+constexpr int kAutoIndexes = 6;
 constexpr double kNoSeek = std::numeric_limits<double>::quiet_NaN();
 // Named differently on Intel, which the generic simulator build includes.
 #if defined(__x86_64__)
@@ -200,6 +204,9 @@ struct CheeksDeck {
     Isolator isolator;
     SweepFilter filter;
     ColorFX color;
+
+    /// Seconds between a stem or FX change and hearing it through the stretcher at this speed.
+    double stemLag(double ratio) const { return ratio > 0 ? feedLead(ratio) / ratio / sampleRate : 0; }
 
 private:
     static constexpr double kQuantizeForgiveness = 0.03;
@@ -761,6 +768,18 @@ struct CheeksEngine {
     }
 
     std::atomic<float> trim[4], fader[4], cue[4];
+    // Auto mix. The score is written by the main thread while the clock's stopped, and read here while it runs.
+    CheeksAutoStep autoSteps[kAutoSteps] = {};
+    const CheeksAutoStep *autoRamps[kAutoSteps] = {};
+    int autoCount = 0, autoNext = 0, autoRampCount = 0;
+    double autoFramesPerBeat = 1, autoLength = 0, autoFrame = 0, autoArmBeatNow = 0;
+    bool autoActive = false, autoArmedRead = false;
+    std::atomic<double> autoStartBeat{kNoSeek}, autoBeatNow{0}, autoArmBeat{0}, autoArmFrame{0};
+    std::atomic<int> autoArmDeck{-1};
+    std::atomic<bool> autoRunning{false}, autoStopWanted{false};
+    std::atomic<float> autoLevel[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::atomic<uint32_t> autoReleased[4] = {0u, 0u, 0u, 0u};
+    std::atomic<float> autoValue[4][kAutoKinds][kAutoIndexes] = {};
     std::atomic<float> masterGain{0.9f}, phonesGain{0.8f}, programInCue{0.5f};
     std::atomic<bool> split{false}, recording{false};
     std::atomic<float> masterPeak{0}, masterPeakRight{0}, limiterDB{0}, cpuLoad{0};
@@ -790,7 +809,152 @@ struct CheeksEngine {
     std::vector<float> record;
 
 private:
+    // MARK: Auto mix
+
+    /// Runs at the top of every block, ahead of the decks, so whatever it sets is heard in this block. The score is
+    /// only written while the clock's stopped, and everything it touches is an atomic the main thread also sets.
+    void advanceAuto(int n) {
+        const double startAt = autoStartBeat.exchange(kNoSeek, std::memory_order_acquire);
+        if (!std::isnan(startAt)) beginAuto(startAt);
+        if (!autoActive) {
+            const int armed = relaxed(autoArmDeck);
+            if (armed >= 0 && armed < deckCount && !autoArmedRead) {
+                autoArmedRead = true;
+                autoArmBeatNow = autoArmBeat.load(std::memory_order_acquire);
+            }
+            if (armed < 0) autoArmedRead = false;
+            if (armed >= 0 && armed < deckCount && autoArmedRead && relaxed(decks[armed]->playing)) {
+                const double position = relaxed(decks[armed]->published), frame = relaxed(autoArmFrame);
+                // A deck that's gone well past (a seek, say) has missed it, and that's for the main thread to see.
+                if (position >= frame && position < frame + 8 * kBlock) {
+                    put(autoArmDeck, -1);
+                    autoArmedRead = false;
+                    beginAuto(autoArmBeatNow + (position - frame) / autoFramesPerBeat);
+                }
+            }
+            if (!autoActive) return;
+        }
+        if (relaxed(autoStopWanted)) {
+            put(autoStopWanted, false);
+            autoActive = false;
+            put(autoRunning, false);
+            for (auto &level : autoLevel) put(level, 1.0f);
+            return;
+        }
+        const double beat = autoFrame / autoFramesPerBeat;
+        while (autoNext < autoCount && autoSteps[autoNext].startBeat <= beat) {
+            const CheeksAutoStep &step = autoSteps[autoNext++];
+            if (step.kind <= CheeksAutoLevel) {
+                if (autoRampCount < kAutoSteps) autoRamps[autoRampCount++] = &step;
+            } else {
+                fireAuto(step);
+            }
+        }
+        int kept = 0;
+        for (int r = 0; r < autoRampCount; ++r) {
+            const CheeksAutoStep &step = *autoRamps[r];
+            const double span = step.endBeat - step.startBeat;
+            const double x = span > 0 ? std::min(1.0, (beat - step.startBeat) / span) : 1.0;
+            setAuto(step, step.from + (step.to - step.from) * autoCurve(float(x), step.curve));
+            if (x < 1.0) autoRamps[kept++] = &step;
+        }
+        autoRampCount = kept;
+        put(autoBeatNow, beat);
+        autoFrame += n;
+        if (autoNext >= autoCount && autoRampCount == 0 && beat >= autoLength) {
+            autoActive = false;
+            put(autoRunning, false);
+        }
+    }
+
+    void beginAuto(double beat) {
+        autoFrame = beat * autoFramesPerBeat;
+        autoNext = 0;
+        autoRampCount = 0;
+        // Anything before the starting beat that fires once has passed. Ramps are still picked up where they've got to.
+        while (autoNext < autoCount && autoSteps[autoNext].startBeat < beat && autoSteps[autoNext].kind > CheeksAutoLevel) ++autoNext;
+        autoActive = true;
+        put(autoStopWanted, false);
+        put(autoRunning, true);
+    }
+
+    static float autoCurve(float x, int curve) {
+        switch (curve) {
+            case 1: return x * x;
+            case 2: return 1 - (1 - x) * (1 - x);
+            case 3: return x * x * (3 - 2 * x);
+            default: return x;
+        }
+    }
+
+    void setAuto(const CheeksAutoStep &step, float value) {
+        if (step.deck < 0 || step.deck >= deckCount || step.kind >= kAutoKinds || step.index < 0 || step.index >= kAutoIndexes) return;
+        if ((relaxed(autoReleased[step.deck]) >> (step.kind * kAutoIndexes + step.index)) & 1) return;
+        CheeksDeck *deck = decks[step.deck];
+        switch (step.kind) {
+            case CheeksAutoStem:
+                if (step.index < kStems) put(deck->stemTarget[step.index], value);
+                break;
+            case CheeksAutoEQ:
+                deck->isolator.setGains(step.index == 0 ? value : deck->isolator.bandTarget(0), step.index == 1 ? value : deck->isolator.bandTarget(1),
+                                        step.index == 2 ? value : deck->isolator.bandTarget(2));
+                break;
+            case CheeksAutoFilter:
+                deck->filter.setAmount(value);
+                break;
+            case CheeksAutoColor:
+                put(deck->colorType, step.index);
+                put(deck->colorAmount, value);
+                break;
+            case CheeksAutoLevel:
+                put(autoLevel[step.deck], value);
+                break;
+        }
+        put(autoValue[step.deck][step.kind][step.index], value);
+    }
+
+    void fireAuto(const CheeksAutoStep &step) {
+        if (step.deck < 0 || step.deck >= deckCount) return;
+        CheeksDeck *deck = decks[step.deck];
+        switch (step.kind) {
+            case CheeksAutoStart:
+                // Wherever the block falls, the frame lands exactly on its beat.
+                put(deck->pendingSeek, step.a + (autoFrame - step.b * autoFramesPerBeat) * step.c);
+                put(deck->playing, true);
+                break;
+            case CheeksAutoStop:
+                put(deck->playing, false);
+                break;
+            case CheeksAutoLoop:
+                put(deck->loopStart, step.a);
+                put(deck->loopEnd, step.b);
+                put(deck->loopOn, true);
+                break;
+            case CheeksAutoLoopOff:
+                put(deck->loopOn, false);
+                break;
+            case CheeksAutoFX:
+                if (step.index >= 0 && step.index < CHEEKS_FX_LINKS) {
+                    put(deck->fxType[step.index], step.effect);
+                    put(deck->fxOn[step.index], step.to > 0);
+                    put(deck->fxBeats[step.index], step.a);
+                    put(deck->fxDepth[step.index], step.to);
+                }
+                break;
+            case CheeksAutoCut:
+                put(deck->sourceCut, true);
+                break;
+            case CheeksAutoBrake:
+                put(deck->brakeFrames, step.a);
+                put(deck->ramping, true);
+                break;
+            default:
+                break;
+        }
+    }
+
     void renderChunk(float *outLeft, float *outRight, int n) {
+        advanceAuto(n);
         std::fill(programLeft, programLeft + n, 0.0f);
         std::fill(programRight, programRight + n, 0.0f);
         std::fill(cueLeft, cueLeft + n, 0.0f);
@@ -798,7 +962,7 @@ private:
 
         for (int d = 0; d < deckCount; ++d) {
             decks[d]->renderChannel(chLeft, chRight, n);
-            const float trimTarget = relaxed(trim[d]), faderTarget = relaxed(fader[d]), cueTarget = relaxed(cue[d]);
+            const float trimTarget = relaxed(trim[d]), faderTarget = relaxed(fader[d]) * relaxed(autoLevel[d]), cueTarget = relaxed(cue[d]);
             const float trimStep = (trimTarget - trimNow[d]) / n;
             const float faderStep = (faderTarget - faderNow[d]) / n;
             const float cueStep = (cueTarget - cueNow[d]) / n;
@@ -1184,6 +1348,7 @@ void cheeks_deck_set_color(CheeksDeck *deck, CheeksColorType type, float amount)
     put(deck->colorAmount, amount);
 }
 float cheeks_deck_peak(const CheeksDeck *deck) { return relaxed(deck->peak); }
+double cheeks_deck_stem_lag(const CheeksDeck *deck, double ratio) { return deck->stemLag(ratio); }
 
 CheeksEngine *cheeks_engine_create(double sampleRate, CheeksDeck *const *decks, int count) {
     auto *engine = new CheeksEngine(sampleRate, decks, count);
@@ -1206,6 +1371,44 @@ CheeksEngine *cheeks_engine_create(double sampleRate, CheeksDeck *const *decks, 
 void cheeks_engine_destroy(CheeksEngine *engine) { delete engine; }
 
 void cheeks_engine_render(CheeksEngine *engine, float *left, float *right, int frames) { engine->render(left, right, frames); }
+
+bool cheeks_engine_auto_load(CheeksEngine *engine, const CheeksAutoStep *steps, int count, double framesPerBeat, double lengthBeats) {
+    if (relaxed(engine->autoRunning) || !std::isnan(relaxed(engine->autoStartBeat)) || relaxed(engine->autoArmDeck) >= 0) return false;
+    if (count < 0 || count > kAutoSteps || framesPerBeat <= 0) return false;
+    std::copy(steps, steps + count, engine->autoSteps);
+    std::stable_sort(engine->autoSteps, engine->autoSteps + count, [](const CheeksAutoStep &a, const CheeksAutoStep &b) { return a.startBeat < b.startBeat; });
+    engine->autoCount = count;
+    engine->autoFramesPerBeat = framesPerBeat;
+    engine->autoLength = lengthBeats;
+    for (auto &released : engine->autoReleased) put(released, 0u);
+    return true;
+}
+void cheeks_engine_auto_start(CheeksEngine *engine, double beat) { engine->autoStartBeat.store(beat, std::memory_order_release); }
+void cheeks_engine_auto_arm(CheeksEngine *engine, double beat, int deck, double frame) {
+    put(engine->autoArmFrame, frame);
+    engine->autoArmBeat.store(beat, std::memory_order_release);
+    engine->autoArmDeck.store(deck, std::memory_order_release);
+}
+void cheeks_engine_auto_stop(CheeksEngine *engine) {
+    put(engine->autoArmDeck, -1);
+    put(engine->autoStartBeat, kNoSeek);
+    if (relaxed(engine->autoRunning)) {
+        put(engine->autoStopWanted, true);
+    } else {
+        for (auto &level : engine->autoLevel) put(level, 1.0f);
+    }
+}
+bool cheeks_engine_auto_running(const CheeksEngine *engine) { return relaxed(engine->autoRunning); }
+bool cheeks_engine_auto_armed(const CheeksEngine *engine) { return relaxed(engine->autoArmDeck) >= 0; }
+double cheeks_engine_auto_beat(const CheeksEngine *engine) { return relaxed(engine->autoBeatNow); }
+void cheeks_engine_auto_release(CheeksEngine *engine, int deck, int kind, int index) {
+    if (deck < 0 || deck >= 4 || kind < 0 || kind >= kAutoKinds || index < 0 || index >= kAutoIndexes) return;
+    engine->autoReleased[deck].fetch_or(1u << (kind * kAutoIndexes + index), std::memory_order_relaxed);
+}
+float cheeks_engine_auto_value(const CheeksEngine *engine, int deck, int kind, int index) {
+    if (deck < 0 || deck >= 4 || kind < 0 || kind >= kAutoKinds || index < 0 || index >= kAutoIndexes) return 0;
+    return relaxed(engine->autoValue[deck][kind][index]);
+}
 
 void cheeks_engine_set_channel(CheeksEngine *engine, int channel, float trim, float fader, float cue) {
     if (channel < 0 || channel >= 4) return;

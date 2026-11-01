@@ -83,6 +83,7 @@ public:
         target[1] = mid;
         target[2] = high;
     }
+    float bandTarget(int band) const { return target[band]; }
 
     void process(float *left, float *right, int n) {
         float step[3];

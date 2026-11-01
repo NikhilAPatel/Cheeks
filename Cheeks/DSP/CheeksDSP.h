@@ -211,6 +211,51 @@ double cheeks_engine_preview_position(const CheeksEngine *engine);
 /// With no split cable there's no cue bus to hear, so the preview can play through the master.
 void cheeks_engine_set_preview_routing(CheeksEngine *engine, float toCue, float toMaster);
 
+// MARK: Auto mix
+
+/// One move in a transition's score, on the mix clock (beats at the outgoing track's playing tempo). A ramp runs from
+/// `startBeat` to `endBeat` and holds its last value. Everything else fires once, at `startBeat`.
+typedef enum {
+    CheeksAutoStem = 0, // ramp: `index` is the stem
+    CheeksAutoEQ,       // ramp: `index` is the band (low, mid, high), as linear gain
+    CheeksAutoFilter,   // ramp
+    CheeksAutoColor,    // ramp: `index` is the CheeksColorType
+    CheeksAutoLevel,    // ramp: the channel's level, on top of its fader and the crossfader
+    CheeksAutoStart,    // the deck's frame `a` lands on mix beat `b`, and it moves at `c` frames per clock frame
+    CheeksAutoStop,
+    CheeksAutoLoop,     // from frame `a` to frame `b`
+    CheeksAutoLoopOff,
+    CheeksAutoFX,       // link `index`, CheeksFXType `effect`, `a` beats, depth `to`. A `to` of 0 turns it off
+    CheeksAutoCut,      // cuts the track's own sound, leaving FX tails
+    CheeksAutoBrake,    // stops over `a` frames
+} CheeksAutoKind;
+
+/// 0 is linear, 1 starts slowly, 2 starts quickly, 3 is an S.
+typedef struct {
+    double startBeat, endBeat, a, b, c;
+    float from, to;
+    int deck, kind, index, effect, curve;
+} CheeksAutoStep;
+
+/// Copies a score in, ready to run. Refused (false) while one's running, or if it's too long.
+bool cheeks_engine_auto_load(CheeksEngine *engine, const CheeksAutoStep *steps, int count, double framesPerBeat, double lengthBeats);
+/// Starts the clock at `beat`.
+void cheeks_engine_auto_start(CheeksEngine *engine, double beat);
+/// Starts the clock at beat `beat` the moment `deck` reaches `frame`, whatever block that falls in.
+void cheeks_engine_auto_arm(CheeksEngine *engine, double beat, int deck, double frame);
+/// Stops the clock and leaves every control where it is, apart from channel levels, which go back to full.
+void cheeks_engine_auto_stop(CheeksEngine *engine);
+bool cheeks_engine_auto_running(const CheeksEngine *engine);
+bool cheeks_engine_auto_armed(const CheeksEngine *engine);
+double cheeks_engine_auto_beat(const CheeksEngine *engine);
+/// A person took this control: the score leaves it alone from now on.
+void cheeks_engine_auto_release(CheeksEngine *engine, int deck, int kind, int index);
+/// Where the score last put a ramped control, for drawing it.
+float cheeks_engine_auto_value(const CheeksEngine *engine, int deck, int kind, int index);
+/// Seconds between a stem or beat FX change and hearing it at this speed. Stems and FX go in ahead of the
+/// stretcher, so a score sends them this early. It's 0 for a deck that isn't being stretched.
+double cheeks_deck_stem_lag(const CheeksDeck *deck, double ratio);
+
 #ifdef __cplusplus
 }
 #endif
