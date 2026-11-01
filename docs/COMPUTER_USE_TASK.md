@@ -7,11 +7,11 @@
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-5/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-6/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_5.md` in the format at the end, with screenshots in `docs/test-results-5/`. Commit only those to `master`, with the message `Add hands-on test results, part 5`. **Don't push.**
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_6.md` in the format at the end, with screenshots in `docs/test-results-6/`. Commit only those to `master`, with the message `Add hands-on test results, part 6`. **Don't push.**
 
 **Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
@@ -52,7 +52,7 @@ mkdir -p docs/test-results-4
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-5/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-6/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Can't be tested here, so don't report as failed:** haptics, how anything sounds, and the headphone output. List them under Tooling limits.
 
 **Where things are:**
@@ -65,50 +65,53 @@ Load one track on each deck through `BROWSE` and the `1` and `2` keys, then clos
 ---
 
 ## The retest
-Everything from the last retest passed apart from what's below. To see what those were, look in `docs/COMPUTER_USE_RESULTS_4.md`.
+Everything from the last retest passed apart from what's below. To see what those were, look in `docs/COMPUTER_USE_RESULTS_5.md`.
 
 **Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
 
 **Other sessions:** the other session may be running low-priority jobs on this Mac for a separate feature, off the simulators. It'll pause them if you ask before measuring.
 
-### AA. The end of a track
-Set a cue somewhere early, then tap the overview a few seconds before the end and let the deck run out. It should stop cleanly at -00:00.0.
-1. **`PLAY`.** It goes back to the cue and plays. The cue triangle hasn't moved. Screenshot `aa1-play`. *Last time: nothing happened and nothing was said.*
-2. **`CUE`.** Run out again and press `CUE`. The deck goes to the cue, plays while it's held and comes back when you let go, with the triangle where it was. Screenshot `aa2-cue`. *Last time: the cue moved to the last frame.*
-3. **Everything else.** Run out again each time: a hot cue goes to that cue and plays, and `RELOOP` goes to the loop. Tapping the overview moves the deck there, stopped. *The overview wasn't tried last time.*
-4. **Ordinary `CUE`.** Pause anywhere else and press `CUE`: the cue still moves there.
+**With two fingers:** as last time, both land together and the second slides. Say which way round each test went.
 
-### AB. Going somewhere else during a roll
-1. **Latched `ROLL`.** On the `FX` page, tap `ROLL` so it stays lit. Tap the overview, and wait a few seconds. `ROLL` goes out at once, the deck plays on from the tap, and nothing jumps later. Tap `ROLL` twice to check it still works from there. Screenshot `ab1-roll`. *Last time: `ROLL` stayed lit, then the deck jumped from 01:08.2 to 02:16.4.*
-2. **A held `ROLL` pad.** *Not run last time.* Hold a pad on the `ROLL` page and, with a second finger, tap the overview. Let go of the pad: nothing moves.
-3. **Hot cue, and a held `SLICER` pad.** The same, with a hot cue in place of the overview, and with a held `SLICER` pad. To reach a hot cue, change tab with the pad still down if the tool allows it, and say if it doesn't.
-4. **A running loop underneath.** With a 4-beat loop running, hold a roll and tap the overview outside the loop. The key says `RELOOP`, and `RELOOP` brings back the 4-beat loop.
+### AG. A held control when its view goes away
+1. **`ROLL` and a tab.** Deck playing, on `ROLL`. One finger on `1/4`, the second on the `CUE` tab, then lift both. The roll ends, with the key at `RELOOP` or whatever it said before, and the deck where the track has got to. Note how long after the tab change the clock starts moving again. Then an ordinary roll: it must end when it's let go. Screenshot `ag1-roll-tab`. *Last time: stuck for at least 16 s, `EXIT` lost the track's place, and the next roll stuck too.*
+2. **`SLICER`, `MEM` and `BROWSE`.** The same with a held `SLICER` pad, with `MEM` for the tab, and with `BROWSE` for the second finger. The browser comes up and the deck carries on in the right place. Screenshot `ag2-browse`.
+3. **`CUE` and `BROWSE`.** Paused deck. Hold the round `CUE` and press `BROWSE`. The deck returns to the cue and stops, rather than playing on. *Not tried before, and it's the same route.*
+4. **A held `FX` pad.** Hold one for over a quarter of a second on the `FX` page and change tab. The effect ends. With the same pad tapped quickly and latched, changing tab leaves it on, with the dot.
+5. **A gate sample.** On `SAMPLE`, with a slot set to the hand icon (gate), hold it and change tab. The sample stops.
+6. **The jog.** Hold the jog's middle and press `BROWSE`. Close the browser. The deck runs normally, and isn't stuck scratching. *This one has no automated test.*
+7. **A sheet.** Hold a `ROLL` pad and press the settings gear. Close the sheet and lift. The roll must end by then at the latest, with the deck where the track has got to.
+8. **Backgrounding.** If your tools allow it, send the app to the background with a roll held, and bring it back. Say if you can't.
 
-### AC. `REV` in a running loop
-1. **It holds.** Run a 4-beat loop and turn `REV` on. The deck stays in the loop, going backwards, for at least four times round. `EXIT` stays lit. Turn `REV` off: it plays forward, still in the loop. Screenshot `ac1-rev`. *Last time: it walked out, and the key went to `ARMED`.*
-2. **With `SLIP`.** The same with `SLIP` on. Turning `REV` off stays in the loop. `EXIT` then returns the deck to where the track's got to.
-3. **A waiting loop.** With `ARMED` showing and the deck before the loop, turn `REV` on. The deck goes backwards and the key stays `ARMED`.
-4. **The jog.** In a loop, jog backwards past its start. The deck follows your hand and comes back into the loop when it plays forward.
-5. **Clicks.** Record a stretch of `REV` in a loop, and compare the largest sample-to-sample step with plain playback, as you did for Y5.
+### AH. Beat FX, live
+Severe Tire Damage from about 2:09 and Exhilarate from 0:53, at default levels, reloading first each time, as for AE1.
+1. **`FLANGER`.** On Severe Tire Damage, three runs starting at different moments. The deck column should show no red at all. Screenshot `ah1-flanger`. *Last time: 16.2% and 8.2%. One peak over 0 dB shows for about 9% of a 13 s run, because the top LED holds for 1.1 s.* If it reads 8% or so again, give the meter's position and the track's time.
+2. **The others.** `PHASER`, `PING PONG`, and `CRUSH` with `PHASER`, on Severe Tire Damage, three runs each. These were just over 0 dB offline before the change. The rest of AE1 once each, to check nothing's moved.
+3. **`LIM`.** Note how often it lights on those rows, as last time.
+4. **Echo out.** The tail is unchanged: repeat AE3 briefly.
 
-### AD. A waiting loop's size pad, and `SLIP` in a loop
-1. **The pad.** With `ARMED` showing a 4-beat loop, the `4` pad on `LOOP` is unlit. Tap it: a new loop starts where the deck is, and the saved loop in `library.json` doesn't change. Screenshot `ad1-pad`. *Last time: lit, and tapping it ended the loop.*
-2. **`SLIP` on in a loop.** Run a loop with `SLIP` off, turn `SLIP` on, and hold a roll for a bit. About 14 s later, `EXIT` puts the deck about 14 s further on from when `SLIP` went on. *Last time: it played on from the loop.*
+### AI. Saved loop pads
+On `MEM`, with two saved loops. Run one, then tap the other. The new pad lights and the old one goes out, straight away, in both directions. A hot loop pad on `CUE`, if one's set, shows the same thing. Screenshot `ai1-pads`. *Last time: the old pad stayed lit until something redrew it.*
 
-### AE. Beat FX
-Exhilarate from 0:53 and Severe Tire Damage from about 2:09, both at default levels. Reload the track before each row so nothing is left on from before. Wait 3 s after any effect goes off before you measure.
-1. **Levels.** For each of `ECHO`, `PING PONG`, `SPIRAL`, `REVERB`, `FLANGER`, `PHASER`, `FILTER` and `CRUSH`, then `CRUSH` and `PHASER` together, measure how often the deck column and master columns show red, and `LIM` is lit. Screenshot `ae1-levels`. *Last time: `CRUSH` 9.4%, `CRUSH` and `PHASER` 64.5%. Measured offline since then, the second should now be 0%.* If `CRUSH` alone still reads above 0, say exactly what ran before it.
-2. **The dot.** Turn an effect on, then go to `STEMS`. The `FX` tab has a small blue dot, and the label hasn't moved: measure the gaps as in Z1. The dot goes when the last effect does. Screenshot `ae2-dot`.
-3. **Echo out.** The tail after `OUT` should be clearly there, not fainter than the echo was. Say what the meters show.
+### AJ. `SAVE LOOP` during a roll
+1. **Over a loop.** Deck in a 4-beat loop, `ROLL` on at `1/2` on the `FX` page, then `MEM` and `SAVE LOOP`. `library.json` gets the 4-beat loop. If that loop's already saved, it says so. Screenshot `aj1-saved`. *Last time: the half-beat roll was saved.*
+2. **With no loop.** No loop set, the same steps. A hand and "Set a loop first, then save it.", with nothing saved.
 
-### AF. The same track on both decks
-Load a track that hasn't been split onto both decks. Both counters should show the same percentage. Both finish together. Screenshot `af1-split`. *Last time: 39% and 29%.* Then, on a new unsplit track, load it on both, and during the split load something else on deck 1. Deck 2 should carry on and finish.
+### AK. `UNDO` straight away
+Delete a memory cue, a saved loop and a hot cue, each pressing `UNDO` as soon as the tap returns, at 0.1 s and 0.2 s, five times for each kind. Then with gaps of 0.4 s and 2 s. Each must bring it back on the first press. Press it just past the key's edge too. Screenshot `ak1-undo`. *Last time: ignored with no gap.*
+
+### AL. `REV` at the start
+1. **It stops.** Near the start, turn `REV` on. At 00:00.0 the deck stops, with `PLAY` unlit. Screenshot `al1-rev-start`. *Last time: it sat there with `PLAY` lit.*
+2. **`PLAY` with `REV` on.** A hand and a message saying why. Turn `REV` off and press `PLAY`: it plays forward.
+3. **A hot cue with `REV` on.** It goes to the cue and plays backwards from there.
+4. **`SLIP`.** The same with `SLIP` on. Say what happens when `REV` goes off.
+5. **A loop at the very start.** If you can set one, with the deck in it, `REV` holds in the loop and doesn't stop.
 
 ### Pressing harder
-1. **`BRAKE`.** *Not run last time.* On a playing deck, in a loop, during a roll, and with `SLIP` on. Does it stop cleanly, does `PLAY` start it again, and does the time keep going sensibly?
-2. **Memory cues and saved loops.** *Not recalled during the stress run last time.* Repeat the 10 minutes of everything, with both decks playing and synced, with stems split. This time also recall memory cues and saved loops from `MEM`, including during held rolls and running loops, and use `REV`.
-3. **Deck 2's stop.** You saw deck 2 stop by itself once. Try for it: tap `ROLL` so it stays lit on Exhilarate, wait until the time on the deck plus the wait would pass 2:25, then let go. The deck should now stop at the end of the track, because that's where it would have got to. Then try the old way round: during the latched `ROLL`, seek, wait, then let go. The deck must not stop. Report any other stop you can't explain, with the steps.
-4. **Run out with everything on.** Let a track run out with `SLIP`, `REV` on and off, an effect, an echo out and a running loop in turn. Each must stop cleanly, or hold in the loop, and `PLAY` must get out every time.
+1. **Two fingers on everything.** For about 5 minutes, hold a `ROLL` or `SLICER` pad with one finger, and with the other use whatever's on screen: each tab, `BROWSE`, the gear, `REC`, `DEL`, loop keys, `SAVE LOOP`, `REV`, `SLIP`, `Q`, `PLAY`, `CUE`, the crossfader. After each, lift and check the deck's place and that a plain roll still works. Report any that leave something stuck.
+2. **The same with `CUE`** held, and with a `HOT CUE` pad held, for a shorter list: tabs, `BROWSE`, `PLAY`.
+3. **Frames of a held roll.** The first two frames of one AB2 run barely moved last time. Record a video of a held roll with the overview tap, and read the clock across it. Report anything like it.
+4. **A long run.** 10 minutes of everything again, on the changes since last time. Crashes, dropouts, or a stop you can't explain?
 
 ---
 
@@ -223,10 +226,10 @@ Answer honestly, as someone seeing it fresh. Criticism is the useful part.
 
 ## Results format
 
-Write `docs/COMPUTER_USE_RESULTS_5.md` like this:
+Write `docs/COMPUTER_USE_RESULTS_6.md` like this:
 
 ```markdown
-# Hands-on results, part 5, <date>
+# Hands-on results, part 6, <date>
 
 Commit tested: <git rev-parse --short HEAD>
 Device: <simulator and screen size>
@@ -240,7 +243,7 @@ Tooling limits: <what you couldn't do>
 - Steps: ...
 - Expected: ...
 - Actual: ...
-- Screenshot: docs/test-results-5/...
+- Screenshot: docs/test-results-6/...
 - Crash report (if any): ...
 
 ## Looks wrong

@@ -60,13 +60,15 @@ xcrun simctl io booted screenshot screenshot.png
 - **Beats go through `BeatGrid`** (`Model/BeatGrid.swift`), never `bpm` and `firstBeat` sums, because a track can change tempo. `Deck.bpm`, `beatFrames` and `firstBeatFrame` describe the section at the playhead, and `Deck.tick` tells the core when that changes. Use `beatPosition(frame)` and `frame(atBeat:)` for anything spanning more than a beat.
 - **Edit a loaded track through `Deck.updateTrack`:** its closure runs once, so anything it creates has one ID in both the deck and the library. A deck holding the same track picks the change up.
 - **A held roll or slice borrows the loop** (`BorrowedLoop`) and gives back what was set, running or not, so nothing else finds its tiny loop afterwards. A loop that was running comes back where it would have got to. Going somewhere else during one (a seek, a cue, a recalled loop) ends it through `endMomentaryPads`, and letting go of the pad afterwards does nothing.
+- **A held control whose view goes away has been let go:** `Key`, `Pad` and `TransportButton` release from `onDisappear`, since a touch never ends once its view has gone. They keep that in a `Hold` object and not in `@State`, which can't be read back until the next update.
 - **A running loop holds in reverse too,** wrapping from its start back to its end. Only a deck that was in the loop gets caught, so a loop waiting further on doesn't, and a jog goes where the hand takes it.
+- **A deck going backwards stops at the start of the track,** and `PLAY` says why it can't start from there.
 - **A deck that's run out starts again from its cue, on `PLAY` or `CUE`,** and `CUE` doesn't move the cue while it's at the end. A roll held past the end of the track does stop the deck on release, because that's where the track would have got to.
 - **The same track on both decks shares one split** (`StemJob.shared`), with the same buffers. It stops only when every deck waiting for it has gone.
 - **A loop can be waiting up ahead** (`Deck.isLoopAhead`): on, but the deck hasn't reached it. Anything that moves the deck or the loop has to allow for that. Go through `leaveLoop(ifGoingTo:)` when moving the deck, or a loop behind it pulls it straight back.
 - **Track is Codable by hand:** a new field needs a line in `init(from:)` using `decodeIfPresent`, or every existing library stops loading.
 - **Beat FX are a chain of `CHEEKS_FX_LINKS` `BeatFX` units**, ahead of the stretcher. Color FX (`DSP/ColorFX.hpp`) sit after the EQ, in real time, so their beat length allows for the tempo.
-- **Beat FX are level-compensated:** at their default depth they stay out of the red on the test tracks, and within about 1.5 dB of dry. `LevelTests.testBeatFXLevels` measures it with real music. An echo out's tail goes back to full level, because there's nothing left to leave room for.
+- **Beat FX are level-compensated:** at their default depth they stay out of the red on the test tracks, and within about 1.5 dB of dry. The flanger mostly leaves out the lows. `LevelTests.testBeatFXLevels` measures it with real music, as the screen shows it: one peak over 0 dB holds a red LED up for 1.1 s, so what counts is the meter's top, not how often it's over. An echo out's tail goes back to full level, because there's nothing left to leave room for.
 - **The isolator is out of the path with every band at 1.** Its bands add back flat but with the phase turned, which raised a loud master's peaks by 5 dB. It crossfades in as the first knob leaves centre.
 - **A deck's meter is `Deck.level`:** after TRIM and loudness matching, ahead of the fader, and read 3 dB down. The master meters read ahead of the limiter. Red on either means it's really too hot.
 - **Sampler voices each have a `Declicker`**, including loop wraps. Press and stop are last-one-wins in the C API, so a stale stop can't eat a new press.
@@ -92,6 +94,7 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **Anything along the screen's top edge is a `TouchSurface` key,** not a SwiftUI `Button`. A button there failed every tap in the hands-on test.
 - **Don't fade between pages of pads:** they change instantly. While they faded, a tap within about 0.15 s of changing tab fired the old page's pad in the hands-on test.
 - **Don't set a state and animate it back in one step:** SwiftUI only sees the end, so nothing's drawn. Use a keyframe track with a trigger. Pad flares were invisible for this reason.
+- **A control's touch can't be in anything that animates:** a press lands where the view is at that moment. The Undo key's touch is in a still copy of the capsule's layout, under which the drawn capsule arrives.
 - **Say things through `dj.say(message, kind)`:** `.refused` shows a hand and buzzes, `.done` a green tick.
 - **Everything you touch has a feel:** add a `Haptics.shared` call when you add a control. Use the existing vocabulary instead of raw generators.
 - **One blue (`Theme.accent`) for every "on" state.** Hot cues, stems and FX families have their own colours, and they match across pads, waveforms and flags.
@@ -119,4 +122,4 @@ TEST_RUNNER_CHEEKS_WRITE_ICON=1                                          # also 
 
 ## Testing on the device
 
-Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_5.md`. Read those if they exist. Earlier runs are in `docs/COMPUTER_USE_RESULTS.md`, `_2`, `_3` and `_4`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.
+Hands-on testing with computer use is scripted in `docs/COMPUTER_USE_TASK.md`, and its next results come back in `docs/COMPUTER_USE_RESULTS_6.md`. Read those if they exist. Earlier runs are in `docs/COMPUTER_USE_RESULTS.md`, `_2`, `_3`, `_4` and `_5`, each ending with what was done about them. Things only the owner can judge (a real finger, haptics, sound, heat) are in `docs/TEST_PLAN.md` §2.

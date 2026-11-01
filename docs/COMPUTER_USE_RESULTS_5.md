@@ -173,3 +173,51 @@ The two fall at the same 5.5 to 6 dB per window and sit within about 2 dB, thoug
 
 ## First impressions
 Not run, as the task says to run part 3 only if the owner asks.
+
+## What happened next
+
+Every lead was checked against the code first, and each fix has a test. The new tests were run against the old code first. They failed on the held pads, the saved loop pads, `SAVE LOOP`, `UNDO` and `REV` at the start. The flanger's was too, on the old effect, and its figures are below.
+
+**Fixed**
+- **A held pad leaving the screen (AB3):**
+  - The lead was right: the touch never ends once its view has gone, so nothing called `rollEnd`. `Key`, `Pad` and `TransportButton` now let go when their view goes, exactly as if the finger had lifted, and the deck lands where the track has got to.
+  - It covers changing tab and opening the browser. The same route would also have stuck `CUE` held as the browser opens (the deck would have played on after the lift), a held `FX` pad and a gate sample on `SAMPLE`.
+  - The jog now lets go too when the browser takes it away.
+  - Backgrounding or a call: any touch still down is let go when the app stops being active, in case the system doesn't cancel it.
+  - A sheet covering the screen doesn't take the deck away, so its touch ends in the ordinary way. That one's on the retest.
+- **`FLANGER` in the red:** see below. It no longer reaches the red on either track.
+- **Saved loop pads:** the lead was right. The pads now also watch the loop's marks, which `tick` copies from the audio core, so the right one lights within a thirtieth of a second.
+- **`SAVE LOOP` during a roll:** saves the loop underneath, or says "Set a loop first, then save it." if there wasn't one.
+- **`UNDO` straight after a delete:** the lead was right. The key's touch was scaling in with the capsule. It's now in a still copy of the capsule's layout, so it's in place from the first frame, with only the drawn capsule animating. With the old arrangement a touch at the key's place missed for 7 or 8 of the first 26 frames sampled, and now it misses for none.
+- **`REV` reaching the start:** stops the deck and `PLAY` goes out, as at the end of a track. `PLAY` there with `REV` still on says why it can't, rather than doing nothing. A loop that starts at the very start still holds.
+
+**Why `FLANGER` read 16.2% and 8.2% live, and under 1% offline.** Both figures were right, but they measured different things. My offline figure counted how often the meter was over 0 dB. The report's frames counted red LEDs, and `MeterLiveView` holds a peak for 1.1 s. So one peak just over 0 dB shows red for about 9% of a 13 s run, and two for about 18%, which fits the report's two readings. Reading the meter the way the screen does, with the old flanger and from five start points, the top was +0.6 dB and the red up to 18.4%. It varies because the effect keeps time with the beat, so where it starts decides which peaks it catches.
+
+So what counts is whether the meter's top goes over 0 dB at all. Doing that sweep for every effect found three others just over on Severe Tire Damage that a single start point hadn't caught: `PHASER` and `CRUSH` with `PHASER` at +0.2 dB, and `PING PONG` at +0.3 dB.
+
+The flanger was doubling the low end, where a loud track's peaks are. It now goes mostly over what's above about 300 Hz, which also steadies the kick and bass: a 60 Hz note rises 1.6 dB under it, down from 3.9 dB. The phaser, ping pong, echo and reverb came down a little.
+
+| Default depth, worst of 5 start points on each track | Severe Tire Damage: top, red on screen | Exhilarate: top, red on screen |
+|---|---|---|
+| Dry | -1.8 dB, 0% | -5.4 dB, 0% |
+| `FLANGER` | -0.9 dB, 0% (was +0.6 dB, up to 18.4%) | -1.4 dB, 0% |
+| `PHASER` | -0.5 dB, 0% (was +0.2 dB, up to 9.1%) | -2.5 dB, 0% |
+| `PING PONG` | -0.2 dB, 0% (was +0.3 dB, up to 9.1%) | -1.8 dB, 0% |
+| `CRUSH` and `PHASER` | -0.5 dB, 0% (was +0.2 dB, up to 8.9%) | -2.3 dB, 0% |
+| `ECHO` | -0.2 dB, 0% | -2.1 dB, 0% |
+| `REVERB` | -0.3 dB, 0% | -1.3 dB, 0% |
+| `SPIRAL` | -0.5 dB, 0% | -2.4 dB, 0% |
+| `FILTER` | -2.4 dB, 0% | -0.8 dB, 0% |
+
+These are measured offline, on the full mix, and worked out from `MeterLiveView`'s ballistics, not read off the screen. The retest repeats them live.
+
+**What still goes red:** three effects chained at default depth (`ECHO`, `FLANGER` and `REVERB`: top +0.8 dB) and most effects at full depth (`PHASER` on Severe Tire Damage: +1.0 dB, up to 62% of frames). A peak of a dB or so holds the LED up for a long time, so the percentage sounds worse than it is. I've left those: asking for that much effect should show on the meter, and the limiter is there for them.
+
+**Worth knowing:**
+- If a pad and a tab go down in the same touch event, as the test tool's two fingers do, the pad's press animation seems to hold the old page on screen for a moment, so the roll runs on a little longer. With 120 ms allowed the test still failed, and with 1.5 s it passed. The exact delay wasn't measured, so the retest asks for it. A real hand won't usually do this.
+- The touch for when the app stops being active, and the jog's, can't be driven by a test here, so they're unproven. The jog is on the retest.
+
+**Not fixed**
+- **`LIM` lighting below the red, tab spacing and `LIST`'s wording:** as before, not in this batch.
+- **AB2's first two frames:** nothing to go on, and the rest of that run was normal. The retest watches for it.
+- **Nobody has heard any of this:** the flanger's sound has changed the most. It's on the owner's list in `docs/TEST_PLAN.md` §2.
