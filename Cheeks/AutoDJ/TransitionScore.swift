@@ -245,7 +245,8 @@ enum TransitionAudition {
     private static let settleBars = 4
 
     /// `levelA` and `levelB` are each channel's trim and fader together, as the live mixer has them.
-    static func review(_ score: TransitionScore, stemsA: [PCM16Stereo], stemsB: [PCM16Stereo], levelA: Float, levelB: Float, isCancelled: () -> Bool = { false }) -> Review? {
+    static func review(_ score: TransitionScore, stemsA: [PCM16Stereo], stemsB: [PCM16Stereo], levelA: Float, levelB: Float, isCancelled: () -> Bool = { false },
+                       listen: (([Float], [Float]) -> Void)? = nil) -> Review? {
         let sr = AudioConfig.sampleRate
         let a = DeckRenderer(sampleRate: sr), b = DeckRenderer(sampleRate: sr)
         a.setSources(stemsA)
@@ -284,6 +285,7 @@ enum TransitionAudition {
                 right.withUnsafeMutableBufferPointer { r in cheeks_engine_render(core, l.baseAddress!, r.baseAddress!, Int32(block)) }
             }
             limiter = max(limiter, cheeks_engine_limiter_reduction(core))
+            listen?(left, right)
             for i in 0..<block {
                 let y = filter.process((left[i] + right[i]) / 2)
                 running += Double(y * y)
