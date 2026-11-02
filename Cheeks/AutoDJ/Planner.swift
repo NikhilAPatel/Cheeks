@@ -184,11 +184,13 @@ enum TransitionPlanner {
                     let full = max(0, min(1, (a.level(exit - 8, exit) + 8) / 8))
                     let common = 1.2 * exitFit + 1.5 * drop + b.early(entry) + 0.5 * enterFit + 0.6 * full - stretch * 3
                     if exit + 16 < a.bars, a.isFull(exit, exit + 4) {
-                        out.append(TransitionPlan(move: .loopDrop, exit: exit, entry: entry, score: common + 0.15))
+                        // The owner's favourite so far, for the beat of air before the drop.
+                        out.append(TransitionPlan(move: .loopDrop, exit: exit, entry: entry, score: common + 0.35))
                     }
                     if a.isFull(exit - 4, exit) {
                         out.append(TransitionPlan(move: .echoDrop, exit: exit, entry: entry, score: common + 0.05))
-                        out.append(TransitionPlan(move: .brakeDrop, exit: exit, entry: entry, score: common - 0.1))
+                        // Too jarring when there's a smoother way, so it's for tracks nothing else can join.
+                        if cutsOnly { out.append(TransitionPlan(move: .brakeDrop, exit: exit, entry: entry, score: common - 0.1)) }
                     }
                 }
                 if cutsOnly { continue }

@@ -44,6 +44,19 @@ On 16 Creative Commons dance tracks from [MTG-Jamendo](https://mtg.github.io/mtg
 
 **Not measured: whether any of it sounds good.** The [Listening Room](https://claude.ai/artifact/25J24fKfhoHEMu5QdouQzW) collects blind ratings against a plain crossfade, on what the app's own code renders. That's the real test.
 
+## What the owner has said by ear
+
+On their own tracks, from the local Listening Room (`tools/autodj/local_room.py`):
+
+- **Loop build: Wow.** The one beat of air before the drop created suspense. It now scores higher.
+- **Vocal ride: Good.** The handover between the two vocals worked, and it may suit other songs better.
+- **Vocal tease: Good.** The new vocal came in well, but the new track's arrival was better on the loop build.
+- **Bass swap: OK.** Pleasant, but plain, close to a normal crossfade.
+- **Brake drop: Bad.** Way too jarring. It's now only used between tracks nothing else can join.
+- **Crossfade, 125 into 126 BPM:** the second song felt far too slow. **To do: measure how fast a track feels, beyond its BPM** (how busy the drums and bass are), and avoid or work around big differences.
+
+That's six takes, mostly from one pair, so these are early signs.
+
 ## What to train, and what not to
 
 **Not worth training:**
