@@ -49,6 +49,7 @@ struct CompactScreen: View {
         GeometryReader { geo in
             VStack(spacing: 2) {
                 TopBar(showLibrary: $showLibrary)
+                    .zIndex(1)
                 if showLibrary {
                     BrowserView()
                         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))

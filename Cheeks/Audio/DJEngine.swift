@@ -68,16 +68,19 @@ final class DJEngine {
         didSet { UserDefaults.standard.set(recordingFormat.rawValue, forKey: "recordingFormat") }
     }
     /// Short message for the status capsule (saved, low storage, errors).
-    /// A new message clears any Undo offered with the last one, which it'd no longer apply to.
+    /// A new message clears any Undo or rating offered with the last one, which it'd no longer apply to.
     var statusMessage: String? {
         didSet {
             statusKind = .done
             undoAction = nil
+            rateAction = nil
         }
     }
     private(set) var statusKind: StatusKind = .done
     /// Set alongside a message when what just happened can be taken back.
     var undoAction: (@MainActor () -> Void)?
+    /// Set alongside a message when Auto DJ's just finished a move, to say what you thought of it.
+    var rateAction: (@MainActor (_ liked: Bool) -> Void)?
 
     // Preview
     /// The track being auditioned from the browser.
@@ -123,6 +126,13 @@ final class DJEngine {
         autoDJ.loadTrack = { [weak self] id, deck in
             guard let self, let track = self.library?.track(id), self.load(track, onto: deck) else { return nil }
             return track.title
+        }
+        autoDJ.isAskingForRating = { [weak self] in self?.rateAction != nil }
+        autoDJ.askForRating = { [weak self] move, from, to in
+            self?.rateAction = { [weak self] liked in
+                self?.autoDJ.ratings.add(TransitionRating(move: move, from: from, to: to, liked: liked, at: Date()))
+                self?.say(liked ? "Got it. More like that." : "Got it. Less like that.", .done)
+            }
         }
         buildGraph()
         updateVolumes()

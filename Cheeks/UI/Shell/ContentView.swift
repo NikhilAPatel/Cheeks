@@ -241,7 +241,7 @@ struct TopBar: View {
             // On something with a size, because with no message showing the capsule has none.
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay { StatusCapsule() }
+                .overlay { if layout != .portrait { StatusCapsule() } }
             AnalysisIndicator()
             EngineLoad()
             if !layout.isCompact {
@@ -260,6 +260,10 @@ struct TopBar: View {
         }
         .padding(.horizontal, 6)
         .frame(height: 26)
+        // Held upright there's no room for a message in the bar, so it hangs just below it for its few seconds.
+        .overlay(alignment: .top) {
+            if layout == .portrait { StatusCapsule().padding(.horizontal, 6).offset(y: 28) }
+        }
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }
         // Here rather than on the pads, since both decks can be showing them at once.
@@ -387,7 +391,7 @@ struct StatusCapsule: View {
             }
             // The key's touch is in a copy that's laid out the same and never moves, so a press lands
             // on it from the first frame, while the capsule's still arriving.
-            if let shown, dj.undoAction != nil {
+            if let shown, hasKeys {
                 row(shown.text, symbol: shown.symbol, tint: shown.tint, touchOnly: true)
                     .transition(.identity)
             }
@@ -396,12 +400,9 @@ struct StatusCapsule: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.savingRecordings)
         .task(id: dj.statusMessage) {
             guard dj.statusMessage != nil else { return }
-            // Undo stays around longer: you may need a moment to realise you want it.
-            try? await Task.sleep(for: .seconds(dj.undoAction == nil ? 5 : 8))
-            if !Task.isCancelled {
-                dj.statusMessage = nil
-                dj.undoAction = nil
-            }
+            // One with keys stays around longer: you may need a moment to realise you want them.
+            try? await Task.sleep(for: .seconds(hasKeys ? 8 : 5))
+            if !Task.isCancelled { dj.statusMessage = nil }
         }
     }
 
@@ -410,6 +411,8 @@ struct StatusCapsule: View {
             .background(Capsule().fill(.black))
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.6), radius: 8, y: 3)
+            // What's underneath still works. The keys' touches are in the copy over this.
+            .allowsHitTesting(false)
     }
 
     private func row(_ text: String, symbol: String?, tint: Color, touchOnly: Bool) -> some View {
@@ -436,11 +439,38 @@ struct StatusCapsule: View {
                         .frame(width: 46, height: 18)
                 }
             }
+            if dj.rateAction != nil {
+                rateKey(liked: true, touchOnly: touchOnly)
+                rateKey(liked: false, touchOnly: touchOnly)
+            }
         }
         .padding(.leading, 10)
-        .padding(.trailing, dj.undoAction == nil ? 10 : 3)
+        .padding(.trailing, hasKeys ? 3 : 10)
         .frame(height: 24)
         .accessibilityHidden(touchOnly)
+    }
+
+    /// As with Undo, the touch is in the copy that never moves. These two sit side by side, so they only reach past
+    /// their edges up and down.
+    @ViewBuilder
+    private func rateKey(liked: Bool, touchOnly: Bool) -> some View {
+        if touchOnly {
+            Color.clear.frame(width: 30, height: 18).overlay {
+                TouchSurface(onDown: { _ in rate(liked) }).padding(.vertical, -6).padding(.horizontal, -2)
+            }
+        } else {
+            Key(color: Theme.accent, feel: .none, accessibilityName: liked ? "That was good" : "That wasn't good", onPress: { rate(liked) }) {
+                Image(systemName: liked ? "hand.thumbsup.fill" : "hand.thumbsdown.fill").font(.system(size: 9, weight: .semibold))
+            }
+            .frame(width: 30, height: 18)
+        }
+    }
+
+    private var hasKeys: Bool { dj.undoAction != nil || dj.rateAction != nil }
+
+    private func rate(_ liked: Bool) {
+        Haptics.shared.confirm()
+        dj.rateAction?(liked)
     }
 
     private func undo() {

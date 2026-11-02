@@ -255,6 +255,8 @@ struct TransitionChoice {
     var avoid: Set<TransitionMove> = []
     /// A mix gives each track its time, so a way in that leaves little of the new track counts against itself.
     var wantsTimeOnNext = false
+    /// What each move gains or loses from how it's been rated.
+    var taste: [TransitionMove: Double] = [:]
 
     var playingBPM: Double { mapA.bpm * rateA }
 
@@ -274,7 +276,7 @@ struct TransitionChoice {
             .filter { !avoid.contains($0.move) }
             .map { plan -> TransitionPlan in
                 var plan = plan
-                plan.score -= penalty[plan.move] ?? 0
+                plan.score += (taste[plan.move] ?? 0) - (penalty[plan.move] ?? 0)
                 if wantsTimeOnNext { plan.score -= Self.lateLanding(plan, barsInNext: mapB.barCount) }
                 return plan
             }

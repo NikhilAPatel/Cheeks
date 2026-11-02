@@ -92,6 +92,14 @@ So it's a little better on every row, but it doesn't find a single extra way in.
 
 Folder order is a harsh test, as it's in no musical order. Whether it holds together for an hour is a question for ears. Nothing has been measured on a phone either: a split has to finish while the track before it plays, and how long a split takes there is unknown.
 
+## Ratings
+
+After a move, the message has a thumbs up and a thumbs down for 8 seconds (`TransitionRatings`). They're kept on the device in `auto-dj-ratings.json`, with the move and both tracks' titles.
+
+They lean on the choice and never rule a move out, so a move with bad ratings still gets picked if nothing else passes the audition. A move gains or loses `0.6 × (liked − disliked) / (rated + 2)`, over its latest 20 ratings. One press is worth 0.2, about the same as having played that move twice ago. It's by move only for now. Whether a move suits a particular pair of tracks would need far more ratings than one person gives.
+
+**The ratings from the listening room aren't in here.** That's a different set of takes, and the owner's rating them by ear, to tune the moves themselves.
+
 ## What to train, and what not to
 
 **Not worth training:**

@@ -43,6 +43,12 @@ final class AutoDJ {
     @ObservationIgnored private var leaveFrom = 0
     /// Tracks stems have been asked for during this set, so a failed split isn't tried over and over.
     @ObservationIgnored private var askedForStems = Set<UUID>()
+    /// How moves have been rated, which leans on what's chosen next.
+    @ObservationIgnored var ratings = TransitionRatings()
+    /// Asks what someone thought of a move that's just ended: the move, and the tracks it went from and to.
+    @ObservationIgnored var askForRating: ((TransitionMove, String, String) -> Void)?
+    /// Whether that's still on screen, where a passing message would take its place.
+    @ObservationIgnored var isAskingForRating: () -> Bool = { false }
 
     @ObservationIgnored private let core: OpaquePointer
     @ObservationIgnored private let decks: [Deck]
@@ -182,7 +188,8 @@ final class AutoDJ {
             } else if let id = loadNext(onto: waiting) {
                 mixSet?.next = id
                 let title = waiting.loadingTrack?.title ?? waiting.track?.title
-                if let title { say("Up next: \(title).", .info) }
+                // The deck shows what's next anyway, and this comes straight after a move, while it's asking about that.
+                if let title, !isAskingForRating() { say("Up next: \(title).", .info) }
             }
             return
         }
@@ -299,7 +306,7 @@ final class AutoDJ {
                                       lagA: lagFor(outgoing, rateA, outgoing.keyShift), lagB: lagFor(incoming, playingBPM / mapB.bpm, 0),
                                       lagShifted: cheeks_deck_stem_lag(incoming.renderer.handle, playingBPM / mapB.bpm),
                                       earliest: max(soonest, leaveFrom), recentMoves: recentMoves,
-                                      avoid: mixSet == nil ? [] : [.brakeDrop], wantsTimeOnNext: mixSet != nil)
+                                      avoid: mixSet == nil ? [] : [.brakeDrop], wantsTimeOnNext: mixSet != nil, taste: ratings.taste)
         planning = Task.detached(priority: .userInitiated) { [weak self] in
             let chosen = choice.choose(isCancelled: { Task.isCancelled })
             if Task.isCancelled { return }
@@ -465,7 +472,9 @@ final class AutoDJ {
     private func finish() {
         guard let outgoing, let incoming else { return reset() }
         let title = score?.plan.move.title ?? "Transition"
-        if let move = score?.plan.move { recentMoves.append(move) }
+        let move = score?.plan.move
+        let from = outgoing.track?.title ?? "", to = incoming.track?.title ?? ""
+        if let move { recentMoves.append(move) }
         recentMoves = Array(recentMoves.suffix(4))
         outgoing.pause()
         clearAfterMove(outgoing)
@@ -476,6 +485,7 @@ final class AutoDJ {
         reset()
         Haptics.shared.confirm()
         say("\(title) done. Deck \(number) is on.", .done)
+        if let move { askForRating?(move, from, to) }
     }
 
     /// Hands a deck back with everything neutral.

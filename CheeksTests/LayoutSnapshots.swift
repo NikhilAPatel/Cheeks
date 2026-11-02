@@ -87,6 +87,11 @@ final class LayoutSnapshots: XCTestCase {
         try await writeAppIcon(to: dir)
         dj.decks.forEach { $0.padMode = .hotCue }
 
+        dj.say("Echo throw done. Deck 2 is on.", .done)
+        dj.rateAction = { _ in }
+        try await snapAll("rating", ContentView(opensBrowserWhenEmpty: false))
+        dj.statusMessage = nil
+
         // Not saved: nothing here calls `library.update`, which is what writes the library to disk.
         let saved = library.tracks
         library.tracks = Self.libraryFixture

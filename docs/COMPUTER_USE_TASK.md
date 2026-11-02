@@ -99,6 +99,14 @@ A plain roll sometimes carried on from where it was instead of going back. The c
 ### AW. The jog when the app goes away
 Hold the jog's middle with the deck playing, and send the app away with `simctl launch` of Settings during the hold, for about 8 s. The clock should carry on from that moment, not a few seconds later. Bring it back: the deck runs normally. *Last time: it stayed held for about 5 s.*
 
+### AX. Rating a move
+New, so nobody's pressed it. When a move from AP ends, the message at the top has a thumbs up and a thumbs down, for 8 s.
+1. **The keys.** Press each after a separate move. It should say `Got it. More like that.` or `Got it. Less like that.`, and `auto-dj-ratings.json` in `Library/Application Support/` should get a line with the move, both titles and your answer. Screenshot `ax1-rating`. Press just past each key's edges too, and say how far they reach. Do the two keys ever take each other's press?
+2. **Ignoring it.** It should go by itself after about 8 s, with nothing saved.
+3. **In a mix.** During AR, the question should stay up for its 8 s as the next track loads, with no `Up next` over it. A later message may replace it.
+4. **Does it lean?** Press thumbs down on one move about six times, and see if the next few plans pick others. A move can still come back if nothing else passes, so report what you saw rather than pass or fail.
+5. **Held upright.** On a small iPhone held upright, messages now hang below the top bar. With an Undo and a rating showing: is the text readable, and can you press the keys? Can you still use the overview and the browser's keys beside and under the capsule?
+
 ### AM. Auto DJ: set up
 
 Not run yet. Nobody but unit tests has pressed the real key. Copy three club tracks in as well as the usual two, then relaunch:

@@ -216,6 +216,7 @@ final class AutoDJTests: XCTestCase {
         // First move, then the third track arrives on the deck that's just been freed.
         try await run(dj, until: { dj.decks[1].isPlaying && !dj.decks[0].isPlaying && dj.decks[0].track?.id == ids[2] }, seconds: 400)
         XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        XCTAssertNotNil(dj.rateAction, "Loading the next track doesn't take the question away")
         // Second move, leaving nothing in the queue.
         try await run(dj, until: { dj.decks[0].isPlaying && !dj.decks[1].isPlaying }, seconds: 400)
         XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 0)
@@ -224,6 +225,77 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.autoDJ.mixSet == nil }, seconds: 400)
         XCTAssertEqual(dj.statusKind, .done)
         XCTAssertFalse(dj.autoDJ.isActive)
+    }
+
+    // MARK: Ratings
+
+    private func temporaryRatings() -> TransitionRatings {
+        TransitionRatings(url: FileManager.default.temporaryDirectory.appending(path: "ratings-\(UUID().uuidString).json"))
+    }
+
+    private func rating(_ move: TransitionMove, liked: Bool) -> TransitionRating {
+        TransitionRating(move: move, from: "A", to: "B", liked: liked, at: Date())
+    }
+
+    func testAMoveAsksWhatYouThoughtAndRemembers() async throws {
+        let dj = try ready(bpmB: 120)
+        dj.autoDJ.ratings = temporaryRatings()
+        XCTAssertNil(dj.rateAction, "Nothing to rate yet")
+        dj.autoDJ.press()
+        try await run(dj) { if case .running = dj.autoDJ.phase { return true } else { return false } }
+        XCTAssertNil(dj.rateAction, "Not until it's over")
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertEqual(dj.statusKind, .done)
+
+        let action = try XCTUnwrap(dj.rateAction)
+        action(false)
+        XCTAssertEqual(dj.autoDJ.ratings.all.count, 1)
+        XCTAssertEqual(dj.autoDJ.ratings.all.last?.liked, false)
+        XCTAssertNil(dj.rateAction, "It's been answered")
+        XCTAssertEqual(dj.statusMessage, "Got it. Less like that.")
+    }
+
+    func testAnotherMessageTakesTheRatingAway() throws {
+        let dj = try ready(bpmB: 120)
+        dj.say("Echo throw done. Deck 2 is on.", .done)
+        dj.rateAction = { _ in }
+        dj.say("Something else happened.", .info)
+        XCTAssertNil(dj.rateAction)
+    }
+
+    func testRatingsAreKept() {
+        let url = FileManager.default.temporaryDirectory.appending(path: "ratings-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let first = TransitionRatings(url: url)
+        first.add(rating(.loopDrop, liked: true))
+        first.add(rating(.brakeDrop, liked: false))
+        XCTAssertEqual(TransitionRatings(url: url).all, first.all)
+    }
+
+    func testABadRatingsFileIsNoRatings() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "ratings-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("not json".utf8).write(to: url)
+        XCTAssertEqual(TransitionRatings(url: url).all, [])
+    }
+
+    func testRatingsLeanOnAMoveWithoutDecidingIt() {
+        XCTAssertEqual(TransitionRatings.taste(from: []), [:])
+        func taste(_ pattern: [Bool]) -> Double {
+            TransitionRatings.taste(from: pattern.map { rating(.echoDrop, liked: $0) })[.echoDrop] ?? 0
+        }
+        XCTAssertEqual(taste([false]), -0.2, accuracy: 0.001, "One press doesn't decide much")
+        XCTAssertEqual(taste([true]), 0.2, accuracy: 0.001)
+        XCTAssertEqual(taste([true, false]), 0, accuracy: 0.001)
+        XCTAssertLessThan(taste(Array(repeating: false, count: 6)), taste([false]))
+        XCTAssertGreaterThanOrEqual(taste(Array(repeating: false, count: 200)), -0.6)
+
+        // A change of mind shows, because only the latest count.
+        let oldThenNew = Array(repeating: false, count: 40) + Array(repeating: true, count: 20)
+        XCTAssertGreaterThan(taste(oldThenNew), 0.5)
+
+        // And one move's ratings say nothing about another's.
+        XCTAssertNil(TransitionRatings.taste(from: [rating(.loopDrop, liked: false)])[.echoDrop])
     }
 
     func testAMixMindsLandingLateInTheNextTrack() {

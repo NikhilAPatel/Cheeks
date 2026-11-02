@@ -74,6 +74,8 @@ Press `AUTO` with one deck playing and another loaded, and it mixes between them
 
 Press `MIX` in the browser and it does that through the whole list on screen, in the order it's showing: it loads each next track itself, gives each its time, and mixes into it without anyone touching anything. `NEXT` puts the list in the best order to play from what's on the deck, by tempo and key.
 
+After a move, the message at the top has a thumbs up and a thumbs down. They stay on your phone, and lean what it chooses towards what you like.
+
 Once a track's stems are ready, its drums also correct its beat grid, unless you set the grid yourself or imported it.
 
 ## Getting it onto your phone
