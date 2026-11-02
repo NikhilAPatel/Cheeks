@@ -27,16 +27,22 @@ One button: with two tracks loaded, the app performs a creative transition from 
 
 I found no reliable account of how Dom Dolla builds his transitions. The moves are general house and tech house technique.
 
-## Measured in the lab so far
+## Measured so far
 
 On 16 Creative Commons dance tracks from [MTG-Jamendo](https://mtg.github.io/mtg-jamendo-dataset/):
 
-- **Grids:** 12 of 16 tracks have kicks within 13 ms of a straight grid, and tempos land on whole numbers. The other four are flagged by the drift measure and refused for overlapping moves.
-- **Downbeats:** my phase agrees with [Beat This](https://github.com/CPJKU/beat_this) (a separately trained model, MIT licence) on 15 of 16 tracks. The one disagreement is a track the drift check already refuses. Neither model is ground truth, but they get there independently.
-- **Lock:** the incoming deck ends each move within a nanosecond or so of where the clock says it should be, on the real engine.
-- **The audition earns its place:** across five pairs it rejected a limiter overload, several holes, and drops landing 2 to 3 dB low.
+- **Grids:** 12 of 16 tracks have kicks within 13.5 ms of a straight grid, and most tempos land on whole numbers. The other four are flagged as not steady, and only get moves that don't overlap anything.
+- **Downbeats:** the lab's phase agrees with [Beat This](https://github.com/CPJKU/beat_this) (a separately trained model, MIT licence) on 15 of 16 tracks. The one disagreement is a track the steadiness check already flags. Neither is ground truth, but they get there independently.
+- **The app's old grid:** on the same tracks it had the wrong 1 on 8 of 16 and sat about 100 ms late on 4. It gave one steady track a false tempo map too. Stems now correct it.
+- **Kick attacks against the corrected grid:** 5.2 ms median on the 12 steady tracks, with 2.0 ms of spread between tracks. The old grid's spread was 44 ms.
+- **Swift against Python:** same tempo on all 12 steady tracks, same 1 on 11, and near-identical stem maps. `tools/autodj/compare_map.py` checks it. The one that differs (jam225361) is a low-confidence downbeat.
+- **Phrase lines:** 32% of [CUE-DETR](https://arxiv.org/abs/2407.06823)'s cue points on the 12 steady tracks fall on our 16-bar lines (chance is 6%), and 44% on 8-bar lines (chance is 12%). A sharper detector scored lower, so it was dropped. CUE-DETR is a development check and doesn't ship: it's a heavy model, and it needs a lot of images per track.
+- **Lock:** the incoming deck ends each move within a fraction of a microsecond of where the clock says.
+- **First kick of a drop on a stretched deck:** was about 60 dB down. It's now within about 1 dB of the kicks after it on three of four test tracks, and 6 dB louder on the fourth.
+- **The audition earns its place:** across six pairs it rejected holes, a bump, a pushed limiter and drops landing low.
+- **Speed on this M1 Pro:** a track map takes about 2 s, a plan 10 ms, and a 60 s audition under a second. Nothing has been measured on a phone.
 
-**Not measured: whether any of it sounds good.** The [Listening Room](https://claude.ai/artifact/25J24fKfhoHEMu5QdouQzW) collects blind ratings against a plain crossfade. That's the real test.
+**Not measured: whether any of it sounds good.** The [Listening Room](https://claude.ai/artifact/25J24fKfhoHEMu5QdouQzW) collects blind ratings against a plain crossfade, on what the app's own code renders. That's the real test.
 
 ## What to train, and what not to
 
@@ -61,9 +67,15 @@ On 16 Creative Commons dance tracks from [MTG-Jamendo](https://mtg.github.io/mtg
 - **Test music:** these tracks aren't club hits. Quality has to be judged on music the owner actually plays.
 - **Phone speed:** stem splitting ran about 12× real time on this Mac's GPU, and nothing has been measured on a phone. The best moves need both tracks split.
 
-## App plan
+## In the app
 
-1. **Timeline in the core.** A preallocated list of control moves, read by the render thread, so a stem cut lands in the right block. Set before the move starts, and never allocated on the render path.
-2. **Port the map and planner to Swift,** and run them after stems finish, so the plan is ready before the button is pressed.
-3. **The button.** `AUTO` on the mixer. Tap: it says what it'll do and when ("Bass swap, in 16 bars"). Tap again: cancel. Touching a control it's moving takes that control back.
-4. **Ratings in the app:** a thumbs up or down after each move.
+- **`AUTO`** on the mixer. It needs one deck playing, the other loaded and stopped, and stems on both. It waits for stems that are still splitting.
+- **Press:** plans, auditions, then waits for the bar and counts down. Press again to call it off.
+- **Mid-move:** the knobs and stem levels follow the score, and touching one takes it back. Pressing `AUTO` stops the score and leaves the decks as they are.
+- **At the end:** the old deck's stopped and both decks are back to neutral. The new track carries on at the playing tempo.
+
+**Next:**
+- Tune moves and weights from the ratings.
+- Ratings in the app: a thumbs up or down after each move.
+- "What should I play next?", from the same planner.
+- Auto DJ through a whole playlist.

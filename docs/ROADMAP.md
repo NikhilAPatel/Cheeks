@@ -25,15 +25,8 @@ The owner was advised against it: the screen's already dense and four sets of st
 - Auto-cue to the first sound instead of the first beat.
 - Jump to the next or previous phrase.
 
-### 3. Auto DJ (L), asked for by the owner
-One button: with two tracks loaded, the app performs a creative transition from the playing deck to the other, aiming for a touring house DJ rather than a crossfade.
-- **No generated audio:** it plays the real stems through the real controls, so the sound stays clean, it can be interrupted, and the knobs visibly move.
-- **Conductor (M):** a beat-locked timeline of control moves, written ahead of time and read by the render thread, so a stem cut lands on the beat. Touching a control takes it back from the timeline.
-- **Recipes (M):** bass swap, drum bridge, loop and build, vocal over the next track's instrumental, vocal tease, echo out to a drop. Each states what it needs: stems, a key match, a vocal, a breakdown.
-- **Planner (M):** new per-bar stem activity for each track, then every out point, in point and recipe is filtered by hard rules (on a phrase, never two basslines, two vocals only if the keys agree) and ranked.
-- **Audition (M):** render the top candidates offline and score them for low-end clash, vocal clash and loudness dips before choosing.
-- **Taste (S, then M):** a thumbs up or down after each one tunes the ranking. Train a model on real mixes only if that stops improving.
-- **Needs:** club tracks to tune on, the owner's ears, and better phrases (Phase 2), which this depends on. Without stems it falls back to EQ-only moves.
+### 3. Auto DJ: built, being tuned by ear
+`docs/AUTO_DJ.md` has the design, the evidence and what's next. Still to come: ratings in the app, "what should I play next?", and mixing through a whole playlist.
 
 ---
 

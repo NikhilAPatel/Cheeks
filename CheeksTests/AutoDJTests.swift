@@ -143,6 +143,27 @@ final class AutoDJTests: XCTestCase {
         XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
     }
 
+    func testLoadingAnotherTrackCallsItOff() async throws {
+        let dj = try ready()
+        dj.autoDJ.press()
+        try await run(dj) { if case .armed = dj.autoDJ.phase { return true } else { return false } }
+        put(try map(bpm: 118, firstBar: 0.3), on: dj.decks[1], name: "C")
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting), "Nothing should start the new track at the old plan's place")
+    }
+
+    func testStartingTheWaitingDeckCallsItOff() async throws {
+        let dj = try ready()
+        dj.autoDJ.press()
+        try await run(dj) { if case .armed = dj.autoDJ.phase { return true } else { return false } }
+        dj.decks[1].play()
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
+        XCTAssertTrue(dj.decks[1].isPlaying, "It's theirs now")
+    }
+
     func testTouchingAKnobTakesItBack() {
         let dj = makeEngine()
         var steps = [CheeksAutoStep()]

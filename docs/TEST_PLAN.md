@@ -10,6 +10,17 @@
 
 Tick each item. Anything that fails: note what you did, what you heard or saw, and which track.
 
+### Auto DJ
+Load a track on each deck, play one, wait for stems, and press `AUTO`.
+- [ ] **Does it land?** Is the move on the phrase, with the new track arriving on its 1? Try tracks you know well.
+- [ ] **Would you have done that?** Rate takes in the [Listening Room](https://claude.ai/artifact/25J24fKfhoHEMu5QdouQzW) too. Say which moves are worth keeping.
+- [ ] **Your own music:** does it hold up on club tracks, not just the free ones it was tuned on?
+- [ ] **Taking over:** grab a knob during a move. Does it stop following the score straight away, with nothing jumping?
+- [ ] **On the phone:** how long between pressing `AUTO` and the countdown starting? Does the phone get hot?
+
+### Beat grids
+- [ ] **Corrected grids:** after stems finish, do bar lines land on the 1 on tracks you know? Does `SYNC` keep two kicks together?
+
 ### First: things that need your finger
 - [ ] **Undo on a deleted hot cue:** set a cue on the `CUE` tab, tap `DEL`, tap the cue, then tap `UNDO` in the top bar. Does it come back every time? It failed every synthetic tap in the first hands-on test, couldn't be reproduced another way, and has been rebuilt, so your finger is the real test.
 - [ ] **The top edge:** do `BROWSE`, `REC`, the gear and `UNDO` all respond first time, or does a swipe from the top ever pull something down instead?

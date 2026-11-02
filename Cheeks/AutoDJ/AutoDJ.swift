@@ -33,6 +33,8 @@ final class AutoDJ {
     /// So the same move doesn't come up twice in a row.
     @ObservationIgnored private var lastMove: TransitionMove?
     @ObservationIgnored private var coreIsRunning = false
+    @ObservationIgnored private var plannedA: UUID?
+    @ObservationIgnored private var plannedB: UUID?
 
     init(core: OpaquePointer, decks: [Deck], say: @escaping (String, StatusKind) -> Void, prepareMixer: @escaping (Deck) -> Void) {
         self.core = core
@@ -181,6 +183,8 @@ final class AutoDJ {
             return
         }
         self.score = score
+        plannedA = outgoing.track?.id
+        plannedB = incoming.track?.id
         lanes = steps.reduce(into: [(deck: Deck, kind: CheeksAutoKind, index: Int, from: Double)]()) { lanes, step in
             guard step.kind <= Int32(CheeksAutoFilter.rawValue) else { return }
             let deck = step.deck == Int32(outgoing.index) ? outgoing : incoming
@@ -223,8 +227,30 @@ final class AutoDJ {
         if bars != barsToGo { barsToGo = bars }
     }
 
+    /// Whether someone's changed what the plan was made for: the track on either deck, or started the waiting deck.
+    private var planStillHolds: Bool {
+        guard let outgoing, let incoming, score != nil else { return true }
+        guard outgoing.track?.id == plannedA, incoming.track?.id == plannedB else {
+            cancelForChange("Auto DJ stopped: the track changed.")
+            return false
+        }
+        // Once the clock's running, it's the score that starts it.
+        if case .armed = phase, incoming.renderer.isPlaying, !cheeks_engine_auto_running(core) {
+            cancelForChange("Auto DJ stopped: you started deck \(incoming.index + 1) yourself.")
+            return false
+        }
+        return true
+    }
+
+    private func cancelForChange(_ message: String) {
+        if let outgoing, case .running = phase { cheeks_deck_restore_source(outgoing.renderer.handle) }
+        cancel()
+        say(message, .info)
+    }
+
     /// Runs with the engine's tick.
     func tick() {
+        guard planStillHolds else { return }
         switch phase {
         case .waitingForStems:
             guard let outgoing, let incoming else { return }
@@ -272,6 +298,7 @@ final class AutoDJ {
         cheeks_engine_auto_stop(core)
         let number = incoming.index + 1
         reset()
+        Haptics.shared.confirm()
         say("\(title) done. Deck \(number) is on.", .done)
     }
 
@@ -306,6 +333,8 @@ final class AutoDJ {
         outgoing = nil
         incoming = nil
         score = nil
+        plannedA = nil
+        plannedB = nil
         lanes = []
         barsToGo = 0
     }

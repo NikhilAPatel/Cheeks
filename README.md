@@ -68,6 +68,12 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 - The hardware wakes up: rings sweep on and meters run up and back at launch.
 - VoiceOver labels and adjustable actions on every control, and Reduce Motion is respected.
 
+## Auto DJ
+
+Press `AUTO` with one deck playing and another loaded, and it mixes between them. It plans from what each stem is doing in every bar, renders its best options offline to reject any let-downs, waits for the right bar, and performs through the same controls you'd use. The knobs move on their own, and touching one takes it back. Moves: bass swap, loop build, echo throw, brake drop, vocal tease and vocal ride. See `docs/AUTO_DJ.md`.
+
+Once a track's stems are ready, its drums also correct its beat grid, unless you set the grid yourself or it came from rekordbox.
+
 ## Getting it onto your phone
 
 1. On a Mac with **Xcode 16+**, open `Cheeks.xcodeproj`. If it asks for the Metal toolchain, let it download (or run `xcodebuild -downloadComponent MetalToolchain`).
