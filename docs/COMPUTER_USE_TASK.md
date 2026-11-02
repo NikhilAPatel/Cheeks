@@ -7,11 +7,11 @@
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-7/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-8/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_7.md` in the format at the end, with screenshots in `docs/test-results-7/`. Commit only those to `master`, with the message `Add hands-on test results, part 7`. **Don't push.**
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_8.md` in the format at the end, with screenshots in `docs/test-results-8/`. Commit only those to `master`, with the message `Add hands-on test results, part 8`. **Don't push.**
 
 **Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
@@ -37,7 +37,7 @@ DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.cheeks data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
 xcrun simctl launch "$SIM" com.nikhilpatel.cheeks
-mkdir -p docs/test-results-7
+mkdir -p docs/test-results-8
 ```
 
 **Things the last run learned about this setup:**
@@ -52,7 +52,7 @@ mkdir -p docs/test-results-7
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-7/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-8/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Reading the meters from video:** crop widths must be even. An odd width gets rounded by ffmpeg on 4:2:0 video, which shears every frame, and round 6's first figures were wrong because of it. Run a control that's known to be red before believing a 0%.
 - **Check a reload really happened:** `playCount` in `library.json` goes up by one each time. A very busy Mac can take over 1 s to open the browser, so a load key tap sent too soon lands on the old layout. Allow about 1.5 s after `BROWSE`, and at least 5 s after a load key before seeking.
 - **Load average is unreliable on this Mac:** it read 40 to 940 while the busiest processes added up to a few cores. Go by what the processes use.
@@ -68,7 +68,7 @@ Load one track on each deck through `BROWSE` and the `1` and `2` keys, then clos
 ---
 
 ## The retest
-Everything from the last retest passed apart from what's below. To see what those were, look in `docs/COMPUTER_USE_RESULTS_6.md`, which ends with what was done about them.
+Everything from the last retest passed apart from what's below. To see what those were, look in `docs/COMPUTER_USE_RESULTS_7.md`, which ends with what was done about them.
 
 **Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
 
@@ -76,105 +76,56 @@ Everything from the last retest passed apart from what's below. To see what thos
 
 **With two fingers:** as last time, both land together and the second slides. Say which way round each test went.
 
-### AT. Rolls come back
-A plain roll sometimes carried on from where it was instead of going back. The cause was a race in the audio core, so it's more likely the busier the Mac is. Don't wait for a quiet Mac for this one.
-1. **Sixty rolls.** Deck playing, on `ROLL`. Hold `1/4` for about 1 s, sixty times, about 2 s apart, with a video running. On each lift the clock should jump by what was held. A roll that's lost shows as no jump, and the clock falling a second behind the time that's passed. Compare the clock against the time at the end as well. Screenshot `at1-rolls`. *Last time: 1 lost in about 30.*
-2. **Slices.** The same with a `SLICER` pad, twenty times.
-3. **Pad to pad.** With one finger on `1/4` and the second landing on `1/8` as the first lifts, as near together as your tool allows. Ten times. The deck should end up where the track has got to. Say how close together they landed.
-4. **`SLIP`.** With `SLIP` on, set an auto loop and press `EXIT`, ten times. The clock should jump each time.
-
-### AU. Back from the background
-1. **The frozen meter.** Deck playing with `SPIRAL` on. `PLAY` to stop it, send the app away within a second for 20 s, and bring it back. The deck's column should be dark within a moment. Screenshot `au1-meter`. *Last time: 15 LEDs and an amber peak, until that deck next played.*
-2. **The same without an effect,** and for longer: 2 minutes away with both decks stopped.
-3. **Everything else that's drawn.** With a deck playing when the app goes away, and with one stopped: waveforms, overviews, jogs and the phase strip should all be right on return, not an old picture.
-
-### AV. `PLAY` straight after a load
-`PLAY` pressed while a track's loading now waits for the track. Allow about 1.5 s after `BROWSE` for the browser to open.
-1. **It starts.** In the browser, tap a deck's load key, then its compact `PLAY` about 0.3 s later. `PLAY` should light straight away, and the deck should start by itself from its cue once it's loaded. Screenshot `av1-play`. *Last time: the press was lost, with no message.*
-2. **Changing your mind.** The same, then `PLAY` again before it's loaded: it goes out, and the deck stays stopped at its cue.
-3. **`CUE`.** The same, then the compact `CUE` before it's loaded. It goes out, and the deck stays stopped.
-4. **Another track.** The same, then another load key on that deck before it's finished. Nothing should start by itself.
-5. **The big `PLAY`.** Close the browser while it's loading if you can, and press the round `PLAY` under the `Loading` cover.
-
-### AW. The jog when the app goes away
-Hold the jog's middle with the deck playing, and send the app away with `simctl launch` of Settings during the hold, for about 8 s. The clock should carry on from that moment, not a few seconds later. Bring it back: the deck runs normally. *Last time: it stayed held for about 5 s.*
-
-### AX. Rating a move
-New, so nobody's pressed it. When a move from AP ends, the message at the top has a thumbs up and a thumbs down, for 8 s.
-1. **The keys.** Press each after a separate move. It should say `Got it. More like that.` or `Got it. Less like that.`, and `auto-dj-ratings.json` in `Library/Application Support/` should get a line with the move, both titles and your answer. Screenshot `ax1-rating`. Press just past each key's edges too, and say how far they reach. Do the two keys ever take each other's press?
-2. **Ignoring it.** It should go by itself after about 8 s, with nothing saved.
-3. **In a mix.** During AR, the question should stay up for its 8 s as the next track loads, with no `Up next` over it. A later message may replace it.
-4. **Does it lean?** Press thumbs down on one move about six times, and see if the next few plans pick others. A move can still come back if nothing else passes, so report what you saw rather than pass or fail.
-5. **Held upright.** On a small iPhone held upright, messages now hang below the top bar. With an Undo and a rating showing: is the text readable, and can you press the keys? Can you still use the overview and the browser's keys beside and under the capsule?
-
-### AM. Auto DJ: set up
-
-Not run yet. Nobody but unit tests has pressed the real key. Copy three club tracks in as well as the usual two, then relaunch:
+**The tracks:** copy in the three club tracks as well as the usual two, then relaunch. Splitting stems runs on the CPU in the simulator, so allow a few minutes a track, and wait for each deck's stems before pressing `AUTO`.
 
 ```sh
 cp ~/Library/Caches/cheeks-autodj/music/jam1280420.mp3 ~/Library/Caches/cheeks-autodj/music/jam1072904.mp3 ~/Library/Caches/cheeks-autodj/music/jam1197771.mp3 "$DATA/Documents/"
 ```
 
-Splitting stems runs on the CPU in the simulator, so allow a few minutes a track. Wait for each deck's stems to finish before pressing `AUTO`. A key has been added under the `FILTER` key on the mixer.
+`jam1197771` is Skylander (125), `jam1072904` is Gepzene (128) and `jam1280420` is Houston (126). A move's `AUTO` key is under the `FILTER` key on the mixer, and `MIX` and `NEXT` are in the browser's toolbar.
 
-### AN. Corrected grids
-1. Load `jam1197771` and wait for stems. Note the deck's BPM and where the beat lines sit before and after stems finish. It should end at 125.00, with lines on the kicks. Screenshot `an1-grid`.
-2. Load `jam1280420` on the other deck and press `BEAT SYNC`. Do the waveforms' kicks line up? Screenshot `an2-sync`.
-3. Do hand edits survive? On a track whose stems aren't done yet, use `Grid 10 ms later` in the BPM menu. When stems finish, the grid should stay where you put it.
-4. Is a section's name still sensible after the grid moves? Note anything that changes to something odd.
-
-### AO. `AUTO` says no
-1. Press it with nothing playing. It should refuse and say why.
-2. With both decks playing. Same.
-3. With only one deck loaded and playing. Same.
-4. With one deck playing, and the other still splitting stems: the key should read `AUTO…` and say it's waiting. Then it should carry on by itself when stems finish.
-
-### AP. The whole thing
-Play `jam1280420` from about 1:30, with `jam1072904` loaded on the other deck, stems done. Press `AUTO`.
-1. **Planning:** how long from the press until it says what it's going to do, and how many bars away? Time it. The key should count down in bars.
-2. **Waiting:** does the count fall in step with the music? Screenshot `ap2-armed`.
-3. **The move:** do stem levels, EQ and filter visibly move on their own? Do the waveforms show stem colours? Screenshot `ap3-move` during it. Measure CPU on the pinned process during the move.
-4. **The end:** the old deck should stop, the new one should play, with `AUTO` unlit and a green tick message. All knobs back at centre, all stems up, no loop lit, no FX dot, and the new deck's BPM matching what was playing. Screenshot `ap4-done`.
-5. Press it again straight after, with the old deck reloaded. Does it pick a different move?
-6. Repeat with `jam1197771` into `jam1280420`.
-
-Record the move, and where it left and arrived, each time.
+### AY. Either deck
+Auto DJ auditions every plan before playing it, and from deck 2 it was auditioning the wrong decks.
+1. **The pair that was refused.** Skylander on deck 2, Houston on deck 1, stems done. Play Skylander from about 1:37 and press `AUTO`. Then the same with them swapped, relaunching first so nothing's left over. It should plan both ways, and with the same start it should choose the same move and leave at the same place. Let each finish, and check it ends right. Screenshots `ay1-deck2`, `ay1-deck1`. *Last time: refused on all six presses from deck 2, and planned every time from deck 1.*
+2. **Other pairs.** At least three more pairs, each way round. Record the move and the bar it leaves on. Any pair that gets a different answer from the other deck is a failure.
+3. **In a mix.** Run `MIX` through the three club tracks. The second move comes from deck 2. Does it end right, and did the plan look as sensible as the first?
+4. **Does it vary?** Straight after a move, reload the track that's just finished on the free deck and press `AUTO`. Does it pick a different move? *Last time: Loop build twice.* A move can still come again if nothing else fits, so report what you saw.
 
 ### AQ. Taking over
-1. **Calling it off:** press `AUTO`, then press it again during the countdown. Nothing should have changed, and the track plays on.
-2. **Grabbing a knob:** during a move, turn the outgoing deck's `HI`. It should stay where you put it while everything else carries on. At the end it goes back to centre.
-3. **Stopping mid-move:** press `AUTO` during a move. It should say the decks are yours and leave everything where it is. Can you carry on and finish the mix by hand?
-4. **Moving the deck:** during the countdown, seek the playing deck well past where the move was to start. It should say it lost its moment.
-5. **Changing the plan:** during the countdown, load another track on the waiting deck, or press its `PLAY`. It should call itself off and say why.
-6. **Leaving the page:** during a move, open `BROWSE` and come back, and put the app in the background and bring it back. Does the move carry on correctly?
-7. **Rough stuff during a move:** press `CUE` or a hot cue on either deck, change tempo, press `REV`, or eject. Nothing should crash, and it should end with the decks usable. Describe what each does.
+There's now a rule for all of these, in the table under **In the app** in `docs/AUTO_DJ.md`. Read it first, and report anything that doesn't do what it says, or that you think is the wrong rule.
+1. **Calling it off.** Before pressing `AUTO`, set the waiting deck's tempo fader, a mixer `HI`, its filter, its channel fader low, the crossfader off-centre and the Color FX key to `DUB`. Press `AUTO`, and press it again during the countdown. It should say "Auto DJ off.", and every one of those should be back where you set it, with the track playing on. Screenshot `aq1-put-back`. *Last time: the tempo stayed at -0.79%.*
+2. **Changing something during the countdown.** The same, but move the waiting deck's tempo fader and `MID` during the countdown, then call it off. Those two should stay as you moved them, and the rest go back.
+3. **Grabbing a knob on the old deck.** During a move, turn the old deck's `HI`, then its `LOW`, and slide a stem. Each should stay where you put it after you let go, with everything else carrying on. *Nobody's tried this on `LOW` or a stem: they should have snapped back before, as the score moves those.* At the end, all of them go back to centre, on the deck that's just stopped. Screenshots `aq3-grabbed`, `aq3-end`. *Last time: `HI` stayed down after the end.*
+4. **Grabbing one on the new deck.** During a move, turn the new deck's `HI` and slide one of its stems. They stay through the end of the move and after it, and it mustn't jump as the move ends. What you didn't touch comes back.
+5. **Stopping early.** Press `AUTO` in the first few bars of a Loop build, when the new deck hasn't started. "Auto DJ stopped. The decks are yours." The loop and the filter stay, and the rising noise and reverb stop. With the old deck's stems all muted, its meter should go dark. The new deck's stems should be up, its tempo as it was before, and its `PLAY` should be heard straight away. Screenshot `aq5-early`.
+6. **Stopping with the new deck going.** In a Bass swap, or the last two bars before a Loop build's drop, press `AUTO`. The new deck plays on quietly. Its stem pads that are down should look off. Now try to finish the mix by hand. `ALL` should bring everything up. Do it again and try tapping one stem pad, then sliding another up from the bottom. Screenshots `aq6-stems-off`, `aq6-all`. *Last time: stuck quiet, and only sliding each of the four brought it back.*
+7. **Stopping late.** Press `AUTO` after the new track has landed. "Auto DJ stopped. Deck N is on." The old deck stops, with no green tick and no rating.
+8. **`CUE` on the new deck before it's taken over.** "Auto DJ stopped: deck N was stopped. Deck M carries on." The old deck plays on with its loop gone, knobs centred and stems up, and the new deck's stopped with its tempo as it was. No green tick, no rating. Screenshot `aq8-new-stopped`. *Last time: both stopped, silent, with a green tick.*
+9. **`CUE` on the old deck before it's taken over.** "Auto DJ stopped: deck M was stopped. Deck N is on." The new deck should play straight away at full, from around where the plan had it landing. Try it both before the new deck's started and after. Say how long the silence is. *Last time: about 20 s of near silence.*
+10. **`CUE` on the new deck after it's taken over.** Both stop, with no green tick.
+11. **In a mix.** Try 5, 8 and 9 during `MIX`. Each should say `Mix off:`, and the mix ends.
+12. **Everything else still does what it did:** moving the deck in the countdown, loading the waiting deck or pressing its `PLAY`, `BROWSE` and the background during a move, `REV`, a tempo change and hot cues on either deck during one. Say how each ends. Are any messages cut off with dots?
 
-### AR. `MIX`: Auto DJ through a list
-Not run yet, and nobody but unit tests has pressed it. The key is in the browser's toolbar, and it mixes through the list on screen, in the order it's showing. Make a playlist of the three club tracks from AM.
-1. **From nothing playing.** Open `BROWSE`, pick the playlist, and press `MIX`. Deck 1 should load the first track and start it, and deck 2 should load the next, with an `Up next` message. The mixer's `AUTO` key should read `MIX` and stay lit. Screenshot `ar1-start`. Does `MIX` fit in the toolbar at this size?
-2. **Waiting.** Once stems are done, the key should count down as `MIX n`, and it shouldn't leave the track early. Record the bar it leaves on and how far through the track that is.
-3. **The handover.** When the move ends, the third track should load on the deck that's just been freed. Record each move, and any message that goes by too fast to read.
-4. **The end.** After the last track plays out, it should say that's the end of the playlist with a green tick, with `AUTO` back and unlit. Screenshot `ar4-end`.
-5. **Starting mid-track.** With a track from the list already playing, press `MIX`: it should carry on from there. With one not on the list: it should carry on into the top of the list. With the last track of the list playing: it should refuse and say why.
-6. **Stopping.** Press `MIX` or the mixer's key while it's waiting, counting down and moving. Before a move, the track plays on. During one, the decks are yours.
-7. **Taking over.** During the countdown, load another track on the waiting deck, start the waiting deck, or pause the deck that's playing. Each should end the mix and say why.
-8. **All tracks.** With `All Tracks` showing, sort by `BPM` and press `MIX`. Does it follow the order on screen? Does a search or filter change what it plays?
-9. **Running out.** Start a mix on tracks whose stems aren't split yet, and seek close to the end of the first. The next track should start when it runs out, with a message. Say what the gap's like.
-10. **Bass swap.** If a move is a `Bass swap`, the old track should rise and lose its low end for its last bar, then everything stops for one beat, and the new track lands whole. Screenshot `ar10-air` during the beat, if you can catch it.
+### AX. Rating a move
+New, so nobody's pressed it. When a move ends, the message at the top has a thumbs up and a thumbs down, for 8 s.
+1. **The keys.** Press each after a separate move. It should say `Got it. More like that.` or `Got it. Less like that.`, and `auto-dj-ratings.json` in `Library/Application Support/` should get a line with the move, both titles and your answer. Screenshot `ax1-rating`. Press just past each key's edges too, and say how far they reach. Do the two keys ever take each other's press?
+2. **Ignoring it.** It should go by itself after about 8 s, with nothing saved.
+3. **In a mix.** During `MIX`, the move's name and the question should stay up for their 8 s as the next track loads, with no `Up next` over them. A later message may replace them. *Last time: the move's name never showed.*
+4. **Does it lean?** Press thumbs down on one move about six times, and see if the next few plans pick others. A move can still come back if nothing else passes, so report what you saw rather than pass or fail.
+5. **Held upright.** On a small iPhone held upright, messages now hang below the top bar. With an Undo and a rating showing: is the text readable, and can you press the keys? Can you still use the overview and the browser's keys beside and under the capsule?
 
-### AS. `NEXT`: what should I play next?
-Also not run yet, in the browser's toolbar. It puts the list in the best order to play from the deck that's leading, by tempo and key.
-1. With a track on a deck, press `NEXT`. The track on the deck should leave the list, and the first few should be close in BPM with a compatible key. Screenshot `as1-next`. Does the order look sensible, going by the BPM and key columns?
-2. Change the deck's tempo, or load something else. Does the list follow?
-3. Tap a column header: it should take over from `NEXT`, and `NEXT` should go out. Press `NEXT` again and it comes back.
-4. With `NEXT` on and nothing loaded: the first track should stay first, and the rest follow on from it.
-5. With `NEXT` on, press `MIX`. Does it play them in the order showing?
-6. With `IN KEY` or `±6% BPM` on as well, or a search: only what's left gets ordered.
-7. Scrolling and typing in the search box with `NEXT` on: any hitch? On a big library if there is one.
-8. Does the toolbar still fit, with everything readable, on the Duo, the iPad, and a small iPhone held both ways?
+### AZ. The browser, and the rest
+1. **It remembers.** Choose a playlist, sort by `BPM`, close the browser and open it again. Then the same with `NEXT`, `IN KEY` and `±6% BPM`. All should be as you left them, and after a relaunch too. Screenshot `az1-remembered`. *Last time: all forgotten when it closed.* Delete the playlist you're looking at: it should go to `All Tracks`.
+2. **A playlist's order.** Add three tracks to a new playlist, in an order that isn't date order. It should show in the order you added them, and `MIX` should play them that way. Screenshot `az2-order`. *Last time: date order.*
+3. **Columns.** Tap a column three times: one way, the other way, then back to the list's own order, in a playlist and in `All Tracks`. `NEXT` on, tap a column: it takes over. Tap the same column with `NEXT` on: it's as it was.
+4. **A long fade.** Run `MIX` across Exhilarate into something else, with no way in (delete its cached stems as last time), and seek near its end. The next track should start as Exhilarate fades out, not after. Measure the gap below -50 dB. *Last time: 3.54 s.* The message should be "No clean way in. Deck N just started." and stay readable for its 5 s, with no `Up next` over it.
+5. **`SLIP` with `REV`.** On a playing deck, both landing together, ten times, in both orders if your tool can. Then `REV` off, then `SLIP` off, and `SLIP` already off with `REV` held then pressing `SLIP`. Each time it should come back to where the track had got to. *Last time: one in four went about 31 s astray.*
+6. **Stems progress.** Load a split track onto a deck while it's splitting another, with the browser open. There should be no `Stems n%` under the new title until it's really splitting. *Last time: 8% under Gepzene.*
+7. **Stem pads.** Slide a stem all the way down: the pad should look off. Tap it: back to full. `ACAPELLA`, `NO VOCAL`, `BEAT` and `ALL` should bring what they ask for up to full, and light when that's what's heard.
+8. **Layouts.** A blank `LayoutSnapshots` picture should now fail its test. Report if you see one. Check the toolbar still fits on a small iPhone, each way.
 
 ### Pressing harder
-**A long run.** 10 minutes of everything, with Auto DJ running where you can: the changes since last time, and two-finger holds on anything that hasn't had one. A recording running throughout, so you can check for gaps. Crashes, dropouts, or a stop you can't explain?
+**A long run.** 15 minutes, with `MIX` and `AUTO` running, and taking over as many ways as you can: stopping, cueing and grabbing at different moments of each move, on both decks, and starting again straight after each. A recording running throughout, so you can check for gaps. Afterwards the decks should always be usable, with nothing left silent, looping or filtered that the screen doesn't show. Crashes, dropouts, or a stop you can't explain?
 
 ---
 
@@ -289,10 +240,10 @@ Answer honestly, as someone seeing it fresh. Criticism is the useful part.
 
 ## Results format
 
-Write `docs/COMPUTER_USE_RESULTS_7.md` like this:
+Write `docs/COMPUTER_USE_RESULTS_8.md` like this:
 
 ```markdown
-# Hands-on results, part 7, <date>
+# Hands-on results, part 8, <date>
 
 Commit tested: <git rev-parse --short HEAD>
 Device: <simulator and screen size>
@@ -306,7 +257,7 @@ Tooling limits: <what you couldn't do>
 - Steps: ...
 - Expected: ...
 - Actual: ...
-- Screenshot: docs/test-results-7/...
+- Screenshot: docs/test-results-8/...
 - Crash report (if any): ...
 
 ## Looks wrong

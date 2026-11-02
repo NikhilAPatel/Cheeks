@@ -164,3 +164,34 @@ Club playlist added. Gepzene's grid is 10 ms later than it was. Exhilarate's ste
 
 ## First impressions
 Not run. This round was the retest only.
+
+## What happened next
+
+**Fixed**
+- **AP6: the same pair refused from one deck and mixed from the other.** The tester's lead was right, and it was worse than it looked. A score's steps name real decks, but the audition always had the outgoing track on its private deck 0. From deck 2, the old track got the new track's moves and the new track the old one's, so what was judged wasn't the move. That refused good plans, and it passed ones nobody had heard: in a `MIX`, every second transition went out unchecked. Now each track's on the deck the score names. `testAnAuditionHearsTheSameFromEitherDeck` fails on the old code by up to 0.69 on the output's peaks, for all three moves it tries. On the real tracks, Skylander into Houston now gives the same plan from either deck, and a set of 22 of the owner's tracks comes out line for line the same started from either.
+- **AQ3: stuck quiet after stopping a move.** `ALL` and the combinations now bring their stems up to full, a tap on a stem that's all the way down brings it back, and sliding one up from nothing turns it on. A stem that's all the way down now looks off, since it sounds off. `testStoppingPartWayLeavesTheStemsWithinReach`, `testStemsThatAreAllTheWayDownComeBackWhenAskedFor`.
+- **AQ7: `CUE` on the new deck ending in silence with a green tick.** A move now notices a deck someone's stopped, and ends. The table's in `docs/AUTO_DJ.md`: before the new track has taken over, stopping it leaves the old one playing clean, and stopping the old one brings the new one in at once. This also fixes this round's 20 s of near silence after `CUE` on the old deck. No green tick and no rating for a move that didn't finish.
+- **AQ2: a grabbed knob not going back.** The old deck now goes back to neutral on all three bands. On the new deck, what you took stays as you set it, because that's what people are hearing, and the score's loop and FX clean-up no longer touches anything you started there.
+- **AQ1: calling it off leaving the waiting deck moved.** Everything getting ready changes now goes back: tempo and its range, key lock, key shift, sync, EQ, filter, the Color FX, the fader and the crossfader. Anything changed during the countdown stays as it was changed.
+- **AP5: pressing again picks the same move.** A repeat now costs 0.5 against the last move, where it was 0.3, which is more than the Loop build's head start over an Echo throw at the same spot. On the 22 tracks that's 3 moves the same twice running where it was 4, the same 19 joins, and key shifts down from 3 to 2. Ratings are the real answer to which move you want.
+- **`SLIP` missing its return.** The tester's guess was right. `SLIP` after `REV` never engaged, and in one event the order isn't fixed. It now starts from then, as it does during a loop. `testSlipPressedAfterReverseStillComesBack`.
+- **`NEXT` and the sort forgotten, and a playlist's order.** The browser now keeps the playlist, the sort, `NEXT` and the filters, across launches too. A playlist stays in the order it was built, which is what `MIX` plays, until a column's chosen, and a column's third tap goes back. Before this there was no way back to date order either.
+- **A long fade before the next track.** With no move coming, the next track starts as soon as the old one has nothing left to hear, at -50 dB. `testAMixDoesntSitThroughAFadeIntoSilence`.
+- **Messages.** "Up next" no longer covers the message about a missing transition, and that's now "No clean way in. Deck 2 just started." The ratings commit already keeps it off "`<move>` done." The two cut off with dots are shorter. Everything stopped from outside now starts "Mix off:" in a mix and "Auto DJ stopped:" otherwise.
+- **"Stems 8%" under the next track.** It was the last track's progress, shown until the new one finished loading. It's left out during a load.
+- **A blank snapshot** now fails `LayoutSnapshots`.
+
+**Found on the way, that nobody had reported**
+- **A knob the score was moving snapped back when you let go.** Once someone's taken a control the core stops reporting it, and `followControls` kept showing that last report, which put the control back every 33 ms. It only looked right on `HI` because the score doesn't move that one. It's in the task to try on `LOW` and a stem. `testAControlTakenFromTheScoreStaysWhereItsPut`.
+- **Stopping a move left its effects and noise on the old deck,** with nothing on screen showing them and no way to turn them off. They now go. `testStoppingLeavesNothingYouCantSee`.
+- **Stopping once the new track had landed brought the old one back** as a tiny loop over the top of it. It now just ends the move. `testPressingOnceTheNewTrackIsOnJustEndsIt`.
+- **A new deck nobody had heard yet was left silent** after stopping a move, so `PLAY` on it later would have made no sound. `testStoppingBeforeTheNewDeckStartsLeavesItReady`.
+- **Three tests were seeking in the wrong units,** frames where seconds were wanted, which sent the deck to the very end. It happened to work. They now seek to where they meant, which is also why some now get a Bass swap where they'd got a Loop build.
+
+**Decided against changing**
+- **Severe Tire Damage's 148 BPM:** the tester's own check agrees it's no worse than anything else, and that track has no clear steady beat to find.
+- **A hot cue set by a tap landing as the browser closed:** the pad really was there by then, and pads have to act on first contact.
+- **Loads holding touches up until they're done:** nothing's lost, by this round's own timing.
+
+**Not run**
+- **AV5 and AS7** were blocked. They're covered by `LoadingTests` and `testAHugeListKeepsEverythingAndDoesntHang`, and they're off the task, as they can't be driven from here.

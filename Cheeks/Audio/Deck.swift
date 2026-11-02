@@ -208,8 +208,8 @@ final class Deck {
         didSet {
             if !slipMode {
                 renderer.cancelSlip()
-            } else if renderer.loopActive && !isLoopAhead && !renderer.slipEngaged {
-                // Slip starts when a loop does, so in one that's already running it starts from now.
+            } else if (renderer.loopActive && !isLoopAhead || reverse) && !renderer.slipEngaged {
+                // Slip starts when a loop or reverse does, so during one that's already running it starts from now.
                 renderer.engageSlip()
             }
         }
@@ -266,6 +266,8 @@ final class Deck {
     }
     /// Part of the track is missing or turned down, which the ordinary waveform has no way to show.
     var stemsAltered: Bool { stemsOn.contains(false) || stemLevels.contains { $0 < 1 } }
+    /// A stem's level below this can't be heard, so it's as good as off.
+    static let silentStem: Float = 0.02
     /// Set when the stems were last heard all on, for restoring after a solo.
     @ObservationIgnored var stemsBeforeSolo: [Bool]?
 

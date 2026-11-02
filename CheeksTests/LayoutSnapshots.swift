@@ -282,6 +282,24 @@ final class LayoutSnapshots: XCTestCase {
             _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         window.isHidden = true
+        XCTAssertFalse(Self.isBlank(image), "\(url.lastPathComponent) came out blank: a busy Mac can time out the image provider")
         try XCTUnwrap(image.pngData()).write(to: url)
+    }
+
+    /// Every pixel near enough the same colour, which no screen in the app is.
+    private static func isBlank(_ image: UIImage) -> Bool {
+        guard let source = image.cgImage else { return true }
+        let size = 48
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        let drawn = pixels.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: size, height: size, bitsPerComponent: 8, bytesPerRow: size * 4,
+                                          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(source, in: CGRect(x: 0, y: 0, width: size, height: size))
+            return true
+        }
+        guard drawn else { return true }
+        return stride(from: 0, to: pixels.count, by: 4).allSatisfy { pixel in
+            (0..<3).allSatisfy { abs(Int(pixels[pixel + $0]) - Int(pixels[$0])) < 4 }
+        }
     }
 }

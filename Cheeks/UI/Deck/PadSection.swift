@@ -419,6 +419,7 @@ struct StemPad: View {
     @Bindable var deck: Deck
     let stem: Stem
     @State private var startLevel: Float?
+    @State private var startOn = true
     @State private var dragged = false
     @State private var lastStep: Int?
     @State private var toggledOnPress = false
@@ -426,8 +427,11 @@ struct StemPad: View {
     var body: some View {
         let on = deck.stemsOn[stem.rawValue]
         let level = deck.stemLevels[stem.rawValue]
-        Pad(color: stem.color, lit: on, accessibilityName: stem.label.capitalized, onPress: {
+        // All the way down looks the same as off, because it sounds the same.
+        let heard = deck.stemIsHeard(stem)
+        Pad(color: stem.color, lit: heard, accessibilityName: stem.label.capitalized, onPress: {
             startLevel = level
+            startOn = on
             dragged = false
             lastStep = nil
             deck.toggleStem(stem)
@@ -437,8 +441,8 @@ struct StemPad: View {
             guard let startLevel else { return }
             if !dragged && abs(translation.height) > 8 {
                 dragged = true
-                // It was a slide, not a tap: put the mute back the way it was.
-                deck.toggleStem(stem)
+                // It was a slide, not a tap: put back what the press changed.
+                deck.stemsOn[stem.rawValue] = startOn
             }
             guard dragged else { return }
             let next = min(1, max(0, startLevel + Float(-translation.height / 70)))
@@ -446,11 +450,13 @@ struct StemPad: View {
             if let lastStep, lastStep != step { Haptics.shared.tick() }
             lastStep = step
             deck.stemLevels[stem.rawValue] = next
+            // Sliding one up from nothing is asking to hear it.
+            if startLevel < Deck.silentStem, next >= Deck.silentStem { deck.stemsOn[stem.rawValue] = true }
         }) {
             ZStack(alignment: .bottom) {
                 // The level, as a dark band coming down from the top of the lit pad.
                 GeometryReader { geo in
-                    Rectangle().fill(Color.black.opacity(on ? 0.34 : 0))
+                    Rectangle().fill(Color.black.opacity(heard ? 0.34 : 0))
                         .frame(height: geo.size.height * CGFloat(1 - level))
                 }
                 .allowsHitTesting(false)
@@ -484,7 +490,7 @@ struct StemControlRow: View {
     }
 
     private func only(_ set: Set<Stem>) -> Bool {
-        Stem.allCases.allSatisfy { deck.stemsOn[$0.rawValue] == set.contains($0) }
+        Stem.allCases.allSatisfy { deck.stemIsHeard($0) == set.contains($0) }
     }
 
     @ViewBuilder

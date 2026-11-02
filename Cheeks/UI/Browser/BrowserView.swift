@@ -7,13 +7,14 @@ struct BrowserView: View {
     @Environment(\.screenLayout) private var layout
     @Environment(Library.self) private var library
     @Environment(DJEngine.self) private var dj
-    @State private var source: Source = .all
+    // How the list is showing is worth keeping: the browser closes every time someone goes back to the decks.
+    @AppStorage("browserPlaylist") private var chosenPlaylist = ""
     @State private var search = ""
-    @State private var sort: SortKey = .dateAdded
-    @State private var ascending = false
-    @State private var inKeyOnly = false
-    @State private var nearBPMOnly = false
-    @State private var bestNext = false
+    @AppStorage("browserSort") private var sort: SortKey = .dateAdded
+    @AppStorage("browserAscending") private var ascending = false
+    @AppStorage("browserInKey") private var inKeyOnly = false
+    @AppStorage("browserNearBPM") private var nearBPMOnly = false
+    @AppStorage("browserNext") private var bestNext = false
     @State private var importing = false
     @State private var importKind: ImportKind = .audio
     @State private var importMessage: String?
@@ -27,6 +28,17 @@ struct BrowserView: View {
     enum SortKey: String, CaseIterable, Identifiable {
         case dateAdded = "Date added", title = "Title", artist = "Artist", bpm = "BPM", key = "Key", duration = "Time"
         var id: String { rawValue }
+    }
+
+    /// The playlist showing, or everything if it's been deleted since.
+    private var source: Source {
+        get {
+            guard let id = UUID(uuidString: chosenPlaylist), library.playlists.contains(where: { $0.id == id }) else { return .all }
+            return .playlist(id)
+        }
+        nonmutating set {
+            if case .playlist(let id) = newValue { chosenPlaylist = id.uuidString } else { chosenPlaylist = "" }
+        }
     }
 
     /// The deck the DJ is most likely mixing out of, for key and BPM hints.
@@ -55,8 +67,10 @@ struct BrowserView: View {
                 return [t, t * 2, t / 2].contains { abs($0 - bpm) / bpm < 0.06 }
             }
         }
+        // A playlist stays in the order it was built, which is the order MIX plays it in, until someone asks for a column.
+        let keepsItsOrder = playlistID != nil && sort == .dateAdded
         // A plain sort on a key that's the same for many tracks is unstable; date breaks the ties.
-        list.sort { a, b in
+        if !keepsItsOrder { list.sort { a, b in
             let order: ComparisonResult
             switch sort {
             case .dateAdded: order = a.dateAdded == b.dateAdded ? .orderedSame : (a.dateAdded < b.dateAdded ? .orderedAscending : .orderedDescending)
@@ -68,7 +82,7 @@ struct BrowserView: View {
             }
             if order == .orderedSame { return a.dateAdded == b.dateAdded ? a.id.uuidString < b.id.uuidString : a.dateAdded > b.dateAdded }
             return ascending ? order == .orderedAscending : order == .orderedDescending
-        }
+        } }
         guard bestNext else { return list }
         // The best way on from what's playing, which isn't on the list: it can't come next after itself.
         let deck = referenceDeck
@@ -337,21 +351,25 @@ struct BrowserView: View {
         .background(Color(white: 0.12))
     }
 
-    /// Tap a column to sort by it; tap again to flip it, like Finder.
+    /// Tap a column to sort by it, tap again to flip it, and a third time to go back to the list's own order.
     private func header(_ key: SortKey, alignment: Alignment) -> some View {
         Button {
             Haptics.shared.tick()
             withAnimation(Theme.panel) {
-                // Asking for a column says what order's wanted, so it takes over from NEXT.
-                if bestNext {
-                    bestNext = false
-                } else if sort == key {
-                    ascending.toggle()
-                }
+                let firstWay = key == .title || key == .artist || key == .key
                 if sort != key {
                     sort = key
-                    ascending = key == .title || key == .artist || key == .key
+                    ascending = firstWay
+                } else if !bestNext {
+                    if ascending == firstWay {
+                        ascending.toggle()
+                    } else {
+                        sort = .dateAdded
+                        ascending = false
+                    }
                 }
+                // Asking for a column says what order's wanted, so it takes over from NEXT.
+                bestNext = false
             }
         } label: {
             let current = sort == key && !bestNext

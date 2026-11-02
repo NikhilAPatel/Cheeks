@@ -319,7 +319,8 @@ struct DeckHeader: View {
 
     /// The stems page shows this itself, so it's only needed from everywhere else.
     private var stemsProgress: String? {
-        guard deck.padMode != .stems, case .separating(let progress) = deck.stemStatus else { return nil }
+        // During a load, that's still the last track's progress, under the new track's name.
+        guard deck.padMode != .stems, !deck.isLoading, case .separating(let progress) = deck.stemStatus else { return nil }
         return "Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
     }
 

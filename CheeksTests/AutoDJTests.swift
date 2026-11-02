@@ -21,11 +21,12 @@ final class AutoDJTests: XCTestCase {
         return dj
     }
 
-    private func ready(bpmB: Double = 124) throws -> DJEngine {
+    private func ready(bpmB: Double = 124, only move: TransitionMove? = nil) throws -> DJEngine {
         let dj = makeEngine()
+        if let move { dj.autoDJ.leavesOut = Set(TransitionMove.allCases).subtracting([move]) }
         put(try map(), on: dj.decks[0], name: "A")
         put(try map(bpm: bpmB, firstBar: 0.2), on: dj.decks[1], name: "B")
-        dj.decks[0].seek(to: dj.decks[0].trackMap!.seconds(atBar: 24) * Synth.sampleRate)
+        dj.decks[0].seek(to: dj.decks[0].trackMap!.seconds(atBar: 24))
         dj.decks[0].play()
         return dj
     }
@@ -129,6 +130,7 @@ final class AutoDJTests: XCTestCase {
         try await run(dj) { if case .running = dj.autoDJ.phase { return true } else { return false } }
         dj.autoDJ.press()
         _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
         XCTAssertEqual(dj.autoDJ.phase, .idle)
         XCTAssertFalse(cheeks_engine_auto_running(dj.coreForTesting))
     }
@@ -138,7 +140,7 @@ final class AutoDJTests: XCTestCase {
         dj.autoDJ.press()
         try await run(dj) { if case .armed = dj.autoDJ.phase { return true } else { return false } }
         let a = dj.decks[0]
-        a.seek(to: (a.track!.duration - 20) * Synth.sampleRate)
+        a.seek(to: a.track!.duration - 20)
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 3)
         XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
     }
@@ -184,6 +186,317 @@ final class AutoDJTests: XCTestCase {
         let taken = cheeks_engine_auto_value(dj.coreForTesting, 0, Int32(CheeksAutoEQ.rawValue), 0)
         _ = dj.renderOffline(frames: 44_100)
         XCTAssertEqual(cheeks_engine_auto_value(dj.coreForTesting, 0, Int32(CheeksAutoEQ.rawValue), 0), taken, "A hand on it stops the score")
+    }
+
+    // MARK: Either way round
+
+    /// The score names real decks, so the audition has to have each track on that deck to hear what'll happen.
+    func testAnAuditionHearsTheSameFromEitherDeck() throws {
+        let a = try map(), b = try map(bpm: 122, firstBar: 0.2)
+        let plans = TransitionPlanner.plans(from: a.map, to: b.map, playingBPM: 124, earliest: 16)
+        let rate = 124.0 / b.map.bpm
+        for move in [TransitionMove.loopDrop, .bassSwap, .echoDrop] {
+            let plan = try XCTUnwrap(plans.first { $0.move == move }, "\(move)")
+            func heard(_ deckA: Int32, _ deckB: Int32) throws -> (review: TransitionAudition.Review, peaks: [Float]) {
+                let score = TransitionScore(plan: plan, a: .init(deck: deckA, map: a.map, rate: 1, lag: 0), b: .init(deck: deckB, map: b.map, rate: rate, lag: 0))
+                var peaks: [Float] = []
+                let review = TransitionAudition.review(score, stemsA: a.stems, stemsB: b.stems, levelA: 0.7, levelB: 0.7, listen: { left, _ in
+                    peaks.append(left.reduce(0) { max($0, abs($1)) })
+                })
+                return (try XCTUnwrap(review), peaks)
+            }
+            let fromOne = try heard(0, 1), fromTwo = try heard(1, 0)
+            XCTAssertEqual(fromOne.review.problems, fromTwo.review.problems, "\(move)")
+            XCTAssertEqual(fromOne.review.change, fromTwo.review.change, accuracy: 0.1, "\(move)")
+            XCTAssertEqual(fromOne.peaks.count, fromTwo.peaks.count)
+            let worst = zip(fromOne.peaks, fromTwo.peaks).map { abs($0 - $1) }.max() ?? 1
+            XCTAssertLessThan(worst, 0.05, "\(move) sounds different from the other deck")
+        }
+    }
+
+    func testAMoveFromDeckTwoEndsRight() async throws {
+        let dj = makeEngine()
+        let a = dj.decks[1], b = dj.decks[0]
+        put(try map(), on: a, name: "A")
+        put(try map(bpm: 120, firstBar: 0.2), on: b, name: "B")
+        a.seek(to: a.trackMap!.seconds(atBar: 24))
+        a.play()
+        dj.autoDJ.press()
+        try await run(dj) { dj.autoDJ.isActive && dj.autoDJ.phase != .planning && dj.autoDJ.phase != .waitingForStems }
+        XCTAssertNotEqual(dj.autoDJ.phase, .idle, "It found a way: \(dj.statusMessage ?? "")")
+        try await run(dj) { if case .running = dj.autoDJ.phase { return true } else { return false } }
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertFalse(a.isPlaying, "The old track's stopped")
+        XCTAssertTrue(b.isPlaying, "The new one's playing")
+        XCTAssertEqual(dj.statusKind, .done)
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1])
+        let out = dj.renderOffline(frames: 44_100)
+        XCTAssertGreaterThan(out.left.map { abs($0) }.max() ?? 0, 0.1)
+    }
+
+    // MARK: Taking over
+
+    private func isRunning(_ dj: DJEngine) -> Bool { if case .running = dj.autoDJ.phase { return true } else { return false } }
+    private func isArmed(_ dj: DJEngine) -> Bool { if case .armed = dj.autoDJ.phase { return true } else { return false } }
+
+    private func peak(_ dj: DJEngine, frames: Int = 44_100) -> Float {
+        dj.renderOffline(frames: frames).left.map { abs($0) }.max() ?? 0
+    }
+
+    private func XCTAssertClean(_ deck: Deck, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(deck.stemLevels, [1, 1, 1, 1], "Stems", file: file, line: line)
+        XCTAssertEqual(deck.stemsOn, [true, true, true, true], "Stems", file: file, line: line)
+        XCTAssertEqual([deck.eqLow, deck.eqMid, deck.eqHigh], [0, 0, 0], "EQ", file: file, line: line)
+        XCTAssertEqual(deck.filter, 0, "Filter", file: file, line: line)
+        XCTAssertFalse(deck.renderer.loopActive, "Loop", file: file, line: line)
+        XCTAssertFalse(cheeks_deck_source_cut(deck.renderer.handle), "Cut", file: file, line: line)
+    }
+
+    func testCallingItOffPutsTheWaitingDeckBack() async throws {
+        let dj = try ready(bpmB: 120)
+        let b = dj.decks[1]
+        b.setTempo(1.5)
+        b.keyLock = false
+        b.eqHigh = -0.3
+        b.filter = 0.2
+        b.fader = 0.3
+        dj.crossfader = -0.5
+        dj.colorFX = .dubEcho
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        XCTAssertNotEqual(b.tempo, 1.5, "It's ready for the move")
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(b.tempo, 1.5)
+        XCTAssertFalse(b.keyLock)
+        XCTAssertEqual(b.eqHigh, -0.3)
+        XCTAssertEqual(b.filter, 0.2)
+        XCTAssertEqual(b.fader, 0.3)
+        XCTAssertEqual(dj.crossfader, -0.5)
+        XCTAssertEqual(b.colorFX, .dubEcho)
+        XCTAssertEqual(dj.decks[0].colorFX, .dubEcho)
+    }
+
+    func testAChangeDuringTheCountdownSurvivesCallingItOff() async throws {
+        let dj = try ready(bpmB: 120)
+        let b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        b.setTempoManually(3)
+        b.eqMid = 0.4
+        dj.autoDJ.press()
+        XCTAssertEqual(b.tempo, 3, "That one's theirs")
+        XCTAssertEqual(b.eqMid, 0.4, "That one's theirs")
+    }
+
+    /// The core stops reporting a control once someone's taken it, and showing the old report would take it back.
+    func testAControlTakenFromTheScoreStaysWhereItsPut() async throws {
+        let dj = try ready()
+        let b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && b.stemLevels[Stem.drums.rawValue] == 0 }
+        b.stemLevels[Stem.drums.rawValue] = 0.6
+        for _ in 0..<5 {
+            _ = dj.renderOffline(frames: 4410)
+            dj.tickForTesting()
+        }
+        XCTAssertEqual(b.stemLevels[Stem.drums.rawValue], 0.6)
+    }
+
+    func testAMoveEndsWithTheOldDeckNeutralAndTheNewOneAsItsBeenSet() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        a.eqHigh = -0.5
+        a.eqLow = -0.5
+        b.eqHigh = -0.4
+        b.stemLevels[Stem.melody.rawValue] = 0.6
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertEqual(dj.statusKind, .done)
+        XCTAssertClean(a)
+        XCTAssertEqual(b.eqHigh, -0.4, "People are hearing that one, and it's theirs")
+        XCTAssertEqual(b.stemLevels[Stem.melody.rawValue], 0.6, "People are hearing that one, and it's theirs")
+        XCTAssertEqual(b.stemLevels[Stem.vocals.rawValue], 1, "What nobody touched comes back")
+    }
+
+    /// Nobody's heard the new deck yet, so it needn't be left quiet, or at the plan's tempo.
+    func testStoppingBeforeTheNewDeckStartsLeavesItReady() async throws {
+        let dj = try ready(bpmB: 120, only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        b.setTempo(1.5)
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
+        XCTAssertFalse(b.renderer.isPlaying)
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertTrue(a.isPlaying, "The old track's carrying on")
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1])
+        XCTAssertEqual(b.tempo, 1.5)
+        b.play()
+        XCTAssertGreaterThan(peak(dj), 0.1)
+    }
+
+    /// With the new deck playing and quiet, its stems are down and can be seen to be, and it's easy to bring them back.
+    func testStoppingPartWayLeavesTheStemsWithinReach() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { b.renderer.isPlaying }
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertTrue(b.isPlaying, "It's left playing")
+        XCTAssertEqual(b.stemLevels, [0, 0, 0, 0], "and quiet, as it was")
+        XCTAssertFalse(b.stemIsHeard(.drums), "which shows")
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped. The decks are yours.")
+        a.pause()
+        a.stemsOn = [false, false, false, false]
+        _ = dj.renderOffline(frames: 44_100)
+        XCTAssertLessThan(peak(dj, frames: 8820), 0.01, "Only the new deck's left, and it's quiet")
+        b.setStems(Set(Stem.allCases))
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1])
+        _ = dj.renderOffline(frames: 4410)
+        XCTAssertGreaterThan(peak(dj), 0.1, "ALL brings it back")
+    }
+
+    /// The score's effects and noise aren't on the screen, so they have to go with it.
+    func testStoppingLeavesNothingYouCantSee() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 8 + 52 }
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        a.stemsOn = [false, false, false, false]
+        _ = dj.renderOffline(frames: 44_100 * 6)
+        XCTAssertLessThan(peak(dj), 0.001, "Nothing but the stems was making a sound")
+    }
+
+    func testPressingOnceTheNewTrackIsOnJustEndsIt() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && b.stemLevels[Stem.drums.rawValue] == 0 }
+        try await run(dj) { b.stemLevels[Stem.drums.rawValue] == 1 }
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 4410)
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertFalse(a.isPlaying, "It was on its way out")
+        XCTAssertTrue(b.isPlaying)
+        XCTAssertClean(a)
+        XCTAssertClean(b)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped. Deck 2 is on.")
+        XCTAssertNil(dj.rateAction, "It didn't get to the end")
+    }
+
+    func testCueOnTheNewDeckMidMoveLeavesTheOldOnePlaying() async throws {
+        for move in [TransitionMove.loopDrop, .bassSwap] {
+            let dj = try ready(bpmB: 120, only: move)
+            let a = dj.decks[0], b = dj.decks[1]
+            b.setTempo(1.5)
+            dj.autoDJ.press()
+            try await run(dj) { b.renderer.isPlaying }
+            // Long enough for it to be the deck stopping that's noticed, and short of the handover.
+            _ = dj.renderOffline(frames: 44_100)
+            dj.tickForTesting()
+            XCTAssertEqual(dj.autoDJ.phase, .running(move))
+            b.cueDown()
+            b.cueUp()
+            try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 2)
+            XCTAssertTrue(a.isPlaying, "\(move): the old track's still what's playing")
+            XCTAssertFalse(b.isPlaying, "\(move)")
+            XCTAssertNotEqual(dj.statusKind, .done, "\(move): it didn't work")
+            XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 2 was stopped. Deck 1 carries on.")
+            XCTAssertNil(dj.rateAction, "\(move)")
+            XCTAssertClean(a)
+            XCTAssertClean(b)
+            XCTAssertEqual(b.tempo, 1.5, "\(move): nobody heard it, so it's as it was")
+            XCTAssertGreaterThan(peak(dj), 0.1, "\(move): and it can be heard")
+        }
+    }
+
+    func testStoppingTheOldDeckBringsTheNewOneInNow() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertFalse(b.renderer.isPlaying, "It hasn't got there yet")
+        a.pause()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 2)
+        XCTAssertTrue(b.isPlaying)
+        XCTAssertFalse(a.isPlaying)
+        XCTAssertClean(a)
+        XCTAssertClean(b)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1 was stopped. Deck 2 is on.")
+        XCTAssertGreaterThan(b.position, 1, "From where the plan had it coming in, not the top of the track")
+        XCTAssertGreaterThan(peak(dj), 0.1, "No waiting in silence")
+    }
+
+    func testStoppingTheNewDeckOnceItsOnStopsEverything() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && b.stemLevels[Stem.drums.rawValue] == 0 }
+        try await run(dj) { b.stemLevels[Stem.drums.rawValue] == 1 }
+        b.pause()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 2)
+        XCTAssertFalse(a.isPlaying)
+        XCTAssertFalse(b.isPlaying)
+        XCTAssertNotEqual(dj.statusKind, .done)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 2 was stopped.")
+        XCTAssertClean(a)
+        XCTAssertClean(b)
+    }
+
+    func testStemsThatAreAllTheWayDownComeBackWhenAskedFor() throws {
+        let dj = makeEngine()
+        let deck = dj.decks[0]
+        put(try map(), on: deck, name: "A")
+        deck.stemLevels = [0, 0, 0.5, 0]
+        deck.toggleStem(.vocals)
+        XCTAssertEqual(deck.stemLevels[Stem.vocals.rawValue], 1, "A tap brings it back")
+        XCTAssertTrue(deck.stemIsHeard(.vocals))
+        deck.toggleStem(.vocals)
+        XCTAssertFalse(deck.stemIsHeard(.vocals), "And mutes it again")
+        XCTAssertEqual(deck.stemLevels[Stem.vocals.rawValue], 1, "At the level it had")
+        deck.toggleStem(Stem.allCases[2])
+        XCTAssertEqual(deck.stemLevels[2], 0.5, "One that's only part way down keeps its level")
+        XCTAssertFalse(deck.stemsOn[2], "And mutes")
+        deck.stemLevels = [0, 0, 0, 0]
+        deck.soloStem(.drums)
+        XCTAssertTrue(deck.stemIsHeard(.drums), "A solo can be heard")
+        deck.setStems([.vocals, .drums])
+        XCTAssertEqual(deck.stemLevels[Stem.vocals.rawValue], 1)
+        XCTAssertFalse(deck.stemIsHeard(.bass))
+        deck.setStems(Set(Stem.allCases))
+        XCTAssertEqual(deck.stemLevels, [1, 1, 1, 1])
+        XCTAssertEqual(deck.stemsOn, [true, true, true, true])
+    }
+
+    /// Two touches in one event come in no particular order, and SLIP after REV used to mean no way back.
+    func testSlipPressedAfterReverseStillComesBack() throws {
+        let dj = makeEngine()
+        let deck = dj.decks[0]
+        put(try map(), on: deck, name: "A")
+        deck.seek(to: 60)
+        deck.play()
+        _ = dj.renderOffline(frames: 4410)
+        deck.reverse = true
+        deck.slipMode = true
+        _ = dj.renderOffline(frames: 44_100 * 2)
+        deck.reverse = false
+        _ = dj.renderOffline(frames: 4410)
+        XCTAssertEqual(deck.position, 62.2, accuracy: 0.1, "It should be where the track had got to")
+        deck.slipMode = false
     }
 
     // MARK: A whole mix
@@ -384,10 +697,34 @@ final class AutoDJTests: XCTestCase {
         dj.autoDJ.stopForTesting()
         dj.decks[1].trackMap = nil
         dj.decks[1].stemStatus = .tooLong
-        dj.decks[0].seek(to: (dj.decks[0].track!.duration - 2) * Synth.sampleRate)
+        dj.decks[0].seek(to: dj.decks[0].track!.duration - 2)
         try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 20)
         XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
         XCTAssertEqual(dj.statusKind, .info)
+    }
+
+    /// A long fade into silence isn't worth waiting for, and the message saying why stays up.
+    func testAMixDoesntSitThroughAFadeIntoSilence() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let first = try map(bars: 40)
+        let silence = Int(4 * Synth.sampleRate)
+        for stem in first.stems {
+            (stem.data + (stem.frames - silence) * 2).update(repeating: 0, count: silence * 2)
+        }
+        let dj = engine(loading: [ids[0]: first, ids[1]: try map(), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.autoDJ.stopForTesting()
+        let end = dj.decks[0].track!.duration
+        dj.decks[0].seek(to: end - 6)
+        try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 5)
+        XCTAssertEqual(dj.decks[0].position, end - 4, accuracy: 0.2, "It goes as soon as there's nothing left to hear")
+        XCTAssertFalse(dj.decks[0].isPlaying)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        XCTAssertEqual(dj.statusMessage, "No clean way in. Deck 2 just started.")
+        try await run(dj, until: { dj.decks[0].track?.id == ids[2] }, seconds: 2)
+        for _ in 0..<5 { dj.tickForTesting() }
+        XCTAssertEqual(dj.statusMessage, "No clean way in. Deck 2 just started.", "Up next doesn't cover it")
     }
 
     // MARK: Plans

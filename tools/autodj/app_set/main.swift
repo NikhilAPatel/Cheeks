@@ -4,6 +4,7 @@
 //   app_set <tracks dir> <track> <track> [<track> ...]
 //
 // With CHEEKS_SET_ORDER=next in the environment, it plays them in the order the NEXT key gives, from the first one.
+// With CHEEKS_SET_FIRST_DECK=1, the first track is on deck 2.
 import Foundation
 
 let arguments = CommandLine.arguments
@@ -37,6 +38,8 @@ if ProcessInfo.processInfo.environment["CHEEKS_SET_ORDER"] == "next" {
     for item in [first] + rest { print(String(format: "  %6.1f %-4@ %@", item.bpm, item.key as NSString, item.name as NSString)) }
 }
 
+// A mix goes back and forth between the decks. CHEEKS_SET_FIRST_DECK=1 starts it from deck 2.
+let firstDeck = Int(ProcessInfo.processInfo.environment["CHEEKS_SET_FIRST_DECK"] ?? "") ?? 0
 let probe = DeckRenderer(sampleRate: AudioConfig.sampleRate)
 var stemsA = try stems(names[0])
 guard var mapA = TrackMapper.map(stems: stemsA) else { fatalError("no map") }
@@ -58,7 +61,7 @@ for (index, nameB) in names.enumerated().dropFirst() {
     let heard = mapA.heard(shiftedBy: shiftA)
     let soonest = enteredAt + TransitionScore.leadBars + 1
     func attempt(from bar: Int) -> TransitionScore? {
-        TransitionChoice(mapA: heard, mapB: mapB, stemsA: stemsA, stemsB: stemsB, rateA: rateA, levelA: level(nameA), levelB: level(nameB),
+        TransitionChoice(mapA: heard, mapB: mapB, stemsA: stemsA, stemsB: stemsB, deckA: Int32((index - 1 + firstDeck) % 2), deckB: Int32((index + firstDeck) % 2), rateA: rateA, levelA: level(nameA), levelB: level(nameB),
                          lagA: lagA, lagB: lagB, lagShifted: cheeks_deck_stem_lag(probe.handle, rateNext), earliest: max(soonest, bar),
                          recentMoves: recentMoves, avoid: [.brakeDrop], wantsTimeOnNext: true).choose()
     }

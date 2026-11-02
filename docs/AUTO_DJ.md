@@ -127,7 +127,16 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
 
 - **`AUTO`** on the mixer. It needs one deck playing, the other loaded and stopped, and stems on both. It waits for stems that are still splitting.
 - **Press:** plans, auditions, then waits for the bar and counts down. Press again to call it off.
-- **Mid-move:** the knobs and stem levels follow the score, and touching one takes it back. Pressing `AUTO` stops the score and leaves the decks as they are.
+- **Mid-move:** the knobs and stem levels follow the score, and touching one takes it back. At the end, the old deck goes back to neutral, and on the new deck what you took stays as you set it.
+- **Cutting it short:**
+
+  | What you do | Before the new track has taken over | After |
+  | --- | --- | --- |
+  | Press `AUTO` | The decks are yours: stems, EQ, filter and loop stay. The score's effects and noise go, because nothing on screen could turn them off | The old deck stops and the new one's on |
+  | Stop the new deck | The old deck carries on, clean | Both stop |
+  | Stop the old deck | The new one comes in at once, whole | The move plays out |
+
+  A new deck that nobody's heard yet goes back to how it was, with its stems up and its tempo where it had it, the same as calling it off during the countdown. A stem left all the way down shows as off, and a tap or `ALL` brings it back. None of these ask for a rating or count as a move played.
 - **At the end:** the old deck's stopped and both decks are back to neutral. The new track carries on at the playing tempo.
 
 **Next:**

@@ -478,7 +478,13 @@ extension Deck {
         prepareStems()
         guard stemStatus != .tooLong else { return }
         stemsBeforeSolo = nil
-        stemsOn[stem.rawValue].toggle()
+        // All the way down it's silent already, so a tap is asking for it back. Auto DJ can leave one like this.
+        if stemLevels[stem.rawValue] < Self.silentStem {
+            stemLevels[stem.rawValue] = 1
+            stemsOn[stem.rawValue] = true
+        } else {
+            stemsOn[stem.rawValue].toggle()
+        }
     }
 
     /// Solo a stem; soloing the already-soloed stem restores what was on before.
@@ -492,6 +498,7 @@ extension Deck {
         } else {
             if stemsBeforeSolo == nil { stemsBeforeSolo = stemsOn }
             stemsOn = Stem.allCases.map { $0 == stem }
+            if stemLevels[stem.rawValue] < Self.silentStem { stemLevels[stem.rawValue] = 1 }
         }
     }
 
@@ -500,7 +507,12 @@ extension Deck {
         guard stemStatus != .tooLong else { return }
         stemsBeforeSolo = nil
         stemsOn = Stem.allCases.map { on.contains($0) }
+        // A combination means hearing those stems, so they come up to full, wherever they were.
+        for stem in on where stemLevels[stem.rawValue] != 1 { stemLevels[stem.rawValue] = 1 }
     }
+
+    /// Whether a stem can be heard: it's on, and it isn't all the way down.
+    func stemIsHeard(_ stem: Stem) -> Bool { stemsOn[stem.rawValue] && stemLevels[stem.rawValue] >= Self.silentStem }
 
     func applyStemGains() {
         for i in 0..<4 { renderer.setStemGain(i, stemsOn[i] ? stemLevels[i] : 0) }
@@ -592,6 +604,18 @@ extension Deck {
         var mask = 0
         for stem in fxStems { mask |= 1 << stem.rawValue }
         renderer.setFXStems(mask == 0 ? 0xF : mask)
+    }
+
+    /// Puts the FX chain back to what the screen shows, dropping anything Auto DJ fired, which the FX page doesn't know
+    /// about and couldn't turn off.
+    func restoreFXChain() {
+        for link in 0..<Int(CHEEKS_FX_LINKS) {
+            if let active = activeFX.first(where: { $0.link == link }) {
+                renderer.setFXLink(link, type: active.effect.dsp, on: true, beats: active.beats, depth: active.depth)
+            } else {
+                renderer.setFXLink(link, type: CheeksFXNone, on: false, beats: fxBeats, depth: fxDepth)
+            }
+        }
     }
 
     /// Everything off, for a new track. Effects still ringing carry on until they've died away.

@@ -1424,6 +1424,10 @@ void cheeks_engine_auto_release(CheeksEngine *engine, int deck, int kind, int in
     if (deck < 0 || deck >= 4 || kind < 0 || kind >= kAutoKinds || index < 0 || index >= kAutoIndexes) return;
     engine->autoReleased[deck].fetch_or(1u << (kind * kAutoIndexes + index), std::memory_order_relaxed);
 }
+bool cheeks_engine_auto_released(const CheeksEngine *engine, int deck, int kind, int index) {
+    if (deck < 0 || deck >= 4 || kind < 0 || kind >= kAutoKinds || index < 0 || index >= kAutoIndexes) return false;
+    return (relaxed(engine->autoReleased[deck]) >> (kind * kAutoIndexes + index)) & 1;
+}
 float cheeks_engine_auto_value(const CheeksEngine *engine, int deck, int kind, int index) {
     if (deck < 0 || deck >= 4 || kind < 0 || kind >= kAutoKinds || index < 0 || index >= kAutoIndexes) return 0;
     return relaxed(engine->autoValue[deck][kind][index]);

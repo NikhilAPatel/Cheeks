@@ -49,6 +49,18 @@ final class PCM16Stereo {
 
     var duration: Double { Double(frames) / AudioConfig.sampleRate }
 
+    /// The frame after the last sample above this level, looking no further back from the end than this. It only
+    /// checks every so often, so a very short sound in a fade could be missed.
+    func lastSound(withinLast window: Int, above level: Int16) -> Int {
+        let start = max(0, frames - window)
+        var frame = frames - 1
+        while frame >= start {
+            if abs(Int(data[frame * 2])) > Int(level) || abs(Int(data[frame * 2 + 1])) > Int(level) { return frame + 1 }
+            frame -= 16
+        }
+        return start
+    }
+
     /// A copy of part of this audio.
     func slice(from start: Int, count: Int) -> PCM16Stereo {
         let first = max(0, min(start, frames))

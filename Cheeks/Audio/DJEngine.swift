@@ -121,7 +121,7 @@ final class DJEngine {
             }
         }
         autoDJ = AutoDJ(core: core, decks: decks, say: { [weak self] message, kind in self?.say(message, kind) }, prepareMixer: { [weak self] incoming in
-            self?.openChannel(for: incoming)
+            self?.openChannel(for: incoming) ?? {}
         })
         autoDJ.loadTrack = { [weak self] id, deck in
             guard let self, let track = self.library?.track(id), self.load(track, onto: deck) else { return nil }
@@ -257,10 +257,17 @@ final class DJEngine {
     }
 
     /// Makes sure a deck Auto DJ's bringing in can be heard: the crossfader's centred, and its fader's up.
-    private func openChannel(for deck: Deck) {
+    /// Gets a deck ready to be heard, and gives back how to undo that if it never is.
+    private func openChannel(for deck: Deck) -> () -> Void {
+        let crossfaderWas = crossfader, faderWas = deck.fader
         if crossfader != 0 { crossfader = 0 }
         let other = decks.first { $0 !== deck }?.fader ?? 0.85
         if deck.fader < max(other, 0.5) { deck.fader = max(other, 0.5) }
+        let faderNow = deck.fader
+        return { [weak self, weak deck] in
+            if let self, self.crossfader == 0 { self.crossfader = crossfaderWas }
+            if let deck, deck.fader == faderNow { deck.fader = faderWas }
+        }
     }
 
     func updateVolumes() {

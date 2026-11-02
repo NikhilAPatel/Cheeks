@@ -250,6 +250,8 @@ bool cheeks_engine_auto_armed(const CheeksEngine *engine);
 double cheeks_engine_auto_beat(const CheeksEngine *engine);
 /// A person took this control: the score leaves it alone from now on.
 void cheeks_engine_auto_release(CheeksEngine *engine, int deck, int kind, int index);
+/// Whether someone has taken this control from the score that's loaded.
+bool cheeks_engine_auto_released(const CheeksEngine *engine, int deck, int kind, int index);
 /// Where the score last put a ramped control, for drawing it.
 float cheeks_engine_auto_value(const CheeksEngine *engine, int deck, int kind, int index);
 /// Seconds between a stem or beat FX change and hearing it at this speed. Stems and FX go in ahead of the

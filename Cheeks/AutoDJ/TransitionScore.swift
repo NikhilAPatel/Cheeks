@@ -32,6 +32,12 @@ struct TransitionScore {
     private(set) var landing: Double?
     /// The beat a deliberate breath ends on, so the audition doesn't take the bar before it for a hole.
     private(set) var breath: Double?
+    /// When the new track has taken over, in mix beats. Up to here it's the old track people are listening to.
+    private(set) var handover: Double = 0
+    /// When the score starts the new deck, in mix beats.
+    private(set) var incomingStarts: Double = 0
+    /// When the score stops the old deck, or starts it stopping, in mix beats.
+    private(set) var outgoingStops: Double = 0
 
     init(plan: TransitionPlan, a: Side, b: Side) {
         self.plan = plan
@@ -40,6 +46,8 @@ struct TransitionScore {
         framesPerBeat = a.map.barSeconds / 4 * AudioConfig.sampleRate / max(a.rate, 0.01)
         start = Double(Self.leadBars * 4)
         write()
+        let deck = a.deck
+        outgoingStops = steps.filter { $0.deck == deck && ($0.kind == Int32(CheeksAutoStop.rawValue) || $0.kind == Int32(CheeksAutoBrake.rawValue)) }.map(\.startBeat).min() ?? length
     }
 
     /// The outgoing deck's frame where the clock starts.
@@ -105,7 +113,8 @@ struct TransitionScore {
         for stem in Stem.allCases { self.stem(b, stem, to: 0, at: 0) }
         // A track can't start before its first bar.
         let lead = Double(min(Self.leadBars, entry) * 4)
-        fire(CheeksAutoStart, b, at: max(0, beat - lead), a: b.frame(atBar: entry), b: beat, c: b.rate)
+        incomingStarts = max(0, beat - lead)
+        fire(CheeksAutoStart, b, at: incomingStarts, a: b.frame(atBar: entry), b: beat, c: b.rate)
     }
 
     private mutating func write() {
@@ -130,6 +139,7 @@ struct TransitionScore {
         let bar = Double(plan.exit + plan.swap - 2)
         let singing = Int(bar) >= 0 && Int(bar) + 2 <= a.map.vocal.count && a.map.vocal[Int(bar)..<Int(bar) + 2].reduce(0, +) > 0.7
         breath = swapAt
+        handover = swapAt
         prime(entry: plan.entry, landing: t)
         low(b, to: 0, at: 0)
         stem(b, .drums, 0, 0.9, t, t + Double(plan.swap * 2), curve: 1)
@@ -162,6 +172,7 @@ struct TransitionScore {
         let t = start, bar = a.map.barSeconds * AudioConfig.sampleRate, from = a.frame(atBar: plan.exit)
         let drop = t + 64
         landing = drop
+        handover = drop
         prime(entry: plan.entry, landing: drop)
         // 4 bars as played, then the loop: 4, 2+2, 1+1, 1/2+1/2, 1/4 x 4.
         for (beat, size) in [(0.02, 4.0), (32.02, 2.0), (48.02, 1.0), (56.02, 0.5), (60.02, 0.25)] {
@@ -184,6 +195,7 @@ struct TransitionScore {
     private mutating func writeEchoDrop() {
         let t = start
         landing = t
+        handover = t
         prime(entry: plan.entry, landing: t)
         effect(a, CheeksFXEcho, beats: 0.75, depth: 0.8, at: t - 2)
         fire(CheeksAutoCut, a, at: max(0, t - early(a)))
@@ -197,6 +209,7 @@ struct TransitionScore {
     private mutating func writeBrakeDrop() {
         let t = start
         landing = t
+        handover = t
         prime(entry: plan.entry, landing: t)
         fire(CheeksAutoBrake, a, at: t - 4, a: 4 * framesPerBeat)
         for s in Stem.allCases { stem(b, s, to: 1, at: t) }
@@ -209,6 +222,7 @@ struct TransitionScore {
     private mutating func writeVocalTease() {
         let t = start, drop = t + 32
         landing = drop
+        handover = drop
         prime(entry: plan.entry - 8, landing: t)
         stem(a, .vocals, 1, 0, t - 2, t)
         stem(b, .vocals, 0, 1, t - 2, t + 1)
@@ -224,6 +238,8 @@ struct TransitionScore {
     private mutating func writeRide() {
         let t = start, end = t + 32
         landing = t
+        // The old vocal is still what people are following until it goes up the echo.
+        handover = end
         prime(entry: plan.entry, landing: t)
         stem(a, .bass, 1, 0, t - 1, t - 0.75)
         for s in [Stem.melody, .drums] { stem(a, s, to: 0, at: t) }
@@ -261,7 +277,7 @@ struct TransitionChoice {
     var playingBPM: Double { mapA.bpm * rateA }
 
     /// How much each of the last few moves counts against playing it again, most recent first.
-    private static let repeatPenalty = [0.3, 0.2, 0.1, 0.1]
+    private static let repeatPenalty = [0.5, 0.25, 0.1, 0.1]
 
     /// What a plan loses for handing over late in the new track: nothing in the first 40%, then more the later it gets.
     static func lateLanding(_ plan: TransitionPlan, barsInNext: Int) -> Double {
@@ -317,11 +333,13 @@ enum TransitionAudition {
         let a = DeckRenderer(sampleRate: sr), b = DeckRenderer(sampleRate: sr)
         a.setSources(stemsA)
         b.setSources(stemsB)
-        var handles: [OpaquePointer?] = [a.handle, b.handle]
+        // The score's steps name the real decks, so each track has to be on that deck here too. Going from deck 2,
+        // the moves used to land on the wrong tracks: it refused good plans and passed ones it had never heard.
+        var handles: [OpaquePointer?] = score.a.deck == 0 ? [a.handle, b.handle] : [b.handle, a.handle]
         guard let core = handles.withUnsafeMutableBufferPointer({ pointer in cheeks_engine_create(sr, pointer.baseAddress, 2) }) else { return nil }
         defer { cheeks_engine_destroy(core) }
-        cheeks_engine_set_channel(core, 0, levelA, 1, 0)
-        cheeks_engine_set_channel(core, 1, levelB, 1, 0)
+        cheeks_engine_set_channel(core, score.a.deck, levelA, 1, 0)
+        cheeks_engine_set_channel(core, score.b.deck, levelB, 1, 0)
         cheeks_engine_set_master(core, 0.9, 0.8, 1, false)
         cheeks_deck_set_tempo(a.handle, score.a.rate, true, 0)
         cheeks_deck_set_tempo(b.handle, score.b.rate, true, Int32(score.plan.shift))
