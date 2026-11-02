@@ -72,7 +72,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 
 Press `AUTO` with one deck playing and another loaded, and it mixes between them. It plans from what each stem is doing in every bar, renders its best options offline to reject any let-downs, waits for the right bar, and performs through the same controls you'd use. The knobs move on their own, and touching one takes it back. Moves: bass swap, loop build, echo throw, brake drop, vocal tease and vocal ride. See `docs/AUTO_DJ.md`.
 
-Press `MIX` in the browser and it does that through the whole list on screen, in the order it's showing: it loads each next track itself, gives each its time, and mixes into it without anyone touching anything.
+Press `MIX` in the browser and it does that through the whole list on screen, in the order it's showing: it loads each next track itself, gives each its time, and mixes into it without anyone touching anything. `NEXT` puts the list in the best order to play from what's on the deck, by tempo and key.
 
 Once a track's stems are ready, its drums also correct its beat grid, unless you set the grid yourself or imported it.
 

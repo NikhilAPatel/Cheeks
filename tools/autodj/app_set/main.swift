@@ -2,10 +2,13 @@
 // which move joins each pair, and how much of each track gets played. It renders nothing to disk.
 //
 //   app_set <tracks dir> <track> <track> [<track> ...]
+//
+// With CHEEKS_SET_ORDER=next in the environment, it plays them in the order the NEXT key gives, from the first one.
 import Foundation
 
 let arguments = CommandLine.arguments
-let tracks = arguments[1], names = Array(arguments[2...])
+let tracks = arguments[1]
+var names = Array(arguments[2...])
 
 func stems(_ name: String) throws -> [PCM16Stereo] {
     let file = try Data(contentsOf: URL(fileURLWithPath: "\(tracks)/\(name)/stems.npy"), options: .alwaysMapped)
@@ -23,6 +26,17 @@ func level(_ name: String) -> Float {
     return pow(10, Float(max(-12, min(9, -11 - lufs))) / 20) * 0.85 * 0.85
 }
 
+if ProcessInfo.processInfo.environment["CHEEKS_SET_ORDER"] == "next" {
+    let known = try names.map { name -> (name: String, bpm: Double, key: String) in
+        guard let map = TrackMapper.map(stems: try stems(name)) else { fatalError("no map") }
+        return (name, map.bpm, Camelot.code(pitchClass: map.keyRoot, minor: map.keyIsMinor))
+    }
+    let first = known[0]
+    let rest = SetOrder.order(Array(known.dropFirst()), from: SetOrder.Place(bpm: first.bpm, key: first.key), bpm: { $0.bpm }, key: { $0.key })
+    names = [first.name] + rest.map(\.name)
+    for item in [first] + rest { print(String(format: "  %6.1f %-4@ %@", item.bpm, item.key as NSString, item.name as NSString)) }
+}
+
 let probe = DeckRenderer(sampleRate: AudioConfig.sampleRate)
 var stemsA = try stems(names[0])
 guard var mapA = TrackMapper.map(stems: stemsA) else { fatalError("no map") }
@@ -31,6 +45,7 @@ var rateA = 1.0, shiftA = 0, recentMoves: [TransitionMove] = []
 var enteredAt = 0
 var counts: [String: Int] = [:]
 var joined = 0, failed = 0, shortest = (fraction: 1.0, name: "")
+var plays: [Double] = [], blends = 0, shifts = 0, stretchTotal = 0.0
 
 for (index, nameB) in names.enumerated().dropFirst() {
     let nameA = names[index - 1]
@@ -45,7 +60,7 @@ for (index, nameB) in names.enumerated().dropFirst() {
     func attempt(from bar: Int) -> TransitionScore? {
         TransitionChoice(mapA: heard, mapB: mapB, stemsA: stemsA, stemsB: stemsB, rateA: rateA, levelA: level(nameA), levelB: level(nameB),
                          lagA: lagA, lagB: lagB, lagShifted: cheeks_deck_stem_lag(probe.handle, rateNext), earliest: max(soonest, bar),
-                         recentMoves: recentMoves, avoid: [.brakeDrop]).choose()
+                         recentMoves: recentMoves, avoid: [.brakeDrop], wantsTimeOnNext: true).choose()
     }
     let usual = TransitionPlanner.setExit(in: mapA)
     var chosen = attempt(from: usual)
@@ -72,6 +87,10 @@ for (index, nameB) in names.enumerated().dropFirst() {
     counts[plan.move.title, default: 0] += 1
     let played = Double(plan.exit - enteredAt) / Double(max(mapA.barCount, 1))
     if played < shortest.fraction { shortest = (played, nameA) }
+    plays.append(played)
+    if plan.move == .bassSwap || plan.move == .vocalTease || plan.move == .acapellaRide { blends += 1 }
+    if plan.shift != 0 { shifts += 1 }
+    stretchTotal += abs(score.b.rate - 1)
     print("\(nameA) -> \(nameB) \(bpmText): \(plan.move.title), leaves bar \(plan.exit) of \(mapA.barCount) (from \(usual), \(how)), enters bar \(plan.entry), shift \(plan.shift), \(String(format: "%.0f%%", played * 100)) of the track played")
     // The next track's on from wherever the move hands over.
     let landing = plan.entry + (plan.move == .bassSwap ? plan.swap : 0)
@@ -84,3 +103,8 @@ for (index, nameB) in names.enumerated().dropFirst() {
 }
 print("joined \(joined), no way in \(failed). Moves: \(counts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")
 print("shortest play: \(String(format: "%.0f%%", shortest.fraction * 100)) of \(shortest.name)")
+let sortedPlays = plays.sorted()
+if !sortedPlays.isEmpty {
+    print(String(format: "median play %.0f%%, moves that overlap two tracks %d, key shifts %d, mean stretch %.1f%%",
+                 sortedPlays[sortedPlays.count / 2] * 100, blends, shifts, stretchTotal / Double(max(joined, 1)) * 100))
+}

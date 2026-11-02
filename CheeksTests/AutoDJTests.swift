@@ -226,6 +226,18 @@ final class AutoDJTests: XCTestCase {
         XCTAssertFalse(dj.autoDJ.isActive)
     }
 
+    func testAMixMindsLandingLateInTheNextTrack() {
+        func cost(entry: Int, move: TransitionMove = .echoDrop, swap: Int = 16) -> Double {
+            TransitionChoice.lateLanding(TransitionPlan(move: move, exit: 40, entry: entry, swap: swap, score: 1), barsInNext: 100)
+        }
+        XCTAssertEqual(cost(entry: 8), 0, "Early on, it doesn't matter")
+        XCTAssertEqual(cost(entry: 40), 0)
+        XCTAssertEqual(cost(entry: 64), 1.44, accuracy: 0.001)
+        XCTAssertGreaterThan(cost(entry: 80), cost(entry: 64))
+        // It goes by when the new track takes over, which for a blend is after the overlap.
+        XCTAssertEqual(cost(entry: 32, move: .bassSwap, swap: 16), 0.96, accuracy: 0.001)
+    }
+
     func testAMixCarriesOnFromWhatsPlaying() throws {
         let ids = [UUID(), UUID(), UUID()]
         let dj = engine(loading: [ids[1]: try map(), ids[2]: try map()])

@@ -72,8 +72,23 @@ If there's no clean way in, or stems aren't ready in time, the next track starts
 **Measured with `tools/autodj/app_set/`, which runs a set through the app's own planner and audition without playing it.** On the owner's 22 tracks, in folder order:
 
 - 19 of 21 joins found a move, and 2 fell back to starting the next track at the end.
-- Moves: loop build 7, echo throw 7, bass swap 3, vocal tease 1, vocal ride 1.
+- Moves: echo throw 8, loop build 6, bass swap 3, vocal tease 1, vocal ride 1.
 - A track typically played 50 to 90% before the move. The shortest was 35%, where nothing passed from later on.
+
+**`NEXT` puts a list in the best order to play from what's on the deck, by tempo first, then key** (`SetOrder`). It's for someone choosing what to play by hand. For a mix it hardly matters, measured on the same 22 tracks:
+
+| | Folder order | `NEXT` order |
+|---|---|---|
+| Joins that found a move | 19 of 21 | 19 of 21 |
+| Key shifts | 4 | 3 |
+| Moves that overlap two tracks | 5 | 4 |
+| Mean stretch | 2.3% | 2.1% |
+| Median play | 63% | 70% |
+| Shortest play | 35% | 42% |
+
+So it's a little better on every row, but it doesn't find a single extra way in. These tracks all sit between 120 and 133 BPM, and a move only needs one good place in each track, so order alone doesn't decide whether there is one. A library with a wider spread could behave differently.
+
+**Late landings cost a plan in a mix** (`TransitionChoice.lateLanding`). Landing in a track's last third leaves it no time before the next move. One join in `NEXT` order landed on bar 61 of 95 and played for 17% of the track. Taking points off anything handing over past 40% of the new track brought that join to bar 37 and 42%, with no joins lost. A weight of 2 changed nothing there, and 6 did. It's measured on these 22 tracks only, and nobody's heard it.
 
 Folder order is a harsh test, as it's in no musical order. Whether it holds together for an hour is a question for ears. Nothing has been measured on a phone either: a split has to finish while the track before it plays, and how long a split takes there is unknown.
 

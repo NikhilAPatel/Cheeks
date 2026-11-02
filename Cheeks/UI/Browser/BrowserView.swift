@@ -13,6 +13,7 @@ struct BrowserView: View {
     @State private var ascending = false
     @State private var inKeyOnly = false
     @State private var nearBPMOnly = false
+    @State private var bestNext = false
     @State private var importing = false
     @State private var importKind: ImportKind = .audio
     @State private var importMessage: String?
@@ -68,7 +69,11 @@ struct BrowserView: View {
             if order == .orderedSame { return a.dateAdded == b.dateAdded ? a.id.uuidString < b.id.uuidString : a.dateAdded > b.dateAdded }
             return ascending ? order == .orderedAscending : order == .orderedDescending
         }
-        return list
+        guard bestNext else { return list }
+        // The best way on from what's playing, which isn't on the list: it can't come next after itself.
+        let deck = referenceDeck
+        let place = deck.map { SetOrder.Place(bpm: $0.effectiveBPM > 0 ? $0.effectiveBPM : nil, key: $0.effectiveKey) }
+        return SetOrder.order(list.filter { $0.id != deck?.track?.id }, from: place, bpm: \.bpm, key: \.key)
     }
 
     private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
@@ -242,6 +247,7 @@ struct BrowserView: View {
 
             filterKey(layout == .portrait ? "KEY" : "IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil)
             filterKey(layout == .portrait ? "±6%" : "±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0)
+            filterKey("NEXT", isOn: $bestNext, enabled: true, accessibilityName: "Best next first")
             mixKey
 
             if layout == .portrait { sourceMenu }
@@ -269,8 +275,8 @@ struct BrowserView: View {
         .padding(5)
     }
 
-    private func filterKey(_ title: String, isOn: Binding<Bool>, enabled: Bool) -> some View {
-        Key(title, lit: isOn.wrappedValue && enabled, size: 8.5, feel: .toggle, isEnabled: enabled, onPress: {
+    private func filterKey(_ title: String, isOn: Binding<Bool>, enabled: Bool, accessibilityName: String? = nil) -> some View {
+        Key(title, lit: isOn.wrappedValue && enabled, size: 8.5, feel: .toggle, isEnabled: enabled, accessibilityName: accessibilityName ?? title, onPress: {
             withAnimation(Theme.panel) { isOn.wrappedValue.toggle() }
         })
         .frame(width: layout == .portrait ? 36 : 56, height: 24)
@@ -336,15 +342,22 @@ struct BrowserView: View {
         Button {
             Haptics.shared.tick()
             withAnimation(Theme.panel) {
-                if sort == key { ascending.toggle() } else {
+                // Asking for a column says what order's wanted, so it takes over from NEXT.
+                if bestNext {
+                    bestNext = false
+                } else if sort == key {
+                    ascending.toggle()
+                }
+                if sort != key {
                     sort = key
                     ascending = key == .title || key == .artist || key == .key
                 }
             }
         } label: {
+            let current = sort == key && !bestNext
             HStack(spacing: 2) {
-                Text(key.rawValue.uppercased()).silk(8, color: sort == key ? Theme.textPrimary : Theme.textTertiary)
-                if sort == key {
+                Text(key.rawValue.uppercased()).silk(8, color: current ? Theme.textPrimary : Theme.textTertiary)
+                if current {
                     Image(systemName: ascending ? "chevron.up" : "chevron.down")
                         .font(.system(size: 6.5, weight: .bold))
                         .foregroundStyle(Theme.accent)

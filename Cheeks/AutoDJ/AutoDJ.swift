@@ -299,7 +299,7 @@ final class AutoDJ {
                                       lagA: lagFor(outgoing, rateA, outgoing.keyShift), lagB: lagFor(incoming, playingBPM / mapB.bpm, 0),
                                       lagShifted: cheeks_deck_stem_lag(incoming.renderer.handle, playingBPM / mapB.bpm),
                                       earliest: max(soonest, leaveFrom), recentMoves: recentMoves,
-                                      avoid: mixSet == nil ? [] : [.brakeDrop])
+                                      avoid: mixSet == nil ? [] : [.brakeDrop], wantsTimeOnNext: mixSet != nil)
         planning = Task.detached(priority: .userInitiated) { [weak self] in
             let chosen = choice.choose(isCancelled: { Task.isCancelled })
             if Task.isCancelled { return }

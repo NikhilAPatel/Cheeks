@@ -26,7 +26,7 @@ The owner was advised against it: the screen's already dense and four sets of st
 - Jump to the next or previous phrase.
 
 ### 3. Auto DJ: built, being tuned by ear
-`docs/AUTO_DJ.md` has the design, the evidence and what's next. `MIX` goes through a whole list. Still to come: ratings in the app, and "what should I play next?".
+`docs/AUTO_DJ.md` has the design, the evidence and what's next. `MIX` goes through a whole list, and `NEXT` orders it by tempo and key. Still to come: ratings in the app.
 
 ### 4. Release on every iPhone (M), started
 Compact layouts, rotation and resizing are in. Still to come: a real finger on a small screen, the browser and sheets on the smallest phones, and everything in "Before distributing the app" in the handoff.

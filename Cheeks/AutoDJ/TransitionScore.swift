@@ -253,11 +253,19 @@ struct TransitionChoice {
     var recentMoves: [TransitionMove] = []
     /// Moves not to use. A mix has no one there to take it back, so it leaves out what's only for when nothing else will do.
     var avoid: Set<TransitionMove> = []
+    /// A mix gives each track its time, so a way in that leaves little of the new track counts against itself.
+    var wantsTimeOnNext = false
 
     var playingBPM: Double { mapA.bpm * rateA }
 
     /// How much each of the last few moves counts against playing it again, most recent first.
     private static let repeatPenalty = [0.3, 0.2, 0.1, 0.1]
+
+    /// What a plan loses for handing over late in the new track: nothing in the first 40%, then more the later it gets.
+    static func lateLanding(_ plan: TransitionPlan, barsInNext: Int) -> Double {
+        let handover = plan.entry + plan.move.bars(swap: plan.swap).total
+        return max(0, Double(handover) / Double(max(barsInNext, 1)) - 0.4) * 6
+    }
 
     func choose(isCancelled: () -> Bool = { false }) -> TransitionScore? {
         var penalty: [TransitionMove: Double] = [:]
@@ -267,6 +275,7 @@ struct TransitionChoice {
             .map { plan -> TransitionPlan in
                 var plan = plan
                 plan.score -= penalty[plan.move] ?? 0
+                if wantsTimeOnNext { plan.score -= Self.lateLanding(plan, barsInNext: mapB.barCount) }
                 return plan
             }
             .sorted { $0.score > $1.score }
