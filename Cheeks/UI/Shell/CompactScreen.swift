@@ -283,6 +283,8 @@ struct MixerMoreSheet: View {
                 Text("Mixer").font(Theme.text(15, .semibold)).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Button("Done") { dismiss() }
+                    .font(Theme.text(15, .semibold))
+                    .foregroundStyle(Theme.accent)
             }
             HStack(alignment: .top, spacing: 18) {
                 Knob(value: $one.trim, label: "TRIM 1", color: Theme.textPrimary, size: 40)
@@ -293,6 +295,7 @@ struct MixerMoreSheet: View {
             }
             HStack(spacing: 8) {
                 Key("SPLIT", lit: dj.splitCue, size: 9, feel: .toggle, onPress: { dj.splitCue.toggle() })
+                    .frame(width: 110)
                 Key(color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter,
                     feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", onPress: {
                     let all = ColorEffect.allCases
@@ -303,6 +306,7 @@ struct MixerMoreSheet: View {
                         Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 8, weight: .bold))
                     }
                 }
+                .frame(width: 110)
             }
             .frame(height: 34)
             Spacer(minLength: 0)
