@@ -52,7 +52,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - **Library catch-up:** tracks analysed before phrases existed get re-analysed in the background, but only while no deck's playing and the phone isn't hot.
 - **Memory:** the three FX links and Color FX add about 16 MB in total. Worst case with everything on measures 2.4% of realtime on average and 25% in the worst callback on this M1 Pro.
 
-**Before distributing the app:** the Demucs code is MIT, and states no separate terms for its weights, but they were trained partly on MUSDB18, which is non-commercial. Personal use is fine. Get a real answer before anything commercial.
+**Before distributing the app:** see `docs/RELEASE.md`. The Demucs maintainer has said the weights are for research and that a real app is out of scope, so this blocks a public release. Personal use is fine. The options, with Spleeter measured on the owner's tracks, are in there.
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team.

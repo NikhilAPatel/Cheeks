@@ -85,7 +85,7 @@ Once a track's stems are ready, its drums also correct its beat grid, unless you
 
 ## Stems
 
-Separation needs a machine-learning model. Cheeks uses [HT-Demucs](https://github.com/facebookresearch/demucs) converted to Core ML. `tools/stems/` has the conversion script and instructions, and the result goes at `Cheeks/Stems.mlpackage`. It's large, so it isn't kept in git. **Personal use is fine; check the weights' licence before distributing the app**, since they were trained on a research dataset.
+Separation needs a machine-learning model. Cheeks uses [HT-Demucs](https://github.com/facebookresearch/demucs) converted to Core ML. `tools/stems/` has the conversion script and instructions, and the result goes at `Cheeks/Stems.mlpackage`. It's large, so it isn't kept in git. **Personal use is fine, but the weights can't go in a public release as things stand**, since they were trained on a research dataset. [docs/RELEASE.md](docs/RELEASE.md) has the options.
 
 Without the model, the app falls back to a frequency-based split, and the status shows **≈EQ**. That's only good for rough "drop the bass" moves.
 
