@@ -183,7 +183,11 @@ def shortlist(a, b, earliest=0, per_move=6):
 
 
 def control(a, b):
-    """The baseline: B from its first phrase line, fading over A's last proper phrase, on the line."""
-    fa = Features(a)
+    """The baseline: one long fade over A's last proper phrase, on the line, with B's full band in by the end of it.
+    Starting B at bar 0 fades a club section into an intro that can have no drums for over a minute, which sounds far
+    too slow at any tempo, and makes every move look better than it is."""
+    fa, fb = Features(a), Features(b)
     last = [x for x in fa.lines if x + 16 <= a.bars - 2]
-    return dict(move="crossfade", a_exit=last[-1] if last else max(0, a.bars - 24), b_entry=0, bars=16, score=0, shift=0, why="the control")
+    full = [x for x in fb.lines if fb.is_main(x, x + 8)]
+    entry = max(0, full[0] - 16) if full else 0
+    return dict(move="crossfade", a_exit=last[-1] if last else max(0, a.bars - 24), b_entry=entry, bars=16, score=0, shift=0, why="the control")

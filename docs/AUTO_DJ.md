@@ -53,9 +53,11 @@ On their own tracks, from the local Listening Room (`tools/autodj/local_room.py`
 - **Vocal tease: Good.** The new vocal came in well, but the new track's arrival was better on the loop build.
 - **Bass swap: OK.** Pleasant, but plain, close to a normal crossfade.
 - **Brake drop: Bad.** Way too jarring. It's now only used between tracks nothing else can join.
-- **Crossfade, 125 into 126 BPM:** the second song felt far too slow. **To do: measure how fast a track feels, beyond its BPM** (how busy the drums and bass are), and avoid or work around big differences.
+- **Crossfade, 125 into 126 BPM:** the second song felt far too slow. This was the room's plain control, which isn't something AUTO plays, and it faded a full section into bar 0 of a song with no drums for its first 72 seconds. The control now has the new track's full band in by the end of the fade. Its new takes end `__r2`, and the old rating stays under `__r1`.
 
 That's six takes, mostly from one pair, so these are early signs.
+
+**How fast a track feels.** `tools/autodj/feel.py` counts what each stem plays on a 16th-note grid in a track's main sections, and how much it swings. Tracks at nearly the same tempo can differ a lot: in their main sections, Turn Off The Lights (125 BPM) has 0.93 bass hits a beat and Sweet Release (126 BPM) has 3.97. The planner doesn't use this yet, because no rating shows the difference matters. The complaint above came from the missing drums, and every AUTO take rendered so far lands with kick and bass on in at least 7 of the first 8 bars. The unrated takes of that pair will show whether it does.
 
 ## What to train, and what not to
 
