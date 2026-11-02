@@ -78,8 +78,8 @@ struct TransportSection: View {
             TransportButton(color: Theme.cue, lit: !deck.isPlaying && deck.isLoaded, accessibilityName: "Cue", onPress: deck.cueDown, onRelease: deck.cueUp) {
                 Text("CUE").font(Theme.silk(12.5)).tracking(0.5)
             }
-            TransportButton(color: Theme.play, lit: deck.isPlaying, accessibilityName: deck.isPlaying ? "Pause" : "Play", onPress: deck.togglePlay) {
-                Image(systemName: deck.isPlaying ? "pause.fill" : "play.fill")
+            TransportButton(color: Theme.play, lit: deck.isPlayingOrAboutTo, accessibilityName: deck.isPlayingOrAboutTo ? "Pause" : "Play", onPress: deck.togglePlay) {
+                Image(systemName: deck.isPlayingOrAboutTo ? "pause.fill" : "play.fill")
                     .font(.system(size: 16, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace.downUp))
             }

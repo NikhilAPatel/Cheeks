@@ -197,6 +197,10 @@ final class Deck {
 
     // Transport
     var isPlaying = false
+    /// PLAY was pressed while the track's still loading, so it starts as soon as it's ready.
+    private(set) var startsWhenLoaded = false
+    /// What PLAY shows: going, or about to.
+    var isPlayingOrAboutTo: Bool { isPlaying || startsWhenLoaded }
     var cuePoint: Double = 0
     @ObservationIgnored var cuePreviewing = false
     var quantize = true
@@ -361,6 +365,7 @@ final class Deck {
         pause()
         stemJob?.cancel()
         stemJob = nil
+        startsWhenLoaded = false
         isLoading = true
         loadingTrack = newTrack
         loadError = nil
@@ -394,6 +399,7 @@ final class Deck {
                 await MainActor.run {
                     guard self.loadGeneration == generation else { return }
                     self.isLoading = false
+                    self.startsWhenLoaded = false
                     self.loadingTrack = nil
                     self.loadError = "Couldn't open this file"
                 }
@@ -467,6 +473,10 @@ final class Deck {
            UserDefaults.standard.object(forKey: "prepareStemsOnLoad") as? Bool ?? true {
             prepareStems()
         }
+        if startsWhenLoaded {
+            startsWhenLoaded = false
+            play()
+        }
     }
 
     /// Tracks are brought to about this loudness (LUFS), which leaves headroom for mixing two together.
@@ -511,8 +521,11 @@ final class Deck {
     // MARK: Transport
 
     func togglePlay() {
+        // Pressed during a load, it's waiting for the track. Pressed again, it isn't.
+        if isLoading {
+            startsWhenLoaded.toggle()
         // PLAY while holding CUE means "keep going from here", as on a club deck.
-        if cuePreviewing {
+        } else if cuePreviewing {
             play()
         } else if isPlaying {
             pause()
@@ -560,6 +573,7 @@ final class Deck {
     /// Club-deck cue: while playing, jump back to the cue and stop; while paused, set the
     /// cue here (if moved) and play for as long as the button is held.
     func cueDown() {
+        startsWhenLoaded = false
         guard isLoaded else { return }
         if isPlaying && !cuePreviewing {
             pause()

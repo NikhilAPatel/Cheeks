@@ -39,6 +39,16 @@ final class LiveRenderer {
         var base = mach_timebase_info_data_t()
         mach_timebase_info(&base)
         secondsPerTick = Double(base.numer) / Double(base.denom) * 1e-9
+        // Frames sent while the app's going away never reach the screen, though each view thinks it
+        // drew them. So everything draws afresh on the way back, or a meter that fell silent meanwhile
+        // would hold its last picture.
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.redrawEverything() }
+        }
+    }
+
+    private func redrawEverything() {
+        for view in views.allObjects { view.forceRedraw() }
     }
 
     func pipeline(fragment: String) -> MTLRenderPipelineState {
@@ -73,8 +83,12 @@ final class LiveRenderer {
         let now = mach_absolute_time()
         var drew = false
         for view in views.allObjects where view.window != nil && !view.isHidden {
-            guard view.update(hostTime: now),
-                  let drawable = view.metalLayer.nextDrawable() else { continue }
+            guard view.update(hostTime: now) else { continue }
+            guard let drawable = view.metalLayer.nextDrawable() else {
+                // It's taken this frame as drawn, so tell it otherwise.
+                view.forceRedraw()
+                continue
+            }
             let pass = MTLRenderPassDescriptor()
             pass.colorAttachments[0].texture = drawable.texture
             pass.colorAttachments[0].loadAction = .clear

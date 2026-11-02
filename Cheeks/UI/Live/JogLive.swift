@@ -223,8 +223,26 @@ final class JogLiveView: LiveView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        // Opening the browser takes the deck away, with a hand still on the platter perhaps.
-        if window == nil, activeTouch != nil { DispatchQueue.main.async { self.finish() } }
+        NotificationCenter.default.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
+        if window != nil {
+            // A call or the home gesture: the system takes seconds to cancel the touch, and the deck would sit held till then.
+            NotificationCenter.default.addObserver(self, selector: #selector(letGo), name: UIApplication.willResignActiveNotification, object: nil)
+        } else if activeTouch != nil {
+            // Opening the browser takes the deck away, with a hand still on the platter perhaps.
+            DispatchQueue.main.async { self.letGo() }
+        }
+    }
+
+    @objc private func letGo() {
+        guard activeTouch != nil else { return }
+        finish()
+    }
+
+    /// A hand on the platter, for tests, which can't make a touch.
+    func holdForTesting() {
+        activeTouch = UITouch()
+        mode = .scratch
+        deck.scratchBegin()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {

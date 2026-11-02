@@ -236,6 +236,38 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertGreaterThan(early.shownLevels[0], 0.1)
     }
 
+    func testAMeterDrawsAgainWhenTheAppComesBack() async throws {
+        let renderer = LiveRenderer.shared
+        let launch = renderer.launchTime
+        defer { renderer.launchTime = launch }
+        renderer.launchTime = CACurrentMediaTime() - 60 // Past the run-up at launch.
+        let meter = MeterLiveView(bars: 1) { [0] }
+        renderer.register(meter)
+        defer { renderer.unregister(meter) }
+        _ = meter.update(hostTime: mach_absolute_time())
+        XCTAssertFalse(meter.update(hostTime: mach_absolute_time()), "Nothing's changed, so there's nothing to draw")
+
+        // Its last frames were sent as the app went away, and never got to the screen.
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(meter.update(hostTime: mach_absolute_time()))
+        XCTAssertFalse(meter.update(hostTime: mach_absolute_time()))
+    }
+
+    func testTheJogLetsGoAsTheAppGoesAway() throws {
+        let deck = Deck(index: 0)
+        deck.renderer.setSources([PCM16Stereo(frames: 44_100)])
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let jog = JogLiveView(deck: deck)
+        window.addSubview(jog)
+        jog.holdForTesting()
+        XCTAssertTrue(cheeks_deck_scratching(deck.renderer.handle))
+
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+        XCTAssertFalse(cheeks_deck_scratching(deck.renderer.handle), "It shouldn't wait for the system to cancel the touch")
+    }
+
     func testTheDeckNoticesATrackFinishingLoadingWhileItWasEmpty() {
         let deck = Deck(index: 0)
         // A view reading this while the deck's empty has to get told when loading ends.

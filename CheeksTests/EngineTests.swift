@@ -563,6 +563,79 @@ final class EngineTests: XCTestCase {
         XCTAssertLessThan(used / (Double(blocks) * budget), 0.5)
     }
 
+    /// The audio thread doesn't wait for a release, so it can come in partway through a block. That
+    /// used to let the return point follow the deck for the rest of the block, and the jump back then
+    /// went nowhere: in the hands-on test, about one roll in 30 lost the time it was held for.
+    func testReleasingSlipDuringARenderStillJumpsBack() {
+        final class Renders: @unchecked Sendable {
+            private let lock = NSLock()
+            private var done = 0
+            private var stopped = false
+            var shouldStop: Bool { lock.withLock { stopped } }
+            func stop() { lock.withLock { stopped = true } }
+            func finishedOne() { lock.withLock { done += 1 } }
+            /// Until a whole render has started and finished since now, so it's seen what was just sent.
+            func waitForOneFromHere() {
+                let target = lock.withLock { done } + 2
+                while lock.withLock({ done }) < target { usleep(20) }
+            }
+        }
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([PCM16Stereo(frames: Int(sr) * 120)])
+        r.isPlaying = true
+        let renders = Renders()
+        let finished = DispatchSemaphore(value: 0)
+        // Rendering flat out, so a release from here nearly always lands in the middle of a block.
+        Thread.detachNewThread {
+            while !renders.shouldStop {
+                _ = r.renderOffline(frames: 512)
+                renders.finishedOne()
+            }
+            finished.signal()
+        }
+
+        let held = 50_000.0, trials = 300
+        var lost = 0
+        for _ in 0..<trials {
+            r.playhead = 10_000
+            renders.waitForOneFromHere()
+            let start = r.playhead
+            r.engageSlip()
+            r.setLoop(start: start, end: start + 2_000, active: true)
+            renders.waitForOneFromHere()
+            while r.slipPlayhead < start + held { usleep(20) }
+            r.loopActive = false
+            r.releaseSlip()
+            renders.waitForOneFromHere()
+            // Held inside the loop, it can't have got this far by playing on from there.
+            if r.playhead < start + held { lost += 1 }
+        }
+        renders.stop()
+        finished.wait()
+        XCTAssertEqual(lost, 0, "\(lost) of \(trials) releases didn't jump back")
+    }
+
+    func testOnePadLetGoAndAnotherPressedInOneBlockStillGoesBack() {
+        let r = DeckRenderer(sampleRate: sr)
+        r.setSources([PCM16Stereo(frames: Int(sr) * 10)])
+        r.isPlaying = true
+        _ = r.renderOffline(frames: 2048)
+        let start = r.playhead
+        r.engageSlip()
+        r.setLoop(start: start, end: start + 1_000, active: true)
+        _ = r.renderOffline(frames: Int(sr))
+        let back = r.slipPlayhead
+        XCTAssertEqual(back, start + sr, accuracy: 1)
+
+        r.loopActive = false
+        r.releaseSlip()
+        r.engageSlip()
+        _ = r.renderOffline(frames: 512)
+        XCTAssertEqual(r.playhead, back + 512, accuracy: 1, "It came back before the next one started")
+        XCTAssertEqual(r.slipPlayhead, back + 512, accuracy: 1)
+        XCTAssertTrue(r.slipEngaged)
+    }
+
     // MARK: Helpers
 
     /// Estimates pitch from upward zero crossings, which is plenty for a single steady tone.

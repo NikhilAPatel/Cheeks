@@ -265,13 +265,22 @@ private:
     }
 
     void applyCommands() {
+        // Once for the whole chunk. Read sample by sample, slip going off partway through one let the
+        // return point follow the deck, and the jump back that came next went nowhere. Read ahead of
+        // the release, so if this sees slip off, it sees the release that goes with it.
+        slipHolding = slipOn.load(std::memory_order_acquire);
+        bool jumped = false;
+        // Ahead of an engage: with both waiting, one pad's been let go and another pressed.
+        if (slipRelease.exchange(false, std::memory_order_relaxed)) {
+            position = clampd(slipPosition, 0, double(std::max<int64_t>(frames - 1, 0)));
+            jumped = true;
+        }
         // Slip starts from where the deck is right now, unless a seek was queued before it.
         if (slipEngage.exchange(false, std::memory_order_relaxed)) {
             const double at = relaxed(slipEngageAt);
             slipPosition = std::isnan(at) ? position : at;
         }
         const double seekTo = pendingSeek.exchange(kNoSeek, std::memory_order_relaxed);
-        bool jumped = false;
         if (!std::isnan(seekTo)) {
             position = clampd(seekTo, 0, double(std::max<int64_t>(frames - 1, 0)));
             jumped = true;
@@ -290,10 +299,6 @@ private:
         const double delta = pendingDelta.exchange(0, std::memory_order_relaxed);
         if (delta != 0) {
             position = clampd(position + delta, 0, double(std::max<int64_t>(frames - 1, 0)));
-            jumped = true;
-        }
-        if (slipRelease.exchange(false, std::memory_order_relaxed)) {
-            position = clampd(slipPosition, 0, double(std::max<int64_t>(frames - 1, 0)));
             jumped = true;
         }
         if (jumped) {
@@ -412,7 +417,7 @@ private:
     inline bool advance(double rate) {
         position += rate;
         lastRate = rate;
-        if (relaxed(slipOn)) {
+        if (slipHolding) {
             if (relaxed(playing)) slipPosition += ratioNow;
         } else {
             slipPosition = position;
@@ -680,6 +685,7 @@ private:
 
     // Render thread state
     double position = 0, slipPosition = 0, lastRate = 0, nudge = 0;
+    bool slipHolding = false;
     double ratioNow = 1, scratchRate = 0, scratchTargetNow = 0, motorRate = 0, rampRate = 0, rampStep = 0;
     bool motorActive = false, wasPlaying = false, wasScratching = false;
     Ramp ramp = RampNone;
@@ -1310,8 +1316,9 @@ void cheeks_deck_slip_engage(CheeksDeck *deck) {
 }
 void cheeks_deck_slip_release(CheeksDeck *deck) {
     if (!relaxed(deck->slipOn)) return;
-    put(deck->slipOn, false);
     put(deck->slipRelease, true);
+    // After the release, because the render thread goes by this one first.
+    deck->slipOn.store(false, std::memory_order_release);
     put(deck->published, relaxed(deck->publishedSlip));
 }
 void cheeks_deck_slip_cancel(CheeksDeck *deck) { put(deck->slipOn, false); }

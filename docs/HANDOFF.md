@@ -56,7 +56,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team.
-- **Releasing it publicly:** the owner wants it on all iPhones. The layouts are started, and the app now rotates and resizes (`UIRequiresFullScreen` is gone). Before release: the stem model's licence (below), no privacy manifest yet, a lawyer's look at how closely the design follows one maker's gear, and real-device testing.
+- **Releasing it publicly:** the owner wants it on all iPhones. The layouts are started, and the app now rotates and resizes (`UIRequiresFullScreen` is gone). Before release: the stem model's licence (below), a lawyer's look at how closely the design follows one maker's gear, and real-device testing. The privacy manifest is in.
 
 **Surprises worth knowing:**
 - The iPhone Duo is a real simulator here (iOS 27.2).

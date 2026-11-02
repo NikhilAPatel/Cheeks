@@ -197,3 +197,25 @@ Causes below are leads, not confirmed diagnoses.
 
 ## First impressions
 Not run, as the task says to run part 3 only if the owner asks.
+
+## What happened next
+
+**Fixed**
+- **The roll that didn't go back (Pressing harder 1).** A real bug in the audio core, and the round's own recording pinned it down. Following the recording against the track, the roll ran for its full 1.05 s, as stutter, then carried on from 242.45 s, where it should have come back at about 243.4 s. So it wasn't the audio stalling on a busy Mac. The core read slip's on or off flag for every sample, and a release can land partway through a block. For the rest of that block the return point followed the deck, so the jump back that came next went nowhere. That fits one in 30, and more on a busy Mac, as it needs the release to land while the audio thread is in that deck's samples. Now slip's read once per chunk, and the release is written before slip goes off. `testReleasingSlipDuringARenderStillJumpsBack` releases from another thread while rendering flat out: with the old read it lost 143 of 300, and with the fix 0 of 9,000.
+- **One pad let go and another pressed in the same block** lost its jump in the same way, for a different reason: the engage ran first and overwrote the return point. Releases now go first. `testOnePadLetGoAndAnotherPressedInOneBlockStillGoesBack`.
+- **The frozen meter.** The lead was right. Everything now draws afresh when the app becomes active, and a view that got no drawable tries again on the next frame. `testAMeterDrawsAgainWhenTheAppComesBack`. It's on the retest, because a test here can't show what reaches the screen.
+- **`PLAY` straight after a load key.** It's no longer lost: it lights at once and the deck starts when the track's ready. Pressing it again or `CUE` takes it back, and another load forgets it. `LoadingTests`.
+- **The jog after backgrounding.** `JogLiveView` now lets go on `willResignActive`, as `TouchSurfaceView` does. `testTheJogLetsGoAsTheAppGoesAway`. This also answers round 5's "can't be driven by a test".
+
+**Decided against changing**
+- **A seek during a load:** nothing's lost. The overview ignores touches while a track's loading (`needle` checks `isLoaded`), and the deck's under the `Loading` cover. The new track then starts from its cue, as it should.
+- **`ECHO` with `PING PONG` reaching the red:** the same kind of case as round 5's three chained effects. Effects are level-matched one at a time, and stacking two long tails on one deck is meant to be hot. The master and `LIM` stayed clear.
+- **The 0.57 s before a held control lets go after its page changes:** it isn't load, as this round showed. It's probably SwiftUI waiting for the key's press animation before calling `onDisappear`, though that isn't proven. Nothing's stuck and the deck lands in the right place, and a held `ECHO` still counts as held, so it stays.
+- **`UNDO`'s touch area being a few points left of the key:** harmless, as 3 pt past every edge works.
+
+**Not fixed, or not found**
+- **Deck 2's `BEAT JUMP` going from 4 to 8, once:** there's nothing to go on, and it wasn't seen again in about 20 reloads. The likeliest lead is the tester's own: a load key tap landing while the browser was still opening.
+- **What filled the disk at about 11:10:** still unknown. It wasn't Cheeks, and free space kept rising while the fix session's own build ran on after that, but nothing was caught in the act.
+- **Round 5's meter figures** (`FLANGER`'s 16.2% and 8.2%): approximate, for the reason above. That doesn't change anything: this round's are on a checked script.
+
+**Worth knowing:** the two crash reports at 10:32 and 10:33 were the Auto DJ work's own exclusivity conflict in `stopForTesting`, already fixed at the time.

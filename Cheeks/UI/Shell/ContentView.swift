@@ -168,8 +168,8 @@ struct MiniDeck: View {
                 Text("CUE").font(Theme.silk(9))
             }
             .frame(width: 34)
-            TransportButton(color: Theme.play, lit: deck.isPlaying, accessibilityName: deck.isPlaying ? "Pause" : "Play", onPress: deck.togglePlay) {
-                Image(systemName: deck.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 11, weight: .semibold))
+            TransportButton(color: Theme.play, lit: deck.isPlayingOrAboutTo, accessibilityName: deck.isPlayingOrAboutTo ? "Pause" : "Play", onPress: deck.togglePlay) {
+                Image(systemName: deck.isPlayingOrAboutTo ? "pause.fill" : "play.fill").font(.system(size: 11, weight: .semibold))
             }
             .frame(width: 34)
             DeckHeader(deck: deck, compact: true)
