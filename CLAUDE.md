@@ -2,7 +2,7 @@
 
 **New session? Read `docs/HANDOFF.md` first.** It covers project status, decisions, and what to do next.
 
-Standalone iOS DJ app (SwiftUI, Metal and a C++ audio core hosted in AVAudioEngine). It's designed for a wide landscape screen: the owner's iPhone Duo unfolded (951×669 pt in landscape), with iPads as a bigger fallback. The owner only uses it unfolded, so the folded cover screen (678×466 pt) is deliberately unsupported. See README.md for features.
+Standalone iOS DJ app (SwiftUI, Metal and a C++ audio core hosted in AVAudioEngine). It's designed first for a wide landscape screen, the owner's iPhone Duo unfolded (951×669 pt) or an iPad, and every other screen gets a compact layout (`UI/Shell/CompactScreen.swift`). See README.md for features.
 
 ## Build, test, run (macOS with Xcode 16+)
 
@@ -90,7 +90,7 @@ xcrun simctl io booted screenshot screenshot.png
 
 ## UI rules
 
-The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**. The owner rejected flat grey versions as "unpolished" and cheap skeuomorphism as "really bad". What works is density, thin lines, small precise type, and real materials on the hero parts.
+The look is **black display screens set into a club controller's matte control surface**. The owner rejected flat grey versions as "unpolished" and cheap skeuomorphism as "really bad". What works is density, thin lines, small precise type, and real materials on the hero parts.
 
 - **Anything that moves is drawn in Metal** (`UI/Live/`), by a shared display link that skips any view whose uniforms didn't change. An idle screen costs nothing. Don't put per-frame work in SwiftUI: no `TimelineView(.animation)`, no observed playhead.
 - **No `TimelineView` shorter than about 0.25 s, even when it's only updating a label.** It keeps SwiftUI's display link running, which re-renders the whole view graph every frame: this was most of the app's idle CPU. Use `DeckClock`, or an observed value set from `DJEngine.tick` that only changes when the number on screen would.
@@ -110,6 +110,8 @@ The look is **rekordbox's screens set into a Pioneer DDJ-style control surface**
 - **`AUTO` is lit from pressing it until the move is over.** While it waits for its bar it counts down in bars, and pressing it again calls it off or hands the decks back.
 - **Respect the system:** `UIAccessibility.isReduceMotionEnabled` for decorative motion, accessibility labels and adjustable actions on controls, continuous corners everywhere.
 - **Deck 2 is mirrored** so each deck's tempo fader and CUE/PLAY sit at the screen edge.
+- **The screen has three layouts** (`ScreenLayout`): full at 900×600 or more, and compact on its side or upright below that. Compact keeps both decks' pads and the mixer on screen, and a deck's `JOG` key swaps its pads for the jog. Anything that changes a control's size has to fit the smallest, 667×375. Decks have fixed widths there, so a page that's too wide gets clipped and can't push the screen sideways. Check with the `small`, `small-up`, `iphone` and `iphone-up` snapshots, and `PhoneLayoutTests` on an iPhone simulator.
+- **Don't name other DJ brands in the app.** The library import says "DJ library", and the code does too.
 - **The Duo has a centre crease when unfolded**, so the mixer sits across it and the waveform playhead sits off-centre.
 - **Check visual changes with the snapshot test at the Duo size** before calling them done, using real music (below). Synthetic fixtures make waveforms look much worse than they are.
 - **Run one `xcodebuild test` per simulator at a time.** A second run on the same simulator installs over the first and kills it with `signal kill`, which looks like a crash.

@@ -56,8 +56,7 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Still open:**
 - **Install on the phone** once the owner picks a signing team.
-- **The folded cover screen** (678×466 pt) is deliberately unsupported: the owner only uses it unfolded.
-- iOS 27 warns that `UIRequiresFullScreen` "will soon be ignored" and that all orientations will soon be required. A landscape-only app may be forced to handle portrait or resizing in a later iOS.
+- **Releasing it publicly:** the owner wants it on all iPhones. The layouts are started, and the app now rotates and resizes (`UIRequiresFullScreen` is gone). Before release: the stem model's licence (below), no privacy manifest yet, a lawyer's look at how closely the design follows one maker's gear, and real-device testing.
 
 **Surprises worth knowing:**
 - The iPhone Duo is a real simulator here (iOS 27.2).

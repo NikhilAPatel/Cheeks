@@ -6,7 +6,7 @@ them, where the planner's tuning can read them.
 
     local_room.py FOLDER [PORT]
 """
-import json, os, sys
+import json, os, re, sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 folder = os.path.abspath(sys.argv[1])
@@ -36,7 +36,37 @@ class Room(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/ratings":
             return self.send_json(load())
+        wanted = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
+        if wanted and (wanted[1] or wanted[2]):
+            return self.send_range(wanted)
         return super().do_GET()
+
+    def send_range(self, wanted):
+        """Part of a file: Safari won't play audio from a server that can't do this."""
+        path = self.translate_path(self.path)
+        if not os.path.isfile(path):
+            return self.send_error(404)
+        size = os.path.getsize(path)
+        first = int(wanted[1]) if wanted[1] else max(0, size - int(wanted[2]))
+        last = min(size - 1, int(wanted[2])) if wanted[1] and wanted[2] else size - 1
+        if first > last:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.end_headers()
+            return
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(path))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes {first}-{last}/{size}")
+        self.send_header("Content-Length", str(last - first + 1))
+        self.end_headers()
+        with open(path, "rb") as f:
+            f.seek(first)
+            self.wfile.write(f.read(last - first + 1))
+
+    def end_headers(self):
+        self.send_header("Accept-Ranges", "bytes")
+        super().end_headers()
 
     def do_POST(self):
         if not self.path.startswith("/ratings/"):
