@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A professional instrument: rekordbox's black screens set into a matte control surface, with a
+/// A professional instrument: black screens set into a matte control surface, with a
 /// single blue for anything that's on. Type is small and precise, as if printed on the panel.
 enum Theme {
     // MARK: Surfaces
@@ -31,12 +31,12 @@ enum Theme {
     static let danger = Color(red: 1.0, green: 0.2, blue: 0.16)
     static let warn = Color(red: 1.0, green: 0.76, blue: 0.1)
 
-    // rekordbox's 3-band waveform colours
+    // 3-band waveform colours
     static let waveLow = Color(red: 0.07, green: 0.3, blue: 1.0)
     static let waveMid = Color(red: 0.98, green: 0.58, blue: 0.13)
     static let waveHigh = Color(red: 1.0, green: 0.96, blue: 0.9)
 
-    // rekordbox's default hot cue colours, A–H
+    // Hot cue colours, A–H
     static let hotCueColors: [Color] = [
         Color(red: 0.96, green: 0.17, blue: 0.27),
         Color(red: 0.14, green: 0.5, blue: 1.0),

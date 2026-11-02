@@ -72,20 +72,58 @@ struct LoopRow: View {
 
 /// Pad modes, always one tap away. Real tabs rather than a menu, because you're changing mode mid-mix.
 struct PadTabs: View {
+    @Environment(\.screenLayout) private var layout
     @Bindable var deck: Deck
+
+    /// All nine won't fit across a phone's deck, so the ones used most keep their tabs and the rest take turns on one.
+    private static let everyday: [PadMode] = [.hotCue, .beatLoop, .roll, .stems, .fx]
+    private static let others: [PadMode] = [.memory, .slicer, .beatJump, .sampler]
 
     var body: some View {
         HStack(spacing: 0) {
             TabRowLayout {
-                ForEach(PadMode.allCases) { mode in
+                ForEach(layout.isCompact ? Self.everyday : PadMode.allCases) { mode in
                     tab(mode)
                 }
+                if layout.isCompact { moreTab }
             }
             Key("DEL", color: Theme.danger, lit: deck.shift, size: 8, feel: .toggle, onPress: { deck.shift.toggle() })
                 .frame(width: 30)
                 .opacity(deck.padMode == .hotCue || deck.padMode == .memory ? 1 : 0.0)
                 .allowsHitTesting(deck.padMode == .hotCue || deck.padMode == .memory)
         }
+    }
+
+    /// Steps through the other pages, and shows which one it's on.
+    private var moreTab: some View {
+        let current = Self.others.firstIndex(of: deck.padMode)
+        return ZStack {
+            HStack(spacing: 1) {
+                Text(current.map { Self.others[$0].rawValue } ?? "MORE")
+                    .font(Theme.silk(8.5))
+                    .tracking(0.3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Image(systemName: "chevron.right").font(.system(size: 6, weight: .bold))
+            }
+            .foregroundStyle(current != nil ? Color.white : Theme.textSecondary)
+            VStack {
+                Spacer(minLength: 0)
+                Capsule().fill(current != nil ? Theme.accent : Color.clear)
+                    .frame(height: 2)
+                    .padding(.horizontal, 5)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            TouchSurface(onDown: { _ in
+                Haptics.shared.toggle(true)
+                deck.padMode = Self.others[((current ?? -1) + 1) % Self.others.count]
+            })
+        }
+        .accessibilityElement()
+        .accessibilityLabel("More pad pages")
+        .accessibilityAddTraits(.isButton)
     }
 
     private func tab(_ mode: PadMode) -> some View {
@@ -97,6 +135,7 @@ struct PadTabs: View {
                 .font(Theme.silk(8.5))
                 .tracking(0.3)
                 .lineLimit(1)
+                .minimumScaleFactor(0.65)
                 .foregroundStyle(selected ? Color.white : Theme.textSecondary)
                 .overlay(alignment: .topTrailing) {
                     if effectsOn {
@@ -428,17 +467,19 @@ struct StemPad: View {
 
 /// Quick stem combinations, and the state of the separation.
 struct StemControlRow: View {
+    @Environment(\.screenLayout) private var layout
     @Bindable var deck: Deck
 
     var body: some View {
+        let small = layout == .landscape
         HStack(spacing: 3) {
-            Key("ACAPELLA", color: Stem.vocals.color, lit: only([.vocals]), size: 8, onPress: { deck.setStems([.vocals]) })
-            Key("NO VOCAL", color: Stem.melody.color, lit: only([.melody, .bass, .drums]), size: 8, onPress: { deck.setStems([.melody, .bass, .drums]) })
+            Key(small ? "VOX" : "ACAPELLA", color: Stem.vocals.color, lit: only([.vocals]), size: 8, onPress: { deck.setStems([.vocals]) })
+            Key(small ? "INST" : "NO VOCAL", color: Stem.melody.color, lit: only([.melody, .bass, .drums]), size: 8, onPress: { deck.setStems([.melody, .bass, .drums]) })
             Key("BEAT", color: Stem.drums.color, lit: only([.drums, .bass]), size: 8, onPress: { deck.setStems([.drums, .bass]) })
             Key("ALL", color: Theme.accent, lit: false, size: 8, onPress: { deck.setStems(Set(Stem.allCases)) })
                 .frame(width: 30)
             status
-                .frame(width: 56)
+                .frame(width: small ? 36 : 56)
         }
     }
 
@@ -582,8 +623,8 @@ struct FXPad: View {
                 .font(Theme.silk(8.5))
                 .tracking(0.2)
                 .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.7)
-                .lineLimit(2)
+                .minimumScaleFactor(0.55)
+                .lineLimit(effect.rawValue.contains(" ") ? 2 : 1)
                 .padding(.horizontal, 2)
         }
     }
@@ -591,24 +632,27 @@ struct FXPad: View {
 
 /// The FX settings: beat length, depth, and which stems the effect goes on.
 struct FXControlRow: View {
+    @Environment(\.screenLayout) private var layout
     @Bindable var deck: Deck
 
     var body: some View {
-        HStack(spacing: 3) {
+        // A phone's narrowest deck has to keep room for the depth bar.
+        let small = layout == .landscape
+        HStack(spacing: small ? 2 : 3) {
             Key(color: Theme.accent, accessibilityName: "Shorter", onPress: { step(-1) }) {
                 Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
             }
-            .frame(width: 20)
+            .frame(width: small ? 15 : 20)
             Text(Format.beats(deck.fxBeats))
-                .font(Theme.digits(12))
+                .font(Theme.digits(small ? 10 : 12))
                 .foregroundStyle(Theme.textPrimary)
-                .frame(width: 26)
+                .frame(width: small ? 20 : 26)
                 .contentTransition(.numericText())
                 .animation(Theme.press, value: deck.fxBeats)
             Key(color: Theme.accent, accessibilityName: "Longer", onPress: { step(1) }) {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
             }
-            .frame(width: 20)
+            .frame(width: small ? 15 : 20)
             DepthBar(value: $deck.fxDepth)
             ForEach(Stem.allCases) { stem in
                 Key(stem.short, color: stem.color, lit: deck.fxStems.contains(stem), size: 8.5, feel: .toggle) {
@@ -618,10 +662,10 @@ struct FXControlRow: View {
                         deck.fxStems.insert(stem)
                     }
                 }
-                .frame(width: 21)
+                .frame(width: small ? 16 : 21)
             }
             Key("OUT", color: Theme.danger, lit: deck.echoingOut, size: 8, feel: .toggle, accessibilityName: "Echo out", onPress: deck.toggleEchoOut)
-                .frame(width: 28)
+                .frame(width: small ? 24 : 28)
         }
     }
 

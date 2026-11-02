@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The mixer, laid out like a two-channel DJM: channel strips on either side, master and headphone
+/// The mixer, laid out like a two-channel club mixer: channel strips on either side, master and headphone
 /// controls down the middle, the meters between the faders, and the crossfader along the bottom.
 struct MixerPanel: View {
     @Environment(DJEngine.self) private var dj
@@ -73,7 +73,7 @@ struct MixerPanel: View {
 }
 
 /// Plans and performs a transition to the waiting deck. It's lit from when it's chosen its moment until the move is over.
-private struct AutoKey: View {
+struct AutoKey: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
@@ -83,7 +83,7 @@ private struct AutoKey: View {
 }
 
 /// Lights when the master limiter is working, so you know to pull the trim down.
-private struct LimiterLight: View {
+struct LimiterLight: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {
@@ -96,7 +96,7 @@ private struct LimiterLight: View {
 }
 
 /// Channel 1, master left and right, channel 2: the row of LEDs between the faders.
-private struct CentreMeters: View {
+struct CentreMeters: View {
     @Environment(DJEngine.self) private var dj
 
     var body: some View {

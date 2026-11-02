@@ -113,7 +113,7 @@ extension Deck {
         Haptics.shared.confirm()
     }
 
-    /// Calls up a memory cue: it becomes the cue point and the deck goes there, as on a CDJ.
+    /// Calls up a memory cue: it becomes the cue point and the deck goes there, as on a club deck.
     func recall(_ cue: MemoryCue) {
         guard isLoaded else { return }
         cuePoint = cue.time
@@ -694,7 +694,7 @@ extension Deck {
     // MARK: Track map
 
     /// The stems show where the kicks really are. A grid from the first analysis can be 100 ms late, or have the
-    /// wrong 1, so it's replaced, once. A grid someone set by hand or brought from rekordbox stays, and so does one on
+    /// wrong 1, so it's replaced, once. A grid someone set by hand or imported stays, and so does one on
     /// a track with no steady kick to go by.
     func applyTrackMap(_ map: TrackMap, mix: PCM16Stereo? = nil) {
         trackMap = map

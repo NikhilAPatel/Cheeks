@@ -378,7 +378,7 @@ final class Deck {
                 if needsAnalysis || waveform == nil {
                     let result = TrackAnalyzer.analyze(pcm, knownGrid: knownGrid)
                     try? result.waveform.encoded().write(to: LibraryFiles.waveformURL(id), options: .atomic)
-                    // A track with an existing grid (analysed or from rekordbox) only needs its waveform.
+                    // A track with an existing grid (analysed or imported) only needs its waveform.
                     analysis = needsAnalysis ? result : nil
                     waveform = result.waveform
                 }
@@ -401,7 +401,7 @@ final class Deck {
         }
     }
 
-    /// Stores fresh analysis unless the track gained a grid meanwhile (e.g. from rekordbox).
+    /// Stores fresh analysis unless the track gained a grid meanwhile (from an import, say).
     private func saveAnalysis(_ analysis: AnalysisResult, for id: UUID) {
         library?.update(id) { t in
             guard t.bpm == nil else { return }
@@ -511,7 +511,7 @@ final class Deck {
     // MARK: Transport
 
     func togglePlay() {
-        // PLAY while holding CUE means "keep going from here", as on a CDJ.
+        // PLAY while holding CUE means "keep going from here", as on a club deck.
         if cuePreviewing {
             play()
         } else if isPlaying {
@@ -557,7 +557,7 @@ final class Deck {
         renderer.reachedEnd = false
     }
 
-    /// CDJ-style cue: while playing, jump back to the cue and stop; while paused, set the
+    /// Club-deck cue: while playing, jump back to the cue and stop; while paused, set the
     /// cue here (if moved) and play for as long as the button is held.
     func cueDown() {
         guard isLoaded else { return }

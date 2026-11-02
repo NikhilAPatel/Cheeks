@@ -1,8 +1,8 @@
 import Foundation
 
-/// Reads a rekordbox collection export (File → Export Collection in xml format):
+/// Reads a DJ library's collection export, in the XML format most DJ software can write:
 /// beat grid (with tempo changes), key, hot cues and hot loops, memory cues, saved loops and playlists per track.
-struct RekordboxCollection {
+struct DJLibraryCollection {
     struct Entry {
         var trackID: String
         var fileName: String
@@ -39,7 +39,7 @@ struct RekordboxCollection {
     /// Playlist name → track IDs.
     var playlists: [(name: String, trackIDs: [String])] = []
 
-    static func parse(_ data: Data) -> RekordboxCollection? {
+    static func parse(_ data: Data) -> DJLibraryCollection? {
         let delegate = ParserDelegate()
         let parser = XMLParser(data: data)
         parser.delegate = delegate
@@ -47,7 +47,7 @@ struct RekordboxCollection {
         return delegate.collection
     }
 
-    /// rekordbox writes keys as "Am", "F#m", "Db" (or Camelot if the user chose that display).
+    /// Exports write keys as "Am", "F#m", "Db" (or Camelot if the user chose that display).
     static func camelot(fromTonality tonality: String) -> String? {
         let t = tonality.trimmingCharacters(in: .whitespaces)
         if Camelot.parse(t) != nil, t.first?.isNumber == true { return t }
@@ -69,7 +69,7 @@ struct RekordboxCollection {
     }
 
     private final class ParserDelegate: NSObject, XMLParserDelegate {
-        var collection = RekordboxCollection()
+        var collection = DJLibraryCollection()
         var sawRoot = false
         private var current: Entry?
         private var markers: [TempoMarker] = []
@@ -91,7 +91,7 @@ struct RekordboxCollection {
                                 title: a["Name"] ?? "",
                                 artist: a["Artist"] ?? "",
                                 bpm: a["AverageBpm"].flatMap { Double($0) }.flatMap { $0 > 0 ? $0 : nil },
-                                key: a["Tonality"].flatMap(RekordboxCollection.camelot(fromTonality:)))
+                                key: a["Tonality"].flatMap(DJLibraryCollection.camelot(fromTonality:)))
             case "TEMPO" where current != nil:
                 // Battito is the position of this beat in the bar, 1 to 4.
                 guard let start = a["Inizio"].flatMap({ Double($0) }),
@@ -114,7 +114,7 @@ struct RekordboxCollection {
             let type = a["Type"] ?? "0"
             let end = a["End"].flatMap { Double($0) }
             let name = a["Name"] ?? ""
-            let color = RekordboxCollection.color(a)
+            let color = DJLibraryCollection.color(a)
             switch (type, num) {
             case ("0", 0..<8), ("4", 0..<8):
                 current?.hotCues[num] = start
@@ -154,23 +154,23 @@ struct RekordboxCollection {
 }
 
 extension Library {
-    struct RekordboxImportResult {
+    struct DJLibraryImportResult {
         var matched = 0
         var total = 0
         var playlists = 0
     }
 
     /// Applies grids, keys, cues and playlists to tracks already in the library, matched by file name.
-    func applyRekordbox(_ collection: RekordboxCollection) -> RekordboxImportResult {
-        var result = RekordboxImportResult(total: collection.entries.count)
+    func applyDJLibrary(_ collection: DJLibraryCollection) -> DJLibraryImportResult {
+        var result = DJLibraryImportResult(total: collection.entries.count)
         var indexByName: [String: Int] = [:]
         for (index, track) in tracks.enumerated() {
             if let original = track.originalFileName { indexByName[original.lowercased()] = index }
         }
-        var idForRekordboxID: [String: UUID] = [:]
+        var idForExportID: [String: UUID] = [:]
         for entry in collection.entries {
             guard let index = indexByName[entry.fileName.lowercased()] else { continue }
-            idForRekordboxID[entry.trackID] = tracks[index].id
+            idForExportID[entry.trackID] = tracks[index].id
             result.matched += 1
             // Edit in place and save once at the end; large collections have thousands of tracks.
             var t = tracks[index]
@@ -200,7 +200,7 @@ extension Library {
             if t.phrases == nil && !isMissing(t) { enqueueCatchUp(t.id) }
         }
         for list in collection.playlists {
-            let ids = list.trackIDs.compactMap { idForRekordboxID[$0] }
+            let ids = list.trackIDs.compactMap { idForExportID[$0] }
             guard !ids.isEmpty else { continue }
             // Re-importing refreshes playlists instead of duplicating them.
             if let existing = playlists.firstIndex(where: { $0.name == list.name }) {

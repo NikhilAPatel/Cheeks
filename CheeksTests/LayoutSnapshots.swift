@@ -19,6 +19,13 @@ final class LayoutSnapshots: XCTestCase {
     static let screens = [
         Screen(name: "duo", size: CGSize(width: 951, height: 669), insets: .zero),
         Screen(name: "ipad13", size: CGSize(width: 1376, height: 1032), insets: .zero, scale: 2),
+        // The rest of the phones, on their sides and upright, with their real safe areas.
+        Screen(name: "iphone", size: CGSize(width: 874, height: 402), insets: UIEdgeInsets(top: 0, left: 62, bottom: 21, right: 62)),
+        Screen(name: "iphone-up", size: CGSize(width: 402, height: 874), insets: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0)),
+        Screen(name: "small", size: CGSize(width: 667, height: 375), insets: .zero),
+        Screen(name: "small-up", size: CGSize(width: 375, height: 667), insets: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0)),
+        Screen(name: "folded", size: CGSize(width: 678, height: 466), insets: .zero),
+        Screen(name: "ipad13-up", size: CGSize(width: 1032, height: 1376), insets: .zero, scale: 2),
     ]
 
     func testSnapshots() async throws {
@@ -34,11 +41,11 @@ final class LayoutSnapshots: XCTestCase {
         LiveRenderer.shared.captureMode = true
         // Optional: only write some screens, to keep iterating on one quick.
         let only = env["CHEEKS_SNAPSHOT_ONLY"]?.split(separator: ",").map(String.init)
-        let onlyScreen = env["CHEEKS_SNAPSHOT_SCREEN"]
+        let onlyScreens = env["CHEEKS_SNAPSHOT_SCREEN"]?.split(separator: ",").map(String.init)
 
         func snapAll(_ name: String, _ view: @autoclosure () -> some View) async throws {
             if let only, !only.contains(name) { return }
-            for screen in Self.screens where onlyScreen == nil || screen.name == onlyScreen {
+            for screen in Self.screens where onlyScreens == nil || onlyScreens!.contains(screen.name) {
                 try await snap(view().environment(library).environment(dj), screen, to: dir.appending(path: "\(screen.name)-\(name).png"))
             }
         }
@@ -83,6 +90,8 @@ final class LayoutSnapshots: XCTestCase {
         // Not saved: nothing here calls `library.update`, which is what writes the library to disk.
         let saved = library.tracks
         library.tracks = Self.libraryFixture
+        try await snapAll("jog", ContentView(opensBrowserWhenEmpty: false).environment(\.compactDeckStartsOnJog, true))
+        try await snapAll("mixer-more", MixerMoreSheet())
         try await snapAll("browser", ContentView(showLibrary: true))
         library.tracks = saved
         try await snapAll("recordings", RecordingsView())

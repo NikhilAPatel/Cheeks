@@ -1,7 +1,7 @@
 import XCTest
 @testable import Cheeks
 
-final class RekordboxTests: XCTestCase {
+final class DJLibraryImportTests: XCTestCase {
     private let xml = """
     <?xml version="1.0" encoding="UTF-8"?>
     <DJ_PLAYLISTS Version="1.0.0">
@@ -31,7 +31,7 @@ final class RekordboxTests: XCTestCase {
     """
 
     func testParsesGridKeyCuesAndPlaylists() throws {
-        let collection = try XCTUnwrap(RekordboxCollection.parse(Data(xml.utf8)))
+        let collection = try XCTUnwrap(DJLibraryCollection.parse(Data(xml.utf8)))
         XCTAssertEqual(collection.entries.count, 2)
 
         let first = collection.entries[0]
@@ -54,15 +54,15 @@ final class RekordboxTests: XCTestCase {
     }
 
     func testTonalityToCamelot() {
-        XCTAssertEqual(RekordboxCollection.camelot(fromTonality: "F#m"), "11A")
-        XCTAssertEqual(RekordboxCollection.camelot(fromTonality: "Db"), "3B")
-        XCTAssertEqual(RekordboxCollection.camelot(fromTonality: "Ebm"), "2A")
-        XCTAssertEqual(RekordboxCollection.camelot(fromTonality: "10A"), "10A")
-        XCTAssertNil(RekordboxCollection.camelot(fromTonality: "nonsense"))
+        XCTAssertEqual(DJLibraryCollection.camelot(fromTonality: "F#m"), "11A")
+        XCTAssertEqual(DJLibraryCollection.camelot(fromTonality: "Db"), "3B")
+        XCTAssertEqual(DJLibraryCollection.camelot(fromTonality: "Ebm"), "2A")
+        XCTAssertEqual(DJLibraryCollection.camelot(fromTonality: "10A"), "10A")
+        XCTAssertNil(DJLibraryCollection.camelot(fromTonality: "nonsense"))
     }
 
-    func testRejectsNonRekordboxXML() {
-        XCTAssertNil(RekordboxCollection.parse(Data("<plist><dict/></plist>".utf8)))
+    func testRejectsOtherXML() {
+        XCTAssertNil(DJLibraryCollection.parse(Data("<plist><dict/></plist>".utf8)))
     }
 
     func testReadsEveryMemoryCueLoopAndTempoChange() throws {
@@ -79,7 +79,7 @@ final class RekordboxTests: XCTestCase {
           </TRACK>
         </COLLECTION></DJ_PLAYLISTS>
         """
-        let entry = try XCTUnwrap(RekordboxCollection.parse(Data(xml.utf8))?.entries.first)
+        let entry = try XCTUnwrap(DJLibraryCollection.parse(Data(xml.utf8))?.entries.first)
         XCTAssertEqual(entry.memoryCues.map(\.time), [10, 20])
         XCTAssertEqual(entry.memoryCues[1].name, "Second")
         XCTAssertEqual(entry.memoryCue, 10)

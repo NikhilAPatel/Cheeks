@@ -6,7 +6,7 @@ struct Track: Identifiable, Codable, Hashable {
     var artist: String
     /// File name inside `Library.musicDirectory`.
     var fileName: String
-    /// Name of the file when it was imported; used to match rekordbox XML entries.
+    /// Name of the file when it was imported; used to match entries in an imported library.
     var originalFileName: String?
     var duration: Double = 0
     /// The track's tempo, or its typical tempo when `tempoMarkers` says it moves around.
@@ -21,11 +21,11 @@ struct Track: Identifiable, Codable, Hashable {
     var key: String?
     /// Integrated loudness in LUFS, from analysis. Used to bring tracks to a matched level.
     var loudness: Double?
-    /// Hot cue slot (0...7) → time in seconds. Stored with the track like rekordbox.
+    /// Hot cue slot (0...7) → time in seconds. Stored with the track.
     var hotCues: [Int: Double] = [:]
     /// Optional extras for a hot cue slot: its name, its own colour, and a loop if it's a hot loop.
     var hotCueInfo: [Int: HotCueInfo] = [:]
-    /// Points to come back to, like a CDJ's memory. The earliest is where the track loads.
+    /// Points to come back to, like a club deck's memory. The earliest is where the track loads.
     var memoryCues: [MemoryCue] = []
     var savedLoops: [SavedLoop] = []
     /// The song's structure, from analysis. Nil until it's been worked out.
@@ -73,7 +73,7 @@ extension Track {
     }
 }
 
-/// A colour stored with a track, from rekordbox or chosen by hand.
+/// A colour stored with a track, imported or chosen by hand.
 struct CueColor: Codable, Hashable {
     var red: Double
     var green: Double
@@ -99,7 +99,7 @@ struct SavedLoop: Identifiable, Codable, Hashable {
     var start: Double
     var end: Double
     var name: String = ""
-    /// Turns on when the track loads, so the deck stays in it once it gets there, as on a CDJ.
+    /// Turns on when the track loads, so the deck stays in it once it gets there, as on a club deck.
     var activeOnLoad = false
 }
 
@@ -131,7 +131,7 @@ enum MemoryItem: Identifiable, Hashable {
 }
 
 /// `analysis` is the first guess from the mix. `drums` has been corrected from the drums stem. `person` was set by
-/// hand or came from rekordbox, and is never overwritten.
+/// hand or was imported, and is never overwritten.
 enum GridSource: String, Codable {
     case analysis, drums, person
 }

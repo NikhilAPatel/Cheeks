@@ -3,7 +3,7 @@ import Foundation
 extension Library {
     static let historyPrefix = "History "
 
-    /// rekordbox-style history: one playlist per day of the tracks that were actually played out.
+    /// History: one playlist per day of the tracks that were actually played out.
     func logPlay(_ trackID: UUID) {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"

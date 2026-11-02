@@ -1,6 +1,6 @@
 import Foundation
 
-/// rekordbox-style 3-band waveform: per bin peak level of low / mid / high frequencies.
+/// 3-band waveform: per bin peak level of low / mid / high frequencies.
 struct WaveformData {
     static let binsPerSecond = 300.0
     /// Bumped when the format or its contents change, so stale caches get recomputed.
@@ -84,7 +84,7 @@ enum TrackAnalyzer {
 
     /// One streaming pass over the track collects the 3-band waveform, onset energies and a
     /// decimated signal for key detection, so analysis never holds a full-length Float copy.
-    /// A grid the track already has, say from rekordbox, is what its phrases get counted against.
+    /// A grid the track already has, say from an imported library, is what its phrases get counted against.
     static func analyze(_ pcm: PCM16Stereo, knownGrid: BeatGrid? = nil) -> AnalysisResult {
         let sr = AudioConfig.sampleRate
         let n = pcm.frames
@@ -134,7 +134,7 @@ enum TrackAnalyzer {
 
         let peak = max(low.max() ?? 0, mid.max() ?? 0, high.max() ?? 0, 0.0001)
         // Highs are always small next to bass; lifting them makes them readable on screen, as
-        // rekordbox does.
+        // other DJ software does.
         func quantize(_ values: [Float], lift: Float = 1) -> [UInt8] {
             values.map { UInt8(min(255, ($0 / peak) * lift * 255)) }
         }

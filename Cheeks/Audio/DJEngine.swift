@@ -430,7 +430,7 @@ final class DJEngine {
     }
 
     /// A track counts as played once it has been audible on the master for 10 seconds,
-    /// like rekordbox's history. It goes into today's History playlist and the recording's tracklist.
+    /// like DJ software's history. It goes into today's History playlist and the recording's tracklist.
     private func trackOnAir() {
         let now = Date()
         for deck in decks {

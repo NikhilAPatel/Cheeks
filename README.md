@@ -1,6 +1,6 @@
 # Cheeks
 
-A professional DJ app for iPhone, designed for a large landscape screen: the iPhone Duo unfolded, or an iPad. You perform entirely on the screen, with no controller. It looks and works like rekordbox's screens set into a Pioneer control surface, and it feels like an Apple app.
+A professional DJ app for iPhone and iPad. You perform entirely on the screen, with no controller. It's built like a club booth: black screens set into a matte control surface, and it feels like an Apple app.
 
 ## Features
 
@@ -12,7 +12,7 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 - **BEAT SYNC** matches BPM (including half or double time) and snaps phase. MASTER chooses which deck leads. Both decks render on one sample clock, so a synced pair can't drift.
 - **Waveforms are drawn in real time scale**, so beats line up on screen when decks are matched.
 - Quantize, slip mode, reverse, beat jump, and manual and automatic loops.
-- **Tracks that change tempo work properly:** live-played tracks get a tempo map, from analysis or from rekordbox, and loops, jumps, quantize, sync and the beat lines all follow it. If a map's wrong, the BPM menu has "Use one steady tempo".
+- **Tracks that change tempo work properly:** live-played tracks get a tempo map, from analysis or an imported library, and loops, jumps, quantize, sync and the beat lines all follow it. If a map's wrong, the BPM menu has "Use one steady tempo".
 
 **Performance pads**
 - **CUE:** hot cues A–H, saved with each track, with names, colours and hot loops. DEL then a pad removes one, with Undo.
@@ -57,7 +57,7 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 - Load with the deck buttons, by swiping a row, or by dragging it onto a deck. A playing deck refuses a new track.
 - Tap a row's waveform to **preview** it: in the cue ear with a split cable, or quietly on the main output without one.
 - Import from the Files app, or drop files into the app's folder through Files or Finder.
-- **rekordbox library import:** in rekordbox, File → Export Collection in xml format, then Import → rekordbox library. Import your audio first; tracks are matched by file name, and bring over their beat grid including tempo changes, BPM, key, hot cues and hot loops with their names and colours, every memory cue, saved loops and playlists.
+- **DJ library import:** export your collection as XML from your DJ software, then Import → DJ library. Import your audio first; tracks are matched by file name, and bring over their beat grid including tempo changes, BPM, key, hot cues and hot loops with their names and colours, every memory cue, saved loops and playlists.
 - **Backup:** Settings saves your grids, cues, loops, keys and playlists to a file, and restores them, even on a fresh install. Cheeks also keeps a copy each day in the Files app. A track whose audio file has gone is marked, and gets its cues back when the file's imported again.
 
 **The small things**
@@ -72,7 +72,7 @@ A professional DJ app for iPhone, designed for a large landscape screen: the iPh
 
 Press `AUTO` with one deck playing and another loaded, and it mixes between them. It plans from what each stem is doing in every bar, renders its best options offline to reject any let-downs, waits for the right bar, and performs through the same controls you'd use. The knobs move on their own, and touching one takes it back. Moves: bass swap, loop build, echo throw, brake drop, vocal tease and vocal ride. See `docs/AUTO_DJ.md`.
 
-Once a track's stems are ready, its drums also correct its beat grid, unless you set the grid yourself or it came from rekordbox.
+Once a track's stems are ready, its drums also correct its beat grid, unless you set the grid yourself or imported it.
 
 ## Getting it onto your phone
 

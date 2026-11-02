@@ -120,7 +120,7 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
             const float3 mixColor = normalize(float3(v.r * 1.1, v.g * 0.9, v.b * 1.5) / total + 0.03) * 1.25;
             wave = mix(wave, bandShade(mixColor, y, height, aa), shapeCoverage(y, height, aa));
         } else {
-            // rekordbox's 3-band: bass outermost, mids inside it, highs at the core.
+            // 3-band: bass outermost, mids inside it, highs at the core.
             const float low = pow(v.r, 0.78);
             const float mid = pow(v.g, 0.9) * 0.78;
             const float high = pow(v.b, 0.85) * 0.56;
@@ -158,7 +158,7 @@ fragment float4 waveform_fragment(VOut in [[stage_in]],
         color = wave;
     }
 
-    // Bar ticks along the top and bottom edges, red like rekordbox's.
+    // Bar ticks along the top and bottom edges, in red.
     if (u.sectionCount > 0 && inTrack) {
         const float nearest = round(beats);
         const float dx = abs(beats - nearest) * beatSeconds / secondsPerPixelAbs;

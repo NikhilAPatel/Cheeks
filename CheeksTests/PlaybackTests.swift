@@ -180,7 +180,7 @@ final class DeckTests: XCTestCase {
         XCTAssertTrue(deck.isPlaying)
         deck.togglePlay()
         deck.cueUp()
-        XCTAssertTrue(deck.isPlaying, "PLAY during a cue preview must latch playback, as on a CDJ")
+        XCTAssertTrue(deck.isPlaying, "PLAY during a cue preview must latch playback, as on a club deck")
     }
 
     func testRollingTwoPadsReturnsToTheFirstPadsReturnPoint() {

@@ -228,7 +228,7 @@ final class Library {
             }
             await MainActor.run {
                 if let result {
-                    // Don't overwrite a grid/key that arrived from rekordbox while this was running.
+                    // Don't overwrite a grid/key that arrived from an import while this was running.
                     self.update(id) { t in
                         guard t.bpm == nil else { return }
                         t.bpm = result.bpm

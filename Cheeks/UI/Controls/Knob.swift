@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A DJM-style rotary knob: a knurled rubber skirt and a satin cap with a white pointer, turning
+/// A club-mixer rotary knob: a knurled rubber skirt and a satin cap with a white pointer, turning
 /// over a printed scale. Only the skirt and pointer rotate; the light on the cap stays put, as it
 /// would on real hardware.
 ///
@@ -178,7 +178,7 @@ enum KnobArt {
                     ridge.addLine(to: CGPoint(x: c.x + cos(a) * skirt * 0.995, y: c.y + sin(a) * skirt * 0.995))
                     context.stroke(ridge, with: .color(.white.opacity(0.16)), lineWidth: max(0.6, r * 0.028))
                 }
-                // Pointer: runs across the skirt onto the cap, like a DJM knob
+                // Pointer: runs across the skirt onto the cap, like a club mixer's knob
                 var pointer = Path()
                 pointer.move(to: CGPoint(x: c.x, y: c.y - skirt * 0.99))
                 pointer.addLine(to: CGPoint(x: c.x, y: c.y - skirt * 0.46))

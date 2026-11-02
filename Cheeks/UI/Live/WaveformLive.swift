@@ -8,7 +8,7 @@ final class WaveformDisplay {
     static let shared = WaveformDisplay()
     /// Seconds of real time visible across the view.
     var secondsVisible: Double = 8
-    /// 0 = rekordbox 3-band, 1 = RGB.
+    /// 0 = 3-band, 1 = RGB.
     var colorStyle: Int32 = Int32(UserDefaults.standard.integer(forKey: "waveformStyle")) {
         didSet { UserDefaults.standard.set(Int(colorStyle), forKey: "waveformStyle") }
     }

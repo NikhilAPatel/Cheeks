@@ -139,7 +139,7 @@ enum TrackMapper {
         let key = detectKey(chromaHarmony)
         let keptKicks = hasKick.filter { $0 }.count
         return TrackMap(
-            bpm: fitted.bpm, firstBeat: first, drift: fitted.drift, isSteady: fitted.drift < steadyDrift && keptKicks * 2 > bars,
+            bpm: fitted.bpm, firstBeat: first, drift: fitted.drift, isSteady: fitted.drift < steadyDrift && keptKicks * 4 > bars,
             firstBar: origin + Double(downbeat) * beat, barCount: bars,
             levels: barLevels, kickLevels: barKick, vocal: cover, on: on, hasKick: hasKick, energy: energy,
             lattice: bestLattice.lattice, boundaries: boundaries.sorted(), harmony: barHarmony, vocalNotes: barVocal,

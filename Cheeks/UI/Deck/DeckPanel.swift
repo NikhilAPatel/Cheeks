@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// One deck, laid out like a DDJ's deck section with rekordbox's screen above it. The tempo fader
+/// One deck, laid out like a controller's deck section with a screen above it. The tempo fader
 /// and CUE/PLAY sit at the screen's outer edge, under the thumbs; deck 2 is mirrored.
 struct DeckPanel: View {
     @Bindable var deck: Deck
@@ -20,7 +20,7 @@ struct DeckPanel: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .controlSurface()
-        .overlay { loadingOverlay }
+        .overlay { DeckLoadingOverlay(deck: deck) }
     }
 
     private var jogBand: some View {
@@ -49,8 +49,13 @@ struct DeckPanel: View {
         }
     }
 
-    @ViewBuilder
-    private var loadingOverlay: some View {
+}
+
+/// Covers a deck while its track loads.
+struct DeckLoadingOverlay: View {
+    let deck: Deck
+
+    var body: some View {
         if deck.isLoading {
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.ultraThinMaterial).opacity(0.85)
@@ -64,7 +69,7 @@ struct DeckPanel: View {
     }
 }
 
-/// CUE above PLAY, like a CDJ, at the bottom corner where the thumb rests.
+/// CUE above PLAY, like a club deck, at the bottom corner where the thumb rests.
 struct TransportSection: View {
     let deck: Deck
 
@@ -263,6 +268,8 @@ struct DeckHeader: View {
     @Bindable var deck: Deck
     /// Short of room above the browser: the title gets two lines, in place of the artist.
     var compact = false
+    /// A phone's deck has no room for the artwork.
+    var showsArt = true
     @State private var showCueList = false
 
     /// The track on its way if there is one, so the old title doesn't sit there through the load.
@@ -270,8 +277,10 @@ struct DeckHeader: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            DeckArt(deck: deck)
-                .frame(width: 34, height: 34)
+            if showsArt {
+                DeckArt(deck: deck)
+                    .frame(width: 34, height: 34)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(shownTrack?.title ?? "No track loaded")
                     .font(Theme.text(compact ? 11.5 : 12.5, .semibold))

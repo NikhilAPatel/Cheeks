@@ -15,6 +15,11 @@ struct ContentView: View {
         GeometryReader { geo in
             let mixerWidth = min(236, max(176, geo.size.width * 0.186))
             let waveHeight = max(58, min(120, geo.size.height * 0.1))
+            let layout = ScreenLayout(size: geo.size)
+            Group {
+            if layout.isCompact {
+                CompactScreen(layout: layout, showLibrary: $showLibrary, keyboardHeight: keyboardHeight)
+            } else {
             VStack(spacing: 3) {
                 TopBar(showLibrary: $showLibrary)
                 WaveformPanel(waveHeight: waveHeight)
@@ -44,6 +49,9 @@ struct ContentView: View {
                 .padding(.bottom, 8)
             }
             .animation(Theme.panel, value: showLibrary)
+            }
+            }
+            .environment(\.screenLayout, layout)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
                 guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
                 withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = max(0, geo.size.height - frame.minY) }
@@ -66,19 +74,21 @@ struct ContentView: View {
 struct WaveformPanel: View {
     @Environment(DJEngine.self) private var dj
     var waveHeight: CGFloat
+    var overviewHeight: CGFloat = 14
+    var phaseHeight: CGFloat = 8
 
     var body: some View {
         VStack(spacing: 1) {
-            OverviewWaveform(deck: dj.decks[0]).frame(height: 14)
+            OverviewWaveform(deck: dj.decks[0]).frame(height: overviewHeight)
             ScrollingWaveform(deck: dj.decks[0]).frame(height: waveHeight)
-            PhaseStrip(decks: dj.decks, positions: { dj.positions }).frame(height: 8)
+            PhaseStrip(decks: dj.decks, positions: { dj.positions }).frame(height: phaseHeight)
             ScrollingWaveform(deck: dj.decks[1]).frame(height: waveHeight)
-            OverviewWaveform(deck: dj.decks[1]).frame(height: 14)
+            OverviewWaveform(deck: dj.decks[1]).frame(height: overviewHeight)
         }
         .background(Color.black)
         .displayWell(cornerRadius: 5)
-        .overlay(alignment: .topLeading) { deckBadge(dj.decks[0]).offset(x: 4, y: 18) }
-        .overlay(alignment: .bottomLeading) { deckBadge(dj.decks[1]).offset(x: 4, y: -18) }
+        .overlay(alignment: .topLeading) { deckBadge(dj.decks[0]).offset(x: 4, y: overviewHeight + 4) }
+        .overlay(alignment: .bottomLeading) { deckBadge(dj.decks[1]).offset(x: 4, y: -overviewHeight - 4) }
         .overlay { BarCounters(decks: dj.decks, waveHeight: waveHeight) }
     }
 
@@ -92,7 +102,7 @@ struct WaveformPanel: View {
     }
 }
 
-/// "16.4" and a phrase count beside each playhead, in the same spot rekordbox prints its bar count.
+/// "16.4" and a phrase count beside each playhead, where a bar count usually goes.
 private struct BarCounters: View {
     let decks: [Deck]
     var waveHeight: CGFloat
@@ -186,6 +196,7 @@ struct MiniDeck: View {
 
 /// The slim bar along the top: browser, recording, settings and the clock.
 struct TopBar: View {
+    @Environment(\.screenLayout) private var layout
     @Environment(DJEngine.self) private var dj
     @Environment(Library.self) private var library
     @Binding var showLibrary: Bool
@@ -196,11 +207,13 @@ struct TopBar: View {
     var body: some View {
         HStack(spacing: 5) {
             HStack(spacing: 5) {
-            HStack(spacing: 4) {
-                CheeksMark(size: 13)
-                Text("cheeks").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Theme.textPrimary)
+            if !layout.isCompact {
+                HStack(spacing: 4) {
+                    CheeksMark(size: 13)
+                    Text("cheeks").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Theme.textPrimary)
+                }
+                .padding(.horizontal, 3)
             }
-            .padding(.horizontal, 3)
 
             Key(color: Theme.accent, lit: showLibrary, feel: .toggle, accessibilityName: "Browser", onPress: { showLibrary.toggle() }) {
                 HStack(spacing: 3) {
@@ -231,10 +244,12 @@ struct TopBar: View {
                 .overlay { StatusCapsule() }
             AnalysisIndicator()
             EngineLoad()
-            TimelineView(.everyMinute) { context in
-                Text(context.date, style: .time)
-                    .font(Theme.digits(12))
-                    .foregroundStyle(Theme.textSecondary)
+            if !layout.isCompact {
+                TimelineView(.everyMinute) { context in
+                    Text(context.date, style: .time)
+                        .font(Theme.digits(12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
             }
             Key(color: Theme.accent, accessibilityName: "Settings", onPress: { showSettings = true }) {
                 Image(systemName: "gearshape.fill").font(.system(size: 9))

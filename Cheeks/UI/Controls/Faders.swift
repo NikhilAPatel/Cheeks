@@ -186,7 +186,7 @@ struct CrossfaderControl: View {
     }
 }
 
-/// The tempo fader: down is faster, like a CDJ. It has a centre click at 0%, an LED that lights
+/// The tempo fader: down is faster, like a club deck. It has a centre click at 0%, an LED that lights
 /// when it's dead on, and fine control if you slide sideways off it.
 struct TempoFader: View {
     let deck: Deck

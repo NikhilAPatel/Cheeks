@@ -1,9 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The track browser, like rekordbox's: a collection and playlists on the left, a dense sortable
+/// The track browser: a collection and playlists on the left, a dense sortable
 /// table with artwork and preview waveforms, and hints for what mixes with what's playing.
 struct BrowserView: View {
+    @Environment(\.screenLayout) private var layout
     @Environment(Library.self) private var library
     @Environment(DJEngine.self) private var dj
     @State private var source: Source = .all
@@ -20,7 +21,7 @@ struct BrowserView: View {
     @FocusState private var searchFocused: Bool
 
     enum Source: Hashable { case all, playlist(UUID) }
-    enum ImportKind { case audio, rekordbox }
+    enum ImportKind { case audio, djLibrary }
 
     enum SortKey: String, CaseIterable, Identifiable {
         case dateAdded = "Date added", title = "Title", artist = "Artist", bpm = "BPM", key = "Key", duration = "Time"
@@ -76,8 +77,11 @@ struct BrowserView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar.frame(width: 148)
-            Rectangle().fill(Color.black).frame(width: 1)
+            // Held upright, a phone's only got room for the list. Its sources are in a menu instead.
+            if layout != .portrait {
+                sidebar.frame(width: layout.isCompact ? 118 : 148)
+                Rectangle().fill(Color.black).frame(width: 1)
+            }
             VStack(spacing: 0) {
                 toolbar
                 columnHeader
@@ -92,8 +96,8 @@ struct BrowserView: View {
             switch importKind {
             case .audio:
                 for url in urls { library.importFile(at: url) }
-            case .rekordbox:
-                if let url = urls.first { importRekordbox(url) }
+            case .djLibrary:
+                if let url = urls.first { importDJLibrary(url) }
             }
         }
         .alert("New playlist", isPresented: $showNewPlaylist) {
@@ -105,7 +109,7 @@ struct BrowserView: View {
             }
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
         }
-        .alert("rekordbox import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+        .alert("Library import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importMessage ?? "")
@@ -132,20 +136,20 @@ struct BrowserView: View {
         }
     }
 
-    private func importRekordbox(_ url: URL) {
+    private func importDJLibrary(_ url: URL) {
         // Big collections take a moment to parse, so keep it off the main thread.
         Task.detached(priority: .userInitiated) {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let collection = (try? Data(contentsOf: url)).flatMap(RekordboxCollection.parse)
+            let collection = (try? Data(contentsOf: url)).flatMap(DJLibraryCollection.parse)
             await MainActor.run {
                 guard let collection else {
-                    importMessage = "That file isn't a rekordbox collection XML."
+                    importMessage = "That file isn't a DJ library export in XML."
                     return
                 }
-                let result = library.applyRekordbox(collection)
+                let result = library.applyDJLibrary(collection)
                 dj.decks.forEach { $0.refreshTrack() }
-                importMessage = "Matched \(result.matched) of \(Format.count(result.total, "rekordbox track")) and imported \(Format.count(result.playlists, "playlist")). "
+                importMessage = "Matched \(result.matched) of \(Format.count(result.total, "library track")) and imported \(Format.count(result.playlists, "playlist")). "
                     + "Tracks are matched by file name, so import the audio files first."
             }
         }
@@ -236,22 +240,24 @@ struct BrowserView: View {
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.black))
             .animation(.easeOut(duration: 0.12), value: search.isEmpty)
 
-            filterKey("IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil)
-            filterKey("±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0)
+            filterKey(layout == .portrait ? "KEY" : "IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil)
+            filterKey(layout == .portrait ? "±6%" : "±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0)
+
+            if layout == .portrait { sourceMenu }
 
             Menu {
                 Button("Music files…", systemImage: "music.note") {
                     importKind = .audio
                     importing = true
                 }
-                Button("rekordbox library (XML)…", systemImage: "doc.text") {
-                    importKind = .rekordbox
+                Button("DJ library (XML)…", systemImage: "doc.text") {
+                    importKind = .djLibrary
                     importing = true
                 }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "square.and.arrow.down").font(.system(size: 10, weight: .semibold))
-                    Text("IMPORT").font(Theme.silk(8.5))
+                    if layout != .portrait { Text("IMPORT").font(Theme.silk(8.5)) }
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
@@ -266,7 +272,24 @@ struct BrowserView: View {
         Key(title, lit: isOn.wrappedValue && enabled, size: 8.5, feel: .toggle, isEnabled: enabled, onPress: {
             withAnimation(Theme.panel) { isOn.wrappedValue.toggle() }
         })
-        .frame(width: 56, height: 24)
+        .frame(width: layout == .portrait ? 36 : 56, height: 24)
+    }
+
+    /// Where the sidebar's sources go on a phone held upright.
+    private var sourceMenu: some View {
+        Menu {
+            Button("All tracks", systemImage: "music.note.list") { source = .all }
+            ForEach(library.playlists) { playlist in
+                Button(playlist.name, systemImage: "music.note") { source = .playlist(playlist.id) }
+            }
+            Button("New playlist…", systemImage: "plus") { showNewPlaylist = true }
+        } label: {
+            Image(systemName: "sidebar.left").font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 24)
+                .background(KeyFace(color: Theme.accent, lit: source != .all))
+        }
+        .accessibilityLabel("Playlists")
     }
 
     /// The title gets what's left: it's the column you read.
@@ -275,12 +298,12 @@ struct BrowserView: View {
     private var columnHeader: some View {
         HStack(spacing: 8) {
             Color.clear.frame(width: 28)
-            Color.clear.frame(width: 90)
+            if !layout.isCompact { Color.clear.frame(width: 90) }
             header(.title, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            header(.artist, alignment: .leading).frame(width: Self.artistWidth, alignment: .leading)
+            if !layout.isCompact { header(.artist, alignment: .leading).frame(width: Self.artistWidth, alignment: .leading) }
             header(.bpm, alignment: .trailing).frame(width: 40, alignment: .trailing)
             header(.key, alignment: .center).frame(width: 30)
-            header(.duration, alignment: .trailing).frame(width: 34, alignment: .trailing)
+            if layout != .portrait { header(.duration, alignment: .trailing).frame(width: 34, alignment: .trailing) }
             Color.clear.frame(width: 62)
         }
         .padding(.horizontal, 6)
@@ -334,13 +357,15 @@ struct TrackRow: View {
     let track: Track
     let referenceDeck: Deck?
     let playlistID: UUID?
+    @Environment(\.screenLayout) private var layout
 
     var body: some View {
         let compatible = referenceDeck?.track?.id != track.id && Camelot.isCompatible(track.key, referenceDeck?.effectiveKey)
         let loadedOn = dj.decks.first { $0.track?.id == track.id }
         HStack(spacing: 8) {
             TrackArtwork(track: track).frame(width: 28, height: 28)
-            TrackPreview(track: track).frame(width: 90, height: 24)
+            if !layout.isCompact { TrackPreview(track: track).frame(width: 90, height: 24) }
+            VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
                 if library.isMissing(track) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -353,21 +378,33 @@ struct TrackRow: View {
                     .foregroundStyle(library.isMissing(track) ? Theme.textTertiary : loadedOn != nil ? Theme.accent : Theme.textPrimary)
                     .lineLimit(1)
             }
+            // On a phone the artist goes under the title, which gives the title the width.
+            if layout.isCompact {
+                Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
+                    .font(Theme.text(10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
-                .font(Theme.text(11))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(1)
-                .frame(width: BrowserView.artistWidth, alignment: .leading)
+            if !layout.isCompact {
+                Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
+                    .font(Theme.text(11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                    .frame(width: BrowserView.artistWidth, alignment: .leading)
+            }
             Text(track.bpm.map { String(format: "%.1f", $0) } ?? "…")
                 .font(Theme.digits(11.5))
                 .foregroundStyle(Theme.textPrimary)
                 .frame(width: 40, alignment: .trailing)
             keyChip(compatible: compatible)
-            Text(track.duration > 0 ? track.duration.clockString : "")
-                .font(Theme.digits(11))
-                .foregroundStyle(Theme.textTertiary)
-                .frame(width: 34, alignment: .trailing)
+            if layout != .portrait {
+                Text(track.duration > 0 ? track.duration.clockString : "")
+                    .font(Theme.digits(11))
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 34, alignment: .trailing)
+            }
             HStack(spacing: 3) {
                 ForEach(dj.decks, id: \.index) { deck in
                     Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying,
