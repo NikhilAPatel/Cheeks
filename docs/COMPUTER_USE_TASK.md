@@ -107,6 +107,48 @@ Delete a memory cue, a saved loop and a hot cue, each pressing `UNDO` as soon as
 4. **`SLIP`.** The same with `SLIP` on. Say what happens when `REV` goes off.
 5. **A loop at the very start.** If you can set one, with the deck in it, `REV` holds in the loop and doesn't stop.
 
+### AM. Auto DJ: set up
+
+New this round. Nobody but unit tests has pressed the real key yet. Copy three club tracks in as well as the usual two, then relaunch:
+
+```sh
+cp ~/Library/Caches/cheeks-autodj/music/jam1280420.mp3 ~/Library/Caches/cheeks-autodj/music/jam1072904.mp3 ~/Library/Caches/cheeks-autodj/music/jam1197771.mp3 "$DATA/Documents/"
+```
+
+Splitting stems runs on the CPU in the simulator, so allow a few minutes a track. Wait for each deck's stems to finish before pressing `AUTO`. A key has been added under the `FILTER` key on the mixer.
+
+### AN. Corrected grids
+1. Load `jam1197771` and wait for stems. Note the deck's BPM and where the beat lines sit before and after stems finish. It should end at 125.00, with lines on the kicks. Screenshot `an1-grid`.
+2. Load `jam1280420` on the other deck and press `BEAT SYNC`. Do the waveforms' kicks line up? Screenshot `an2-sync`.
+3. Do hand edits survive? On a track whose stems aren't done yet, use `Grid 10 ms later` in the BPM menu. When stems finish, the grid should stay where you put it.
+4. Is a section's name still sensible after the grid moves? Note anything that changes to something odd.
+
+### AO. `AUTO` says no
+1. Press it with nothing playing. It should refuse and say why.
+2. With both decks playing. Same.
+3. With only one deck loaded and playing. Same.
+4. With one deck playing, and the other still splitting stems: the key should read `AUTO…` and say it's waiting. Then it should carry on by itself when stems finish.
+
+### AP. The whole thing
+Play `jam1280420` from about 1:30, with `jam1072904` loaded on the other deck, stems done. Press `AUTO`.
+1. **Planning:** how long from the press until it says what it's going to do, and how many bars away? Time it. The key should count down in bars.
+2. **Waiting:** does the count fall in step with the music? Screenshot `ap2-armed`.
+3. **The move:** do stem levels, EQ and filter visibly move on their own? Do the waveforms show stem colours? Screenshot `ap3-move` during it. Measure CPU on the pinned process during the move.
+4. **The end:** the old deck should stop, the new one should play, with `AUTO` unlit and a green tick message. All knobs back at centre, all stems up, no loop lit, no FX dot, and the new deck's BPM matching what was playing. Screenshot `ap4-done`.
+5. Press it again straight after, with the old deck reloaded. Does it pick a different move?
+6. Repeat with `jam1197771` into `jam1280420`.
+
+Record the move, and where it left and arrived, each time.
+
+### AQ. Taking over
+1. **Calling it off:** press `AUTO`, then press it again during the countdown. Nothing should have changed, and the track plays on.
+2. **Grabbing a knob:** during a move, turn the outgoing deck's `HI`. It should stay where you put it while everything else carries on. At the end it goes back to centre.
+3. **Stopping mid-move:** press `AUTO` during a move. It should say the decks are yours and leave everything where it is. Can you carry on and finish the mix by hand?
+4. **Moving the deck:** during the countdown, seek the playing deck well past where the move was to start. It should say it lost its moment.
+5. **Changing the plan:** during the countdown, load another track on the waiting deck, or press its `PLAY`. It should call itself off and say why.
+6. **Leaving the page:** during a move, open `BROWSE` and come back, and put the app in the background and bring it back. Does the move carry on correctly?
+7. **Rough stuff during a move:** press `CUE` or a hot cue on either deck, change tempo, press `REV`, or eject. Nothing should crash, and it should end with the decks usable. Describe what each does.
+
 ### Pressing harder
 1. **Two fingers on everything.** For about 5 minutes, hold a `ROLL` or `SLICER` pad with one finger, and with the other use whatever's on screen: each tab, `BROWSE`, the gear, `REC`, `DEL`, loop keys, `SAVE LOOP`, `REV`, `SLIP`, `Q`, `PLAY`, `CUE`, the crossfader. After each, lift and check the deck's place and that a plain roll still works. Report any that leave something stuck.
 2. **The same with `CUE`** held, and with a `HOT CUE` pad held, for a shorter list: tabs, `BROWSE`, `PLAY`.
