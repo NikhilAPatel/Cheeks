@@ -51,13 +51,31 @@ On their own tracks, from the local Listening Room (`tools/autodj/local_room.py`
 - **Loop build: Wow.** The one beat of air before the drop created suspense. It now scores higher.
 - **Vocal ride: Good.** The handover between the two vocals worked, and it may suit other songs better.
 - **Vocal tease: Good.** The new vocal came in well, but the new track's arrival was better on the loop build.
-- **Bass swap: OK.** Pleasant, but plain, close to a normal crossfade.
+- **Bass swap: OK.** Pleasant, but plain, close to a normal crossfade. So it now has a moment in it: the old track rises and loses its low end for its last bar, everything stops for one beat, and the new track lands whole. Its air measures about −30 dB, the same as the loop build's, and 12 to 14 dB below its landing. This version hasn't been rated yet. Its takes end `__r2`, and `tools/autodj/check_swap.py` measures them.
 - **Brake drop: Bad.** Way too jarring. It's now only used between tracks nothing else can join.
 - **Crossfade, 125 into 126 BPM:** the second song felt far too slow. This was the room's plain control, which isn't something AUTO plays, and it faded a full section into bar 0 of a song with no drums for its first 72 seconds. The control now has the new track's full band in by the end of the fade. Its new takes end `__r2`, and the old rating stays under `__r1`.
 
 That's six takes, mostly from one pair, so these are early signs.
 
 **How fast a track feels.** `tools/autodj/feel.py` counts what each stem plays on a 16th-note grid in a track's main sections, and how much it swings. Tracks at nearly the same tempo can differ a lot: in their main sections, Turn Off The Lights (125 BPM) has 0.93 bass hits a beat and Sweet Release (126 BPM) has 3.97. The planner doesn't use this yet, because no rating shows the difference matters. The complaint above came from the missing drums, and every AUTO take rendered so far lands with kick and bass on in at least 7 of the first 8 bars. The unrated takes of that pair will show whether it does.
+
+## Mixing through a list
+
+`MIX` in the browser takes the list on screen, in the order it's showing. It carries on from a track that's already playing, or starts from the top. It differs from a press of `AUTO` in three ways:
+
+- **It gives each track its time.** Someone pressing `AUTO` wants it soon, but a mix starts looking to leave once a track's last big section is under way, or 60% of the way through one that never lets up (`TransitionPlanner.setExit`). If no plan passes from there, it looks 16 bars further back each time, but no further than a third of the way in.
+- **It keeps the moves varied.** The last four moves count against playing them again. It leaves out the brake drop, which the owner found way too jarring, as nobody's there to take it back.
+- **Someone taking over ends it.** Loading another track on the waiting deck, starting it, or stopping the playing deck all do. Moving the playing deck just makes it plan again.
+
+If there's no clean way in, or stems aren't ready in time, the next track starts when the last one ends, so the music doesn't stop.
+
+**Measured with `tools/autodj/app_set/`, which runs a set through the app's own planner and audition without playing it.** On the owner's 22 tracks, in folder order:
+
+- 19 of 21 joins found a move, and 2 fell back to starting the next track at the end.
+- Moves: loop build 7, echo throw 7, bass swap 3, vocal tease 1, vocal ride 1.
+- A track typically played 50 to 90% before the move. The shortest was 35%, where nothing passed from later on.
+
+Folder order is a harsh test, as it's in no musical order. Whether it holds together for an hour is a question for ears. Nothing has been measured on a phone either: a split has to finish while the track before it plays, and how long a split takes there is unknown.
 
 ## What to train, and what not to
 

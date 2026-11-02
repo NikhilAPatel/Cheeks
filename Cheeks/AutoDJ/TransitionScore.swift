@@ -30,6 +30,8 @@ struct TransitionScore {
     private(set) var length: Double = 0
     /// Where a drop lands, in mix beats, for the audition to check.
     private(set) var landing: Double?
+    /// The beat a deliberate breath ends on, so the audition doesn't take the bar before it for a hole.
+    private(set) var breath: Double?
 
     init(plan: TransitionPlan, a: Side, b: Side) {
         self.plan = plan
@@ -117,35 +119,39 @@ struct TransitionScore {
         }
     }
 
-    /// The club blend. The new track's hats and percussion creep in, the basslines trade on a downbeat at the top of a
-    /// phrase, then the old track's top end leaves.
+    /// The club blend, with a moment in it. The new track's hats creep in, and its melody slides under if the two agree.
+    /// Then the old track rises out of its last four bars with its low end gone for the last one, everything stops for
+    /// one beat, and the new track lands whole on the downbeat. Without that moment it was pleasant but plain: the owner
+    /// heard "a normal crossfade", and a beat of air was what they loved about the loop build.
     private mutating func writeBassSwap() {
-        let t = start, swapAt = t + Double(plan.swap * 4), tail = 16.0
-        let half = swapAt + tail * 2, end = swapAt + tail * 4
+        let t = start, swapAt = t + Double(plan.swap * 4), air = swapAt - 1, end = swapAt + 32
+        // A ramp that's still going would overrule the jump at the air, so they finish just ahead of it.
+        let readyForAir = air - 0.25
+        let bar = Double(plan.exit + plan.swap - 2)
+        let singing = Int(bar) >= 0 && Int(bar) + 2 <= a.map.vocal.count && a.map.vocal[Int(bar)..<Int(bar) + 2].reduce(0, +) > 0.7
+        breath = swapAt
         prime(entry: plan.entry, landing: t)
         low(b, to: 0, at: 0)
         stem(b, .drums, 0, 0.9, t, t + Double(plan.swap * 2), curve: 1)
         if plan.harmonyAgrees {
-            stem(b, .melody, 0, 0.65, t + Double(plan.swap * 2), swapAt, curve: 1)
-            stem(a, .melody, 1, 0.75, t + Double(plan.swap * 2), swapAt)
+            stem(b, .melody, 0, 0.65, t + Double(plan.swap * 2), readyForAir, curve: 1)
+            stem(a, .melody, 1, 0.75, t + Double(plan.swap * 2), readyForAir)
         }
-        // The old bass drops out for the last two beats, which is what makes the swap land.
-        stem(a, .bass, 1, 0, swapAt - 2, swapAt - 1.75)
-        low(a, to: 0, at: swapAt)
+        // The rise.
+        ramp(CheeksAutoFilter, a, 0, 0, 0.25, swapAt - 16, readyForAir, curve: 1)
+        ramp(CheeksAutoColor, a, Int(CheeksColorNoise.rawValue), 0, 0.4, swapAt - 16, air, curve: 1)
+        low(a, to: 0, at: swapAt - 4)
+        if singing { effect(a, CheeksFXEcho, beats: 0.75, depth: 0.7, at: air - 1) }
+        // The air.
+        for s in Stem.allCases { stem(a, s, to: 0, at: air) }
+        for s in [Stem.drums, .melody] { stem(b, s, to: 0, at: air) }
+        ramp(CheeksAutoColor, a, Int(CheeksColorNoise.rawValue), 0, 0, air, air)
+        // The landing. A sung line has gone up the echo, and otherwise the old hats see the new track in.
         low(b, to: 1, at: swapAt)
-        stem(b, .bass, to: 1, at: swapAt)
-        stem(b, .drums, to: 1, at: swapAt)
-        if plan.harmonyAgrees {
-            stem(b, .melody, 0.65, 1, swapAt, half)
-            stem(a, .melody, 0.75, 0, swapAt, half, curve: 3)
-        } else {
-            stem(b, .melody, to: 1, at: swapAt)
-            stem(a, .melody, to: 0, at: swapAt)
-        }
-        stem(a, .vocals, 1, 0, swapAt, half, curve: 3)
-        ramp(CheeksAutoFilter, a, 0, 0, 0.35, swapAt, end)
-        stem(b, .vocals, 0, 1, half, half + 4)
-        stem(a, .drums, 1, 0, half, end)
+        for s in Stem.allCases { stem(b, s, to: 1, at: swapAt) }
+        if !singing { stem(a, .drums, 0.7, 0, swapAt, end, curve: 3) }
+        ramp(CheeksAutoFilter, a, 0, 0.25, 0.35, swapAt, end)
+        ramp(CheeksAutoLevel, a, 0, 1, 0, swapAt + 8, end)
         fire(CheeksAutoStop, a, at: end)
         length = end
     }
@@ -231,6 +237,55 @@ struct TransitionScore {
     }
 }
 
+/// Picks the best plan between two decks that passes its audition. Everything's copied in, as it runs off the main thread.
+struct TransitionChoice {
+    var mapA: TrackMap, mapB: TrackMap
+    var stemsA: [PCM16Stereo], stemsB: [PCM16Stereo]
+    var deckA: Int32 = 0, deckB: Int32 = 1
+    var rateA = 1.0
+    var levelA: Float, levelB: Float
+    var lagA = 0.0, lagB = 0.0
+    /// The incoming deck's stem lag when a key shift puts the stretcher in the path.
+    var lagShifted = 0.0
+    /// The first bar of the outgoing track a move could start on.
+    var earliest: Int
+    /// The moves played lately, oldest first, so the same few don't keep coming up.
+    var recentMoves: [TransitionMove] = []
+    /// Moves not to use. A mix has no one there to take it back, so it leaves out what's only for when nothing else will do.
+    var avoid: Set<TransitionMove> = []
+
+    var playingBPM: Double { mapA.bpm * rateA }
+
+    /// How much each of the last few moves counts against playing it again, most recent first.
+    private static let repeatPenalty = [0.3, 0.2, 0.1, 0.1]
+
+    func choose(isCancelled: () -> Bool = { false }) -> TransitionScore? {
+        var penalty: [TransitionMove: Double] = [:]
+        for (move, amount) in zip(recentMoves.reversed(), Self.repeatPenalty) { penalty[move, default: 0] += amount }
+        let plans = TransitionPlanner.plans(from: mapA, to: mapB, playingBPM: playingBPM, earliest: earliest)
+            .filter { !avoid.contains($0.move) }
+            .map { plan -> TransitionPlan in
+                var plan = plan
+                plan.score -= penalty[plan.move] ?? 0
+                return plan
+            }
+            .sorted { $0.score > $1.score }
+        // Too far apart to stretch, so the new track lands at its own tempo.
+        let ownTempo = abs(playingBPM / mapB.bpm - 1) > TransitionPlanner.maxStretch
+        let rateB = ownTempo ? 1 : playingBPM / mapB.bpm
+        for plan in TransitionPlanner.shortlist(plans) {
+            if isCancelled() { return nil }
+            let score = TransitionScore(plan: plan,
+                                        a: .init(deck: deckA, map: mapA, rate: rateA, lag: lagA),
+                                        b: .init(deck: deckB, map: mapB, rate: rateB, lag: plan.shift != 0 ? lagShifted : (ownTempo ? 0 : lagB)))
+            if TransitionAudition.review(score, stemsA: stemsA, stemsB: stemsB, levelA: levelA, levelB: levelB, isCancelled: isCancelled)?.passes == true {
+                return score
+            }
+        }
+        return nil
+    }
+}
+
 /// Plays a score offline through a private copy of the engine, faster than real time, and checks what comes out. It
 /// catches let-downs and holes without anyone having to listen, so the live decks never play one. It isn't taste.
 enum TransitionAudition {
@@ -310,7 +365,9 @@ enum TransitionAudition {
         if change < -1.5 { problems.append("new track sits low") }
         if change > 3 { problems.append("new track jumps up") }
         if (middle.max() ?? was) - was > 3 { problems.append("bump in the middle") }
-        if score.landing == nil, was - (middle.min() ?? was) > 5 { problems.append("hole in the middle") }
+        let held = score.breath.map { settleBars + Int(($0 / 4).rounded()) - 1 }
+        let lowest = middle.indices.filter { $0 != held }.map { middle[$0] }.min() ?? was
+        if score.landing == nil, was - lowest > 5 { problems.append("hole in the middle") }
         if let landing = score.landing {
             let bar = settleBars + Int((landing / 4).rounded())
             if bar < energy.count, median(energy[bar..<min(energy.count, bar + 4)]) - was < -1.5 { problems.append("drop lands low") }

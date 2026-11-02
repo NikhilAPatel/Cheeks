@@ -242,6 +242,7 @@ struct BrowserView: View {
 
             filterKey(layout == .portrait ? "KEY" : "IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil)
             filterKey(layout == .portrait ? "±6%" : "±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0)
+            mixKey
 
             if layout == .portrait { sourceMenu }
 
@@ -273,6 +274,25 @@ struct BrowserView: View {
             withAnimation(Theme.panel) { isOn.wrappedValue.toggle() }
         })
         .frame(width: layout == .portrait ? 36 : 56, height: 24)
+    }
+
+    /// Auto DJ through the list on screen, in the order it's showing. Pressing it again stops the mix.
+    private var mixKey: some View {
+        let auto = dj.autoDJ!
+        let on = auto.mixSet != nil
+        return Key("MIX", lit: on, size: 8.5, feel: .toggle, accessibilityName: on ? "Stop the mix" : "Mix through this list", onPress: {
+            if on {
+                auto.press()
+            } else {
+                auto.startSet(named: sourceName, tracks: tracks.map(\.id))
+            }
+        })
+        .frame(width: 36, height: 24)
+    }
+
+    private var sourceName: String {
+        guard case .playlist(let id) = source, let playlist = library.playlists.first(where: { $0.id == id }) else { return "all your tracks" }
+        return playlist.name
     }
 
     /// Where the sidebar's sources go on a phone held upright.

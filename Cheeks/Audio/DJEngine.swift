@@ -120,6 +120,10 @@ final class DJEngine {
         autoDJ = AutoDJ(core: core, decks: decks, say: { [weak self] message, kind in self?.say(message, kind) }, prepareMixer: { [weak self] incoming in
             self?.openChannel(for: incoming)
         })
+        autoDJ.loadTrack = { [weak self] id, deck in
+            guard let self, let track = self.library?.track(id), self.load(track, onto: deck) else { return nil }
+            return track.title
+        }
         buildGraph()
         updateVolumes()
         startAudio()

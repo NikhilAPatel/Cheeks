@@ -20,7 +20,7 @@ enum TransitionMove: String, CaseIterable, Codable {
     /// Bars from `exit` to when the new track has taken over, and the audition checks a drop there.
     func bars(swap: Int) -> (total: Int, landing: Int?) {
         switch self {
-        case .bassSwap: (swap + 16, nil)
+        case .bassSwap: (swap + 8, nil)
         case .loopDrop: (16, 16)
         case .echoDrop, .brakeDrop: (0, 0)
         case .vocalTease: (8, 8)
@@ -195,10 +195,10 @@ enum TransitionPlanner {
                 }
                 if cutsOnly { continue }
 
-                // The blend: overlap, a handover on a line in both tracks, then 16 more bars.
+                // The blend: overlap, a handover on a line in both tracks, then 8 more bars of the old hats.
                 for swap in [16, 8] {
                     let handA = exit + swap, handB = entry + swap
-                    guard handA + 16 < a.bars + 8, handB + 16 < b.bars, b.isFull(handB, handB + 8),
+                    guard handA <= a.bars, handB + 16 < b.bars, b.isFull(handB, handB + 8),
                           a.strength(handA) >= 0.45, b.strength(handB) >= 0.45 else { continue }
                     let first = agreementBetween(slice(outgoing.harmony, exit, handA), slice(incoming.harmony, entry, handB))
                     let second = agreementBetween(slice(outgoing.harmony, handA, handA + 8), slice(incoming.harmony, handB, handB + 8))
@@ -231,6 +231,22 @@ enum TransitionPlanner {
             }
         }
         return out.sorted { $0.score > $1.score }
+    }
+
+    /// Bars further back a set looks each time a plan fails.
+    static let setStepBack = 16
+
+    /// Where a set starts looking to leave a track: once its last big section is under way, or well into a track that
+    /// never lets up. Someone pressing AUTO wants it soon, but a set has to give each track its time.
+    static func setExit(in map: TrackMap) -> Int {
+        let track = PlannerTrack(map)
+        var end = map.barCount
+        while end >= 4, !track.isFull(end - 4, end) { end -= 1 }
+        guard end >= 4 else { return map.barCount / 3 }
+        var start = end - 4
+        while start >= 4, track.isFull(start - 4, start) { start -= 4 }
+        // A move needs some of the section left to start from.
+        return max(map.barCount / 3, min(max(start, map.barCount * 3 / 5), end - 16))
     }
 
     /// The best few of each move, to audition, best first overall.

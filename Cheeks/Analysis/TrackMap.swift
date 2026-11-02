@@ -43,6 +43,18 @@ struct TrackMap: Codable, Hashable {
     var keyIsMinor: Bool
 
     var barSeconds: Double { 240 / bpm }
+
+    /// This map's notes as they sound with the deck's key shift on, which a move into this track may have left set.
+    func heard(shiftedBy shift: Int) -> TrackMap {
+        guard shift != 0 else { return self }
+        var out = self
+        func moved(_ rows: [[Float]]) -> [[Float]] {
+            rows.map { row in row.indices.map { row[(($0 - shift) % row.count + row.count) % row.count] } }
+        }
+        out.harmony = moved(harmony)
+        out.vocalNotes = moved(vocalNotes)
+        return out
+    }
     func seconds(atBar bar: Int) -> Double { firstBar + Double(bar) * barSeconds }
 }
 

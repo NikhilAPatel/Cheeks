@@ -149,6 +149,19 @@ Record the move, and where it left and arrived, each time.
 6. **Leaving the page:** during a move, open `BROWSE` and come back, and put the app in the background and bring it back. Does the move carry on correctly?
 7. **Rough stuff during a move:** press `CUE` or a hot cue on either deck, change tempo, press `REV`, or eject. Nothing should crash, and it should end with the decks usable. Describe what each does.
 
+### AR. `MIX`: Auto DJ through a list
+New this round, and nobody but unit tests has pressed it. The key is in the browser's toolbar, and it mixes through the list on screen, in the order it's showing. Make a playlist of the three club tracks from AM.
+1. **From nothing playing.** Open `BROWSE`, pick the playlist, and press `MIX`. Deck 1 should load the first track and start it, and deck 2 should load the next, with an `Up next` message. The mixer's `AUTO` key should read `MIX` and stay lit. Screenshot `ar1-start`. Does `MIX` fit in the toolbar at this size?
+2. **Waiting.** Once stems are done, the key should count down as `MIX n`, and it shouldn't leave the track early. Record the bar it leaves on and how far through the track that is.
+3. **The handover.** When the move ends, the third track should load on the deck that's just been freed. Record each move, and any message that goes by too fast to read.
+4. **The end.** After the last track plays out, it should say that's the end of the playlist with a green tick, with `AUTO` back and unlit. Screenshot `ar4-end`.
+5. **Starting mid-track.** With a track from the list already playing, press `MIX`: it should carry on from there. With one not on the list: it should carry on into the top of the list. With the last track of the list playing: it should refuse and say why.
+6. **Stopping.** Press `MIX` or the mixer's key while it's waiting, counting down and moving. Before a move, the track plays on. During one, the decks are yours.
+7. **Taking over.** During the countdown, load another track on the waiting deck, start the waiting deck, or pause the deck that's playing. Each should end the mix and say why.
+8. **All tracks.** With `All Tracks` showing, sort by `BPM` and press `MIX`. Does it follow the order on screen? Does a search or filter change what it plays?
+9. **Running out.** Start a mix on tracks whose stems aren't split yet, and seek close to the end of the first. The next track should start when it runs out, with a message. Say what the gap's like.
+10. **Bass swap.** If a move is a `Bass swap`, the old track should rise and lose its low end for its last bar, then everything stops for one beat, and the new track lands whole. Screenshot `ar10-air` during the beat, if you can catch it.
+
 ### Pressing harder
 1. **Two fingers on everything.** For about 5 minutes, hold a `ROLL` or `SLICER` pad with one finger, and with the other use whatever's on screen: each tab, `BROWSE`, the gear, `REC`, `DEL`, loop keys, `SAVE LOOP`, `REV`, `SLIP`, `Q`, `PLAY`, `CUE`, the crossfader. After each, lift and check the deck's place and that a plain roll still works. Report any that leave something stuck.
 2. **The same with `CUE`** held, and with a `HOT CUE` pad held, for a shorter list: tabs, `BROWSE`, `PLAY`.

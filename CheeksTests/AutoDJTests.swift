@@ -9,9 +9,9 @@ final class AutoDJTests: XCTestCase {
         return (stems, try XCTUnwrap(TrackMapper.map(stems: stems)))
     }
 
-    private func put(_ loaded: (stems: [PCM16Stereo], map: TrackMap), on deck: Deck, name: String) {
+    private func put(_ loaded: (stems: [PCM16Stereo], map: TrackMap), on deck: Deck, name: String, id: UUID = UUID()) {
         deck.renderer.setSources(loaded.stems)
-        deck.track = Track(id: UUID(), title: name, artist: "", fileName: "none", duration: Double(loaded.stems[0].frames) / Synth.sampleRate, bpm: loaded.map.bpm, firstBeat: loaded.map.firstBar)
+        deck.track = Track(id: id, title: name, artist: "", fileName: "none", duration: Double(loaded.stems[0].frames) / Synth.sampleRate, bpm: loaded.map.bpm, firstBeat: loaded.map.firstBar)
         deck.trackMap = loaded.map
     }
 
@@ -186,7 +186,165 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(cheeks_engine_auto_value(dj.coreForTesting, 0, Int32(CheeksAutoEQ.rawValue), 0), taken, "A hand on it stops the score")
     }
 
+    // MARK: A whole mix
+
+    /// An engine whose decks load these tracks straight from memory, without any files.
+    private func engine(loading tracks: [UUID: (stems: [PCM16Stereo], map: TrackMap)]) -> DJEngine {
+        let dj = makeEngine()
+        dj.autoDJ.loadTrack = { [unowned self] id, deck in
+            guard let loaded = tracks[id] else { return nil }
+            self.put(loaded, on: deck, name: "\(id)", id: id)
+            return "\(id)"
+        }
+        return dj
+    }
+
+    func testMixesThroughAListAndStopsAtTheEnd() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.decks[0].track?.id, ids[0], "It starts from the top")
+        try await run(dj, until: { dj.decks[0].isPlaying && dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        XCTAssertTrue(dj.autoDJ.legend.hasPrefix("MIX"))
+
+        try await run(dj, until: { if case .armed = dj.autoDJ.phase { return true } else { return false } }, seconds: 30)
+        let map = try XCTUnwrap(dj.decks[0].trackMap)
+        let exit = try XCTUnwrap(cheeks_engine_auto_armed(dj.coreForTesting) ? dj.decks[0].position : nil)
+        XCTAssertLessThan(exit, map.seconds(atBar: TransitionPlanner.setExit(in: map)), "It hasn't left yet")
+        XCTAssertFalse(dj.decks[1].renderer.isPlaying)
+
+        // First move, then the third track arrives on the deck that's just been freed.
+        try await run(dj, until: { dj.decks[1].isPlaying && !dj.decks[0].isPlaying && dj.decks[0].track?.id == ids[2] }, seconds: 400)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        // Second move, leaving nothing in the queue.
+        try await run(dj, until: { dj.decks[0].isPlaying && !dj.decks[1].isPlaying }, seconds: 400)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 0)
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, [])
+        // And the last track plays out.
+        try await run(dj, until: { dj.autoDJ.mixSet == nil }, seconds: 400)
+        XCTAssertEqual(dj.statusKind, .done)
+        XCTAssertFalse(dj.autoDJ.isActive)
+    }
+
+    func testAMixCarriesOnFromWhatsPlaying() throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[1]: try map(), ids[2]: try map()])
+        put(try map(), on: dj.decks[1], name: "Playing", id: ids[0])
+        dj.decks[1].play()
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, [ids[1], ids[2]], "What's playing isn't played again")
+        dj.autoDJ.tick()
+        XCTAssertEqual(dj.decks[0].track?.id, ids[1])
+    }
+
+    func testAMixNeedsSomethingToMixInto() throws {
+        let dj = engine(loading: [:])
+        dj.autoDJ.startSet(named: "Tonight", tracks: [UUID()])
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertEqual(dj.statusKind, .refused)
+
+        let id = UUID()
+        put(try map(), on: dj.decks[0], name: "Playing", id: id)
+        dj.decks[0].play()
+        dj.autoDJ.startSet(named: "Tonight", tracks: [id])
+        XCTAssertNil(dj.autoDJ.mixSet, "It's the last one on the list")
+        XCTAssertEqual(dj.statusKind, .refused)
+    }
+
+    func testPressingTheKeyStopsAMix() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { if case .armed = dj.autoDJ.phase { return true } else { return false } }, seconds: 30)
+        dj.autoDJ.press()
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
+        XCTAssertTrue(dj.decks[0].isPlaying, "The track playing just carries on")
+    }
+
+    func testLoadingSomethingElseStopsAMix() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { if case .armed = dj.autoDJ.phase { return true } else { return false } }, seconds: 30)
+        put(try map(bpm: 118, firstBar: 0.3), on: dj.decks[1], name: "Mine")
+        dj.tickForTesting()
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
+    }
+
+    func testStoppingTheDeckStopsAMix() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.decks[1].trackMap = nil
+        dj.decks[1].stemStatus = .tooLong
+        dj.autoDJ.stopForTesting()
+        dj.decks[0].pause()
+        dj.tickForTesting()
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertNotEqual(dj.statusKind, .done)
+    }
+
+    /// With no map there's nothing to plan from, but the music still mustn't stop.
+    func testTheNextTrackStartsWhenTheLastRunsOutWithoutAWayIn() async throws {
+        let ids = [UUID(), UUID()]
+        var dj: DJEngine!
+        let first = try map(bars: 40), second = try map()
+        dj = engine(loading: [ids[0]: first, ids[1]: second])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.autoDJ.stopForTesting()
+        dj.decks[1].trackMap = nil
+        dj.decks[1].stemStatus = .tooLong
+        dj.decks[0].seek(to: (dj.decks[0].track!.duration - 2) * Synth.sampleRate)
+        try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 20)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        XCTAssertEqual(dj.statusKind, .info)
+    }
+
     // MARK: Plans
+
+    func testASetLeavesLateAndAButtonLeavesSoon() throws {
+        let track = try map(bars: 120).map
+        let exit = TransitionPlanner.setExit(in: track)
+        XCTAssertGreaterThan(exit, 120 / 2, "A track gets its time in a set")
+        XCTAssertLessThan(exit + 16, 120, "With room left for a move")
+    }
+
+    func testAKeyShiftMovesTheNotesAPlanHears() throws {
+        var track = try map().map
+        var note = [Float](repeating: 0, count: 12)
+        note[3] = 1
+        track.harmony = [note]
+        track.vocalNotes = [note]
+        XCTAssertEqual(track.heard(shiftedBy: 2).harmony[0][5], 1)
+        XCTAssertEqual(track.heard(shiftedBy: -1).vocalNotes[0][2], 1)
+        XCTAssertEqual(track.heard(shiftedBy: 0).harmony[0][3], 1)
+    }
+
+    /// The bass swap's moment: everything stops for a beat, and the new track lands whole.
+    func testABassSwapBreathesBeforeItLands() throws {
+        let a = try map(), b = try map(firstBar: 0.1)
+        let plan = TransitionPlan(move: .bassSwap, exit: 32, entry: 16, swap: 16, score: 1)
+        let score = TransitionScore(plan: plan, a: .init(deck: 0, map: a.map, rate: 1, lag: 0), b: .init(deck: 1, map: b.map, rate: 1, lag: 0))
+        var out: [Float] = []
+        let review = try XCTUnwrap(TransitionAudition.review(score, stemsA: a.stems, stemsB: b.stems, levelA: 0.7, levelB: 0.7, listen: { left, _ in out += left }))
+        func level(_ beat: Double) -> Float {
+            // Beat 0 of the score comes four bars into the render, and the score's own start is on top of that.
+            let from = Int((16 + beat) * score.framesPerBeat), to = from + Int(score.framesPerBeat)
+            let part = out[from..<min(out.count, to)]
+            return (part.reduce(0) { $0 + $1 * $1 } / Float(max(part.count, 1))).squareRoot()
+        }
+        let swapAt = score.start + 64
+        let air = level(swapAt - 1), landing = level(swapAt)
+        XCTAssertGreaterThan(landing, 0.03, "The new track's there")
+        XCTAssertLessThan(air, landing * 0.4, "Air \(20 * log10(air / landing)) dB against the landing")
+        XCTAssertFalse(review.problems.contains("hole in the middle"), "A breath isn't a hole")
+    }
 
     func testEveryMoveStaysInRange() throws {
         let a = try map(), b = try map(bpm: 122, firstBar: 0.1)
