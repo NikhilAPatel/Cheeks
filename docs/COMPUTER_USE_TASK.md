@@ -2,16 +2,16 @@
 
 **Who this is for:** a Claude session with computer use (it can see the screen, click and drag). This is the only document you need.
 
-**Your job:** this round is bigger than the last few. The owner's said bugs, usability and speed are what stand between this app and a launch, and Parts 1 to 3 haven't been run since round 2, with a lot added since. Set up as below, then run **the retest**, **the first-time user**, **a big library**, and all of **Parts 1 and 2**, and write down exactly what happens. Then answer **Part 3** properly. Take as long as it takes.
+**Your job:** set up as below, then run **the retest**, **the first-time user** on the small iPhone, **a big library** and **pressing harder**, and answer **Part 3**. Parts 1 and 2 passed last round and don't need running again, apart from what the retest points you back to.
 
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-9/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-10/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_9.md` in the format at the end, with screenshots in `docs/test-results-9/`. Commit only those to `master`, with the message `Add hands-on test results, part 9`. **Don't push.**
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_10.md` in the format at the end, with screenshots in `docs/test-results-10/`. Commit only those to `master`, with the message `Add hands-on test results, part 10`. **Don't push.**
 
 **Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
@@ -37,7 +37,7 @@ DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.seguedj data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
 xcrun simctl launch "$SIM" com.nikhilpatel.seguedj
-mkdir -p docs/test-results-9
+mkdir -p docs/test-results-10
 ```
 
 **The small iPhone:** use `iPhone SE Cheeks` (59B64076-E0E9-491A-AA6F-A82A60C3D2D2, iOS 27.2), which the owner's given the touch tool access to. It needs a fresh install. Never use `iPhone SE (3rd generation)`: by name that's another project's simulator.
@@ -54,14 +54,14 @@ mkdir -p docs/test-results-9
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-9/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-10/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Reading the meters from video:** crop widths must be even. An odd width gets rounded by ffmpeg on 4:2:0 video, which shears every frame, and round 6's first figures were wrong because of it. Run a control that's known to be red before believing a 0%.
 - **Check a reload really happened:** `playCount` in `library.json` goes up by one each time. A very busy Mac can take over 1 s to open the browser, so a load key tap sent too soon lands on the old layout. Allow about 1.5 s after `BROWSE`, and at least 5 s after a load key before seeking.
 - **Load average is unreliable on this Mac:** it read 40 to 940 while the busiest processes added up to a few cores. Go by what the processes use.
 - **Can't be tested here, so don't report as failed:** haptics, how anything sounds, and the headphone output. List them under Tooling limits.
 
 **Where things are:**
-- **Top bar:** `cheeks`, `BROWSE`, `REC`, a waveform icon (Recordings), `MASTER n` and the tempo in the middle, then messages, the clock and the gear (Settings).
+- **Top bar:** `SEGUE DJ`, `BROWSE`, `REC`, a waveform icon (Recordings), `MASTER n` and the tempo in the middle, then messages, the clock and the gear (Settings).
 - **Waveforms:** overview, deck 1, a strip of beat blocks, deck 2, overview.
 - **Decks** left and right with the **mixer** between them. Each deck has a header, a tempo fader at the outer edge, the jog, a column of keys (`BEAT SYNC`, `MASTER`, `BEAT JUMP`, `Q`, `SLIP`, `KEY`, `REV`, `−`/`+`, `KEY SYNC`), a row of controls for the current pad page, the tabs (`CUE MEM LOOP ROLL SLICER JUMP STEMS FX SAMPLE`) and eight pads. Round `CUE` and `PLAY` are in the bottom outer corner.
 
@@ -70,11 +70,11 @@ Load one track on each deck through `BROWSE` and the `1` and `2` keys, then clos
 ---
 
 ## The retest
-To see what these were, look in `docs/COMPUTER_USE_RESULTS_8.md`, which ends with what was done about them.
+To see what these were, look in `docs/COMPUTER_USE_RESULTS_9.md`, which ends with what was done about them.
 
 **Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
 
-**Other sessions:** the other session may be running low-priority jobs on this Mac for a separate feature, off the simulators. It'll pause them if you ask before measuring. Check which app's in the simulator's foreground before relying on a tap: another project's session took it for 10 minutes last time.
+**Other sessions:** the other session may be building at low priority on `iPad Air 13-inch (M4)`, and it'll hold off if you ask before measuring. Other projects' jobs may be running as well, so say what was running beside anything you measure. Check which app's in the simulator's foreground before relying on a tap.
 
 **With two fingers:** as last time, both land together and the second slides. Say which way round each test went.
 
@@ -86,41 +86,42 @@ cp ~/Library/Caches/cheeks-autodj/music/jam1280420.mp3 ~/Library/Caches/cheeks-a
 
 `jam1197771` is Skylander (125), `jam1072904` is Gepzene (128) and `jam1280420` is Houston (126). The `AUTO` key is under the `FILTER` key on the mixer, and `MIX` and `NEXT` are in the browser's toolbar. The rules for taking over are in the table under **In the app** in `docs/AUTO_DJ.md`.
 
-### BA. Opening the app
-The first time it ran on a real phone, it took about 20 s to load things, with "image provider timed out" in the console. The pre-rendered parts are now drawn a different way.
-1. **A fresh install.** Uninstall, install, launch, and time it from the launch command until a control responds. Then run this, which should find nothing:
-   ```sh
-   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND eventMessage CONTAINS "timed out"' --style compact
-   ```
-2. **Launching again.** The same three times more, with no reinstall.
-3. **Does it look the same?** Compare the knobs, keys, fader caps and round `CUE` and `PLAY` with a screenshot from `docs/test-results-8/`, up close, lit and unlit, pressed and not. The ring's metal highlight and the knob's sheen may be a touch brighter. Is anything else different? Is anything blank, at any point in the launch? Screenshot `ba3-parts`.
-4. **The logo.** New: from the moment the app opens until the decks are there, you should see the platter with `SEGUE DJ` under it, then a quick fade. Is there ever a black or blank moment? Does the logo jump when the launch screen hands over to the app? Try a fresh install and a normal launch, on the Duo and on the small iPhone both ways up. Screenshot `ba4-logo`.
-5. **The new name.** The app's now called Segue DJ, with the bundle ID `com.nikhilpatel.seguedj`. Uninstall the old `com.nikhilpatel.cheeks` from the simulators you use. Check the home screen, the app's folder in Files, the top bar in the full layout, the empty lists, Settings' backup text, a saved backup's file name and a recording's tracklist. Report anywhere a person can still see "Cheeks".
+### CA. The browser
+It's been rebuilt underneath. The browser and the decks now stay built and take turns out of sight, so nothing should look different, and opening and closing should be much quicker. This touches every screen, so look hard at it.
+1. **Speed.** With 2,000 tracks and both decks playing, as in **A big library**, open and close it ten times, on video. Worst gap between changed frames, and how many? *Last time: opening 620 to 800 ms, closing 340 to 470 ms.* Also the first open after a launch, straight away and after waiting 5 s.
+2. **Does it look right?** The slide both ways, on the Duo and on the small iPhone both ways up. Anything flashing, jumping, doubled, or left behind when it's finished? Do the waveforms and meters carry on throughout? Is every jog and meter drawing as soon as the decks are back, on a stopped deck and a playing one?
+3. **Nothing behind it.** With the browser open, can you press anything on the decks through it or round it? With it closed, can anything in it be pressed? Try the screen's edges and the gap beside the mixer.
+4. **What it keeps.** Scroll a long way down, close it and open it: it should be where you left it. *Last time: back at the top.* A phone deck on `JOG`: open the browser, and come back. It should still be on `JOG`.
+5. **What it doesn't keep.** Type a search and close it with the keyboard up: the keyboard goes, and the search has gone when you reopen. Start an audition by tapping a row's waveform, then close the browser. The sound should stop. *Last time: nobody had tried it, and from the code it played on, through the master without a split cable.*
+6. **Held while it opens.** Hold a `ROLL` pad, then `CUE`, then a hand on the platter, and press `BROWSE` with the other finger each time. Each should let go, and be fine when you come back.
+7. **Search and filters with 2,000 tracks.** Type a search, and turn `IN KEY` and `±6% BPM` on and off. *Last time: a dim row of the old list for about 1 s, and stalls of 400 to 620 ms.* A short playlist should still animate when a filter changes it.
+8. **The file picker.** Open `IMPORT` and look behind it. *Last time: the mixer shifted down about 170 pt and the deck strip went, until it closed.* `fu-picker-layout` in `docs/test-results-9/`.
 
-### BB. `AUTO` with a loop
-1. **A loop you set.** On a playing deck, `IN` then `OUT`, then `AUTO`. The loop should go, and it should plan and get there. *Last time: it counted down forever.*
-2. **After stopping a move.** Stop a Loop build part-way with `AUTO`, which leaves its loop running with its filter and `LOW` moved. Press `AUTO` again. Everything the move left should go, and it should plan and get there. Screenshot `bb2-again`.
-3. **During the countdown.** Press `AUTO`, then set a loop while it counts down. It should say the deck's in a loop, and call it off.
-4. **In a mix, during the countdown.** The same during `MIX`. The mix should stay on, and say it'll carry on when the loop ends. `EXIT`, and it should plan again and carry on. Does anything look stuck while it waits?
-5. **`MIX` with a loop running.** Start `MIX` with a playing deck in a loop. The loop should go.
+### CB. What failed last time
+1. **A3: idle CPU.** The same table as last time, by the same method, with the browser closed and open. It should be back to about 3 to 5% at rest on the decks page. *Last time: 13 to 16% on the decks page, 3% with the browser open.*
+2. **BA5: the Files folder.** A fresh install, then open Files, `On My iPhone`. There should be a `Segue DJ` folder, with `Music`, `Recordings` and `Backups` in it. Drop a track in from `Browse` or copy one in with the app in the background: it should turn up in the library when you come back. *Last time: no folder.*
+3. **LR1: after a stopped move.** Do what you did: a Bass swap, `AUTO` before the handover, `EXIT` and stop the old deck, then `AUTO`. Everything the move left on the new deck should go, and it should plan and get there at full level. Check against a recording. Also try the other way round: stop the move, leave both playing, stop the new deck, and press `AUTO`.
+4. **J3: tempo from the first analysis.** Fresh install. Severe Tire Damage should read 148 straight after analysis, and stay there when its stems finish. Exhilarate 170.00. Do the club tracks' tempos match what's in the last results? If any jumps by more than a touch when its stems finish, a message should say so.
+5. **BA4: the logo.** On video on the Duo, frame by frame: it shouldn't double or jump at the handover. *Last time: about 17 pt.*
+6. **B2: the launch sweep.** Five launches, on video: the meters should run up and back once as the logo lifts. *Last time: hidden behind the logo on 4 of 5.*
 
-### BC. The rest of what changed
-1. **`Mix off`.** Press the key during a mix's move, before and after the new track lands. It should say `Mix off. The decks are yours.` and `Mix off. Deck N is on.` *Last time: "Auto DJ stopped."*
-2. **Loading the waiting deck mid-move.** The old deck should carry on clean, with "Auto DJ stopped: the track changed. Deck N carries on." *Last time: left looping and filtered.*
-3. **Pausing during the countdown.** It should say the deck was stopped, not that it lost its moment. In a mix, `Mix off:`.
-4. **`REV` on a move's old deck** should be off once the deck's stopped.
-5. **An empty list.** With nothing typed: `IN KEY` and `±6% BPM` emptying a list should say to turn them off, and an empty playlist should say how to add to it. With something typed, the usual search message.
-6. **The tracklist.** During a recording: play a track, then another, then go back to the first on the same deck, for over 10 s each. All three should be in the tracklist, at the right times, and in that day's History. Stopping and starting a track with nothing in between should give one line. *Last time: the return was missing.*
-7. **Ratings on a small iPhone.** Try AX5 again, on the simulator below. With an Undo and a rating showing: is the text readable, and can you press the keys? Can you still use the overview and the browser's keys beside and under the capsule?
-8. **Both decks on the jog, upright.** On `iPhone SE Cheeks`, press `JOG` on both decks. Both should stay whole on the screen, with the keys beside each jog in two columns. Scratch with one jog and press `PLAY`, `CUE`, `Q`, `REV` and `KEY SYNC` on the other. Then go back to `PADS`, and check that pads and tabs are where they were. *Last time: nobody had tried it, and deck 2's `CUE`, `PLAY` and jog were off the bottom of the screen.*
-
-### BD. When nothing else will do
-New. When no move passes its audition, it now echoes the old track out on a phrase, and the new one starts where its beat comes in, at its own tempo, not stretched to match. It used to refuse, or a mix would just start the next track. You can't force this. Run `AUTO` and `MIX` on your tracks in every order you can, and report any "Echo throw" where the new track starts in its first third with its tempo at +0.0. How does the join look, in levels and gaps? Does anything still say it couldn't find a way?
+### CC. What looked wrong last time
+1. **`DSP`** should be gone from the top bar, whatever the Mac's doing.
+2. **An empty deck.** Fresh install, nothing loaded: `PLAY`, `CUE`, `IN`, a hot cue pad, `BEAT SYNC`, `MASTER`, `BEAT JUMP`, `KEY SYNC`, the jog and the tempo fader should all look dim and, when pressed, say there's no track on that deck with a hand. The tabs should still change page, and the `SAMPLE` page's pads should still play and look normal. Tapping the deck's header should still open the browser. Does it look right? `ca-empty-deck`.
+3. **`SYNC` on a phone's pads page.** On `iPhone SE Cheeks`, upright and on its side, there's now a `SYNC` key beside `JOG`. It should do the same as `BEAT SYNC`, and go away when `JOG` is showing. With a long title on its side, is the header still readable? `ca-se-sync`.
+4. **`MORE`** is now what the mixer's sheet key says on a phone. Is it readable and pressable?
+5. **`AUTO…` giving up.** Press `AUTO` while the stems are splitting, and let the playing deck reach its end. It should say why it stopped. *Last time: nothing.*
+6. **`MIX…`.** With a mix waiting on a loop, the key should read `MIX…` and not a plain `MIX`.
+7. **`SAVE CUE` on a stopped deck.** Park it somewhere by the overview, away from its cue, and press `SAVE CUE`. The memory cue should be where the deck is. On a deck stopped on its cue, it should be on the cue. *Last time: at 0:00, with the deck at 1:31.*
+8. **`DEPTH` and `VOLUME`** now go to where you touch: a tap sets it, and a drag follows the finger all the way to each end.
+9. **`Add to Playlist`** shouldn't offer History any more.
+10. **The stems estimate.** After about 5 s of a split, the header should read something like `Stems 28% · 2 min`, on a phone where there's room. Is it in the right area, as far as you can tell? Does it jump around?
+11. **Upright, while analysing,** the top bar should show a spinner and not "A…".
 
 ## The first-time user
-Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Nobody's tried this since round 2, and it may be the first thing an App Store reviewer does.
+Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Last time, the Files folder and `BEAT SYNC` upright were what stopped you, and both have changed.
 
-Do this on `iPhone SE Cheeks` as well as the Duo: it's the smallest screen the app has to work on, and it's had the least real touch.
+Do this on `iPhone SE Cheeks`, upright and then on its side: it's the smallest screen the app has to work on.
 
 1. **From nothing to a mix.** Without reading anything in the repo: get a track in, get it on a deck, get it playing, get a second one in time with it, and mix across. Then find out how to get Auto DJ to do it. Write down every moment you weren't sure what to do, what you tried first, and how long each stage took. Screenshot each moment you got stuck, as `fu-*`.
 2. **What does it say when it's empty?** Every screen with nothing in it: the browser, the decks, Recordings, a playlist, the pads with no track. Is it clear what to do next?
@@ -129,7 +130,7 @@ Do this on `iPhone SE Cheeks` as well as the Duo: it's the smallest screen the a
 5. **What happens when you do it wrong?** Press things in the wrong order, with nothing loaded, twice, and during a load. Is every refusal clear? Is anything silently ignored?
 
 ## A big library
-It's only been tried with 5 tracks. Before launching, write a library of made-up tracks. They've no audio, so they show a warning triangle, and your real tracks are imported alongside them:
+Last time's figures are in `docs/COMPUTER_USE_RESULTS_9.md`. Before launching, write a library of made-up tracks. They've no audio, so they show a warning triangle, and your real tracks are imported alongside them:
 ```sh
 python3 tools/test-music/big_library.py "$DATA/Library/Application Support/library.json" 2000
 ```
@@ -254,10 +255,10 @@ Answer honestly, as someone seeing it fresh. Criticism is the useful part.
 
 ## Results format
 
-Write `docs/COMPUTER_USE_RESULTS_9.md` like this:
+Write `docs/COMPUTER_USE_RESULTS_10.md` like this:
 
 ```markdown
-# Hands-on results, part 9, <date>
+# Hands-on results, part 10, <date>
 
 Commit tested: <git rev-parse --short HEAD>
 Device: <simulator and screen size>
@@ -271,7 +272,7 @@ Tooling limits: <what you couldn't do>
 - Steps: ...
 - Expected: ...
 - Actual: ...
-- Screenshot: docs/test-results-9/...
+- Screenshot: docs/test-results-10/...
 - Crash report (if any): ...
 
 ## Looks wrong

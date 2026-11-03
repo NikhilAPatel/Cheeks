@@ -35,6 +35,7 @@ struct DeckPanel: View {
                 DeckKeys(deck: deck).frame(width: 66)
             }
         }
+        .needsATrack(on: deck)
     }
 
     private var bottomBand: some View {
@@ -49,6 +50,30 @@ struct DeckPanel: View {
         }
     }
 
+}
+
+/// With no track there's nothing for these to act on. They look it, as hardware would be dark, and a press says why.
+private struct NeedsATrack: ViewModifier {
+    @Environment(DJEngine.self) private var dj
+    let deck: Deck
+    let unless: Bool
+
+    func body(content: Content) -> some View {
+        let isEmpty = !unless && !deck.isLoaded && !deck.isLoading
+        content
+            .opacity(isEmpty ? 0.45 : 1)
+            .overlay {
+                if isEmpty {
+                    TouchSurface(onDown: { _ in dj.say("There's no track on deck \(deck.index + 1) yet. Load one from the browser.", .refused) })
+                }
+            }
+    }
+}
+
+extension View {
+    func needsATrack(on deck: Deck, unless: Bool = false) -> some View {
+        modifier(NeedsATrack(deck: deck, unless: unless))
+    }
 }
 
 /// Covers a deck while its track loads.
@@ -84,6 +109,7 @@ struct TransportSection: View {
                     .contentTransition(.symbolEffect(.replace.downUp))
             }
         }
+        .needsATrack(on: deck)
     }
 }
 
@@ -315,10 +341,13 @@ struct DeckHeader: View {
                     .foregroundStyle(shownTrack == nil ? Theme.textTertiary : Theme.textPrimary)
                     .lineLimit(compact && stemsProgress == nil ? 2 : 1)
                 if !compact || stemsProgress != nil {
-                    Text(compact ? stemsProgress ?? "" : subtitle)
-                        .font(Theme.text(10.5))
-                        .foregroundStyle(deck.loadError == nil ? Theme.textSecondary : Theme.danger)
-                        .lineLimit(1)
+                    // With the time left if there's room for it.
+                    ViewThatFits(in: .horizontal) {
+                        if compact, let stemsTimeLeft {
+                            subtitleText((stemsProgress ?? "") + " · " + stemsTimeLeft)
+                        }
+                        subtitleText(compact ? stemsProgress ?? "" : subtitle)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -342,7 +371,23 @@ struct DeckHeader: View {
         if let error = deck.loadError { return error }
         guard let track = shownTrack else { return "Open the browser to load one" }
         let artist = track.artist.isEmpty ? "Unknown artist" : track.artist
-        return stemsProgress.map { artist + " · " + $0 } ?? artist
+        guard let stemsProgress else { return artist }
+        return [artist, stemsProgress, stemsTimeLeft].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func subtitleText(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.text(10.5))
+            .foregroundStyle(deck.loadError == nil ? Theme.textSecondary : Theme.danger)
+            .lineLimit(1)
+    }
+
+    /// Only ever a rough idea, and it's worked out afresh each time the percentage moves.
+    private var stemsTimeLeft: String? {
+        guard let left = deck.stemsTimeLeft else { return nil }
+        if left >= 90 { return "\(Int((left / 60).rounded())) min" }
+        if left >= 45 { return "1 min" }
+        return "\(max(5, Int((left / 5).rounded()) * 5)) s"
     }
 
     /// The stems page shows this itself, so it's only needed from everywhere else.
@@ -410,11 +455,12 @@ struct DeckHeader: View {
 /// Redraws its content as the deck's clock moves, and not otherwise. A short `TimelineView` would do
 /// the same, but keeps SwiftUI's display link running and re-renders its whole graph every frame.
 struct DeckClock<Content: View>: View {
+    @Environment(\.isOffstage) private var isOffstage
     let deck: Deck
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        let _ = deck.clockTenths
+        let _ = isOffstage ? 0 : deck.clockTenths
         content()
     }
 }

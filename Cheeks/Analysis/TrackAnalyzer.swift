@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 
 /// 3-band waveform: per bin peak level of low / mid / high frequencies.
@@ -98,6 +99,7 @@ enum TrackAnalyzer {
         var high = [Float](repeating: 0, count: bins)
         var energyFull = [Float](repeating: 0, count: hops)
         var energyLow = [Float](repeating: 0, count: hops)
+        var energyHigh = [Float](repeating: 0, count: hops)
         var keySignal = [Float](repeating: 0, count: keyCount)
 
         var loudness = LoudnessMeter(sampleRate: sr)
@@ -108,6 +110,7 @@ enum TrackAnalyzer {
         var waveLow = (wl, wl), waveHigh = (wh, wh), tempoLow = (tl, tl)
         var keyLow = Biquad.lowpass(2500, sampleRate: sr)
 
+        var highNow: Float = 0
         for i in 0..<n {
             let left = pcm.left(i), right = pcm.right(i)
             loudness.add(left, right)
@@ -118,6 +121,7 @@ enum TrackAnalyzer {
                 let h = waveHigh.1.process(waveHigh.0.process(m))
                 low[b] = max(low[b], abs(l))
                 high[b] = max(high[b], abs(h))
+                highNow = h
                 mid[b] = max(mid[b], abs(m - l - h))
             }
             let f = i / tempoHop
@@ -125,6 +129,7 @@ enum TrackAnalyzer {
                 let t = tempoLow.1.process(tempoLow.0.process(m))
                 energyFull[f] += m * m
                 energyLow[f] += t * t
+                energyHigh[f] += highNow * highNow
             }
             if i < keyCount * keyDecimation {
                 let y = keyLow.process(m)
@@ -140,7 +145,7 @@ enum TrackAnalyzer {
         }
         let waveform = WaveformData(low: quantize(low), mid: quantize(mid, lift: 1.1), high: quantize(high, lift: 1.5))
         let onset = onsetEnvelope(energyFull: energyFull, energyLow: energyLow)
-        var (bpm, firstBeat) = detectTempo(onset: onset, sampleRate: sr)
+        var (bpm, firstBeat) = detectTempo(onset: onset, highs: onsetOfHighs(energyHigh), sampleRate: sr)
         let markers = TempoMapDetector.detect(onset: onset, fps: sr / Double(tempoHop), bpm: bpm, firstBeat: firstBeat)
         if let markers, let first = markers.first {
             bpm = TempoMapDetector.typicalBPM(markers)
@@ -171,39 +176,115 @@ enum TrackAnalyzer {
         return onset.map { max(0, $0 - mean) }
     }
 
-    /// Onset-envelope tempo detection: autocorrelation picks the period,
-    /// then a comb search over the whole track refines BPM and finds the grid phase.
-    static func detectTempo(onset: [Float], sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
+    /// The same for the highs alone, for getting near the tempo.
+    static func onsetOfHighs(_ energy: [Float]) -> [Float] {
+        guard !energy.isEmpty else { return [] }
+        var onset = [Float](repeating: 0, count: energy.count)
+        var previous: Float = 0
+        for f in 0..<energy.count {
+            let level = log(1 + 100 * energy[f])
+            onset[f] = max(0, level - previous)
+            previous = level
+        }
+        let mean = onset.reduce(0, +) / Float(onset.count)
+        return onset.map { max(0, $0 - mean) }
+    }
+
+    /// Onset-envelope tempo detection. A beat comes round again at each of its multiples, and a dotted or swung rhythm only at
+    /// some of them, so autocorrelation at a beat and its multiples gets near the tempo. A comb search then settles it and finds
+    /// the grid's phase.
+    static func detectTempo(onset: [Float], highs: [Float]? = nil, sampleRate: Double) -> (bpm: Double, firstBeat: Double) {
+        // What gets near the tempo. The phase comes from `onset` alone, as a hi-hat on the offbeat would pull it half a beat.
+        let kicks = onset
+        let onset = highs.map { zip(kicks, $0).map { $0 + $1 } } ?? kicks
+
         let fps = sampleRate / Double(tempoHop)
         let frames = onset.count
         guard frames > 64 else { return (120, 0) }
 
-        // Coarse: autocorrelation over 85–175 BPM.
-        let minLag = Int(fps * 60 / 175), maxLag = Int(fps * 60 / 85) + 1
-        var bestLag = minLag
-        var bestScore: Float = -1
-        for lag in minLag...maxLag {
-            var s: Float = 0
-            for i in 0..<(frames - lag) { s += onset[i] * onset[i + lag] }
-            s /= Float(frames - lag)
-            // A beat correlates with its own half and double, so lean towards where tempos usually are.
-            let octaves = log2(fps * 60 / Double(lag) / 125)
-            s *= Float(exp(-0.5 * octaves * octaves / (0.85 * 0.85)))
-            if s > bestScore { bestScore = s; bestLag = lag }
+        // Coarse, over 85–175 BPM.
+        let minLag = fps * 60 / 175, maxLag = fps * 60 / 85
+        let reach = min(frames - 1, Int(maxLag * 8) + 2)
+        var correlation = [Float](repeating: 0, count: reach + 2)
+        onset.withUnsafeBufferPointer { p in
+            for lag in 1...reach {
+                var sum: Float = 0
+                vDSP_dotpr(p.baseAddress!, 1, p.baseAddress! + lag, 1, &sum, vDSP_Length(frames - lag))
+                correlation[lag] = sum / Float(frames - lag)
+            }
         }
-        let coarseBPM = 60 * fps / Double(bestLag)
+        func correlated(at lag: Double) -> Float {
+            let whole = Int(lag)
+            guard whole >= 0, whole <= reach else { return 0 }
+            let part = Float(lag - Double(whole))
+            return correlation[whole] * (1 - part) + correlation[whole + 1] * part
+        }
+        var coarseBPM = 120.0
+        var bestCoarse: Float = -1
+        var lag = minLag
+        while lag <= maxLag {
+            var s: Float = 0
+            for multiple in [1.0, 2, 3, 4, 8] {
+                // A lag's only known to a frame or so, and the error grows with the multiple.
+                let at = lag * multiple
+                s += max(correlated(at: at - 1), correlated(at: at), correlated(at: at + 1))
+            }
+            // A beat correlates with its own half and double, so lean towards where tempos usually are.
+            let octaves = log2(fps * 60 / lag / 125)
+            s *= Float(exp(-0.5 * octaves * octaves / (0.85 * 0.85)))
+            if s > bestCoarse {
+                bestCoarse = s
+                coarseBPM = 60 * fps / lag
+            }
+            lag += 0.25
+        }
 
-        // Fine: comb search for the BPM and phase that line up with the most onsets.
-        var best = (score: Float(-1), bpm: coarseBPM, phase: 0.0)
-        var candidate = coarseBPM - 2
-        while candidate <= coarseBPM + 2 {
+        // The middle minute and a half, where a slightly wrong tempo can't drift far off the beat as it would over a whole track, so
+        // a comb can step quickly. Scored per beat, as a faster tempo has more of them.
+        let middle = max(0, frames / 2 - Int(45 * fps))..<min(frames, frames / 2 + Int(45 * fps))
+        func bestNear(_ around: Double, within share: Double, in envelope: [Float]) -> (score: Float, bpm: Double) {
+            var top = (score: Float(-1), bpm: around)
+            var nearby = around * (1 - share)
+            while nearby <= around * (1 + share) {
+                let period = 60 * fps / nearby
+                for p in 0..<max(1, Int(period)) {
+                    var s: Float = 0
+                    var beats: Float = 0
+                    var pos = Double(middle.lowerBound + p)
+                    while pos < Double(middle.upperBound - 1) {
+                        s += envelope[Int(pos.rounded())]
+                        beats += 1
+                        pos += period
+                    }
+                    if beats > 0, s / beats > top.score { top = (s / beats, nearby) }
+                }
+                nearby += 0.1
+            }
+            return top
+        }
+
+        // With something on the offbeats, a tempo and two-thirds of it line up at nearly the same multiples, and leaning towards
+        // usual tempos picks the slower. The kicks can tell them apart, as every other beat of the wrong one falls between them.
+        // Only this way: going down as well read a real 128 as 85.
+        let faster = coarseBPM * 1.5
+        if faster <= 178, bestNear(faster, within: 0.015, in: kicks).score > bestNear(coarseBPM, within: 0.015, in: kicks).score * 1.1 {
+            coarseBPM = faster
+        }
+
+        // Near enough now to look a few percent either side.
+        let near = bestNear(coarseBPM, within: 0.04, in: onset)
+
+        // Fine: comb search over the whole track for the BPM and phase that line up with the most onsets.
+        var best = (score: Float(-1), bpm: near.bpm, phase: 0.0)
+        var candidate = near.bpm - 0.3
+        while candidate <= near.bpm + 0.3 {
             let period = 60 * fps / candidate
             let steps = Int(period)
             for p in 0..<max(1, steps) {
                 var s: Float = 0
                 var pos = Double(p)
                 while pos < Double(frames - 1) {
-                    s += onset[Int(pos.rounded())]
+                    s += kicks[Int(pos.rounded())]
                     pos += period
                 }
                 if s > best.score { best = (s, candidate, Double(p)) }
@@ -219,7 +300,7 @@ enum TrackAnalyzer {
                 var s: Float = 0
                 var pos = Double(p)
                 while pos < Double(frames - 1) {
-                    s += onset[Int(pos.rounded())]
+                    s += kicks[Int(pos.rounded())]
                     pos += period
                 }
                 if s > top.score { top = (s, Double(p)) }
@@ -247,7 +328,7 @@ enum TrackAnalyzer {
             var s: Float = 0
             var pos = phase + Double(beat) * period
             while pos < Double(frames - 1) {
-                s += onset[Int(pos.rounded())]
+                s += kicks[Int(pos.rounded())]
                 pos += period * 4
             }
             if s > strongest.score { strongest = (s, beat) }

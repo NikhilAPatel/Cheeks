@@ -7,6 +7,9 @@ struct BrowserView: View {
     @Environment(\.screenLayout) private var layout
     @Environment(Library.self) private var library
     @Environment(DJEngine.self) private var dj
+    /// It stays built while the decks are showing, and has no reason to follow them or sort anything until it's back.
+    var isOpen = true
+    @State private var lastList = LastList()
     // How the list is showing is worth keeping: the browser closes every time someone goes back to the decks.
     @AppStorage("browserPlaylist") private var chosenPlaylist = ""
     @State private var search = ""
@@ -43,7 +46,8 @@ struct BrowserView: View {
 
     /// The deck the DJ is most likely mixing out of, for key and BPM hints.
     private var referenceDeck: Deck? {
-        dj.decks[dj.masterIndex].isLoaded ? dj.decks[dj.masterIndex] : dj.decks.first { $0.isLoaded }
+        guard isOpen else { return nil }
+        return dj.decks[dj.masterIndex].isLoaded ? dj.decks[dj.masterIndex] : dj.decks.first { $0.isLoaded }
     }
 
     private var tracks: [Track] {
@@ -133,11 +137,25 @@ struct BrowserView: View {
         } message: {
             Text(importMessage ?? "")
         }
+        // It used to go away and come back empty. A search left behind would hide tracks the next time.
+        .onChange(of: isOpen) { _, open in
+            guard !open else { return }
+            search = ""
+            searchFocused = false
+        }
+    }
+
+    /// What the list last showed. A plain box, so that keeping it doesn't ask for another update.
+    private final class LastList {
+        var tracks: [Track]?
     }
 
     @ViewBuilder
     private var table: some View {
-        let list = tracks
+        let list = isOpen ? tracks : (lastList.tracks ?? tracks)
+        // Animating a change to a long list freezes the screen for half a second, with a dim row of the old list showing.
+        let isLong = max(list.count, lastList.tracks?.count ?? 0) > 200
+        let _ = lastList.tracks = list
         if list.isEmpty {
             emptyState
         } else {
@@ -151,7 +169,8 @@ struct BrowserView: View {
             .environment(\.defaultMinListRowHeight, 36)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.immediately)
-            .animation(Theme.panel, value: list.map(\.id))
+            .animation(isLong ? nil : Theme.panel, value: isLong ? [] : list.map(\.id))
+            .transaction { if isLong { $0.animation = nil } }
         }
     }
 
@@ -497,9 +516,10 @@ struct TrackRow: View {
             Button("Load on Deck 1", systemImage: "1.circle") { _ = dj.load(track, onto: dj.decks[0]) }
             Button("Load on Deck 2", systemImage: "2.circle") { _ = dj.load(track, onto: dj.decks[1]) }
             Divider()
-            if !library.playlists.isEmpty {
+            let addable = library.playlists.filter { !library.isHistory($0) }
+            if !addable.isEmpty {
                 Menu("Add to Playlist", systemImage: "text.badge.plus") {
-                    ForEach(library.playlists) { playlist in
+                    ForEach(addable) { playlist in
                         Button(playlist.name) { library.add(track.id, to: playlist.id) }
                     }
                 }
@@ -559,7 +579,8 @@ struct TrackPreview: View {
             }
             if previewing {
                 Color.black.opacity(0.35)
-                TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                // Twice a second's plenty: across 90 points, a 5-minute track moves about a third of a point each second.
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
                     GeometryReader { geo in
                         Rectangle().fill(Color.white).frame(width: 1)
                             .offset(x: geo.size.width * dj.previewFraction)

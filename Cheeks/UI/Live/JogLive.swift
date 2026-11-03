@@ -36,7 +36,7 @@ final class JogLiveView: LiveView {
         self.deck = deck
         super.init(frame: .zero)
         isMultipleTouchEnabled = false
-        // Only the first time: closing the browser builds a new jog, and that isn't the deck waking up.
+        // Only the first time: turning the screen builds a new jog, and that isn't the deck waking up.
         wakeStart = LiveRenderer.shared.launchTime
         uniforms.ledColor = Theme.accent.simd
     }
@@ -133,7 +133,7 @@ final class JogLiveView: LiveView {
         } else {
             u.beatPulse = 0
         }
-        u.wake = UIAccessibility.isReduceMotionEnabled || renderer.captureMode ? 1 : Float(min(1, (now - wakeStart) / 0.9))
+        u.wake = UIAccessibility.isReduceMotionEnabled || renderer.captureMode ? 1 : Float(min(1, (now - max(wakeStart, renderer.launchTime)) / 0.9))
 
         uniforms = u
         if !needsDraw && bytesEqual(u, lastDrawn) { return false }
@@ -228,12 +228,12 @@ final class JogLiveView: LiveView {
             // A call or the home gesture: the system takes seconds to cancel the touch, and the deck would sit held till then.
             NotificationCenter.default.addObserver(self, selector: #selector(letGo), name: UIApplication.willResignActiveNotification, object: nil)
         } else if activeTouch != nil {
-            // Opening the browser takes the deck away, with a hand still on the platter perhaps.
+            // Turning the screen builds a new deck, with a hand still on the platter perhaps.
             DispatchQueue.main.async { self.letGo() }
         }
     }
 
-    @objc private func letGo() {
+    @objc func letGo() {
         guard activeTouch != nil else { return }
         finish()
     }
@@ -255,7 +255,12 @@ final class JogLiveView: LiveView {
 }
 
 struct JogPlatter: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     let deck: Deck
     func makeUIView(context: Context) -> JogLiveView { JogLiveView(deck: deck) }
-    func updateUIView(_ view: JogLiveView, context: Context) {}
+    func updateUIView(_ view: JogLiveView, context: Context) {
+        view.isPaused = isOffstage
+        // Opening the browser takes the deck away, with a hand still on the platter perhaps.
+        if isOffstage { DispatchQueue.main.async { view.letGo() } }
+    }
 }

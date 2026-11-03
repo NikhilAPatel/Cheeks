@@ -44,11 +44,9 @@ final class DJEngine {
     var masterLevel: Float { cheeks_engine_master_peak(core) }
     var masterLevelRight: Float { cheeks_engine_master_peak_right(core) }
     var limiterReduction: Float { cheeks_engine_limiter_reduction(core) }
-    var cpuLoad: Float { cheeks_engine_load(core) }
     /// True while the limiter's doing real work. Changes rarely, unlike the numbers above, so it's observed.
     private(set) var limiterWorking = false
     /// The engine's load in percent, in steps of 5, once it's high enough to mention. Otherwise 0.
-    private(set) var loadWarning = 0
     var engineError: String?
     /// Seconds between the render callback and the speaker, for drawing what's actually being heard.
     @ObservationIgnored private(set) var outputLatency: Double = 0
@@ -144,6 +142,10 @@ final class DJEngine {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        if LaunchLog.isOn {
+            let core = core
+            LaunchLog.audioLoad = { cheeks_engine_load(core) }
+        }
         LiveRenderer.shared.isBusy = { [weak self] in self?.decks.contains { $0.isPlaying || $0.renderer.scratching } ?? false }
         sampler.onMessage = { [weak self] message, kind in self?.say(message, kind) }
         sampler.loadSounds()
@@ -424,9 +426,6 @@ final class DJEngine {
         sampler.tick()
         let working = limiterReduction > 0.5
         if working != limiterWorking { limiterWorking = working }
-        let load = cpuLoad
-        let warning = load > 0.6 ? Int(load * 20) * 5 : 0
-        if warning != loadWarning { loadWarning = warning }
         updateMaster()
         for deck in decks where deck.syncOn && deck.index != masterIndex {
             let master = decks[masterIndex]

@@ -543,6 +543,37 @@ final class AutoDJTests: XCTestCase {
         try await run(dj) { self.isRunning(dj) }
     }
 
+    func testPressingAgainClearsWhatAStoppedMoveLeftOnTheNewDeckToo() async throws {
+        let dj = try ready(only: .bassSwap)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        // Both playing, and the new deck's still on what the score gave it.
+        try await run(dj) { self.isRunning(dj) && b.renderer.isPlaying && b.stemLevels != [1, 1, 1, 1] }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped. The decks are yours.")
+        XCTAssertNotEqual(b.stemLevels, [1, 1, 1, 1], "It's left as it was")
+        a.pause()
+        dj.tickForTesting()
+        dj.autoDJ.press()
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1], "Otherwise it mixes out of a deck that's still on drums alone")
+        XCTAssertEqual(b.eqLow, 0)
+        XCTAssertEqual(b.eqMid, 0)
+        XCTAssertEqual(b.eqHigh, 0)
+    }
+
+    func testRunningOutWhileWaitingForStemsSaysSo() throws {
+        let dj = try ready()
+        dj.decks[1].trackMap = nil
+        dj.decks[1].stemStatus = .separating(nil)
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
+        dj.decks[0].pause()
+        dj.autoDJ.tick()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1 stopped before the stems were ready.")
+    }
+
     func testPausingDuringTheCountdownSaysThat() async throws {
         let dj = try ready()
         dj.autoDJ.press()

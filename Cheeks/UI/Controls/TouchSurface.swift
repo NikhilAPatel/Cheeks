@@ -5,6 +5,7 @@ import UIKit
 /// them can be held at once (CUE with a pad, two faders and a jog), and a press registers on the
 /// finger's first contact with none of the delay a gesture recognizer adds to tell taps from drags.
 struct TouchSurface: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     var onDown: (@MainActor (CGPoint) -> Void)?
     /// Location, and translation from where the touch began.
     var onMove: (@MainActor (CGPoint, CGSize) -> Void)?
@@ -21,6 +22,8 @@ struct TouchSurface: UIViewRepresentable {
         view.onUp = onUp
         view.onDoubleTap = onDoubleTap
         view.circular = circular
+        // Out of sight has been let go, the same as a view that's gone. Not during this update, for the same reason.
+        if isOffstage { DispatchQueue.main.async { view.letGo() } }
     }
 }
 
@@ -85,7 +88,7 @@ final class TouchSurfaceView: UIView {
     }
 
     /// A finger that's no longer going to be heard from: its view has gone, or a call has come in.
-    @objc private func letGo() {
+    @objc func letGo() {
         guard active != nil else { return }
         active = nil
         onUp?()

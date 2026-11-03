@@ -18,7 +18,7 @@ def analyze(x):
     lowband = cascade("lp", 150, m[: hops * hop])
     ef = (m[: hops * hop].reshape(hops, hop) ** 2).sum(1)
     el = (lowband.reshape(hops, hop) ** 2).sum(1)
-    # tempo (same as Swift detectTempo(energyFull:energyLow:))
+    # tempo: the onset's the same as Swift's, but the search is an older, simpler one. Swift's is checked on real tracks with tools/autodj/app_grid.
     fps = SR / hop
     lf = np.log(1 + 100 * ef); ll = np.log(1 + 100 * el)
     onset = np.maximum(0, lf - np.concatenate([[0], lf[:-1]])) + 1.5 * np.maximum(0, ll - np.concatenate([[0], ll[:-1]]))

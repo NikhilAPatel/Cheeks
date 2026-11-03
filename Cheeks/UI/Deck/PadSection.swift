@@ -20,9 +20,11 @@ struct PadSection: View {
         VStack(spacing: 4) {
             controlRow
                 .frame(height: 24)
+                .needsATrack(on: deck, unless: deck.padMode == .sampler)
             PadTabs(deck: deck)
                 .frame(height: 19)
             PadBank(deck: deck)
+                .needsATrack(on: deck, unless: deck.padMode == .sampler)
         }
     }
 
@@ -686,7 +688,6 @@ struct FXControlRow: View {
 struct DepthBar: View {
     @Binding var value: Float
     var label = "DEPTH"
-    @State private var start: Float?
 
     var body: some View {
         GeometryReader { geo in
@@ -698,10 +699,12 @@ struct DepthBar: View {
             .frame(height: 13)
             .frame(maxHeight: .infinity)
             .overlay {
-                TouchSurface(onDown: { _ in start = value; Haptics.shared.grab() }, onMove: { _, t in
-                    guard let start else { return }
-                    value = min(1, max(0, start + Float(t.width / geo.size.width)))
-                }, onUp: { start = nil })
+                TouchSurface(onDown: { point in
+                    Haptics.shared.grab()
+                    value = min(1, max(0, Float(point.x / geo.size.width)))
+                }, onMove: { point, _ in
+                    value = min(1, max(0, Float(point.x / geo.size.width)))
+                })
             }
         }
         .accessibilityElement(children: .ignore)

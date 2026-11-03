@@ -646,6 +646,18 @@ final class Deck {
         if reverse { renderer.engageSlip() } else { renderer.releaseSlip() }
     }
 
+    /// When this track's split started moving, and how far along it was then, as it can start from a part that was saved.
+    @ObservationIgnored var stemsBegan: (time: CFTimeInterval, progress: Double)?
+
+    /// Roughly how long a split has to go, once it's been going long enough to tell.
+    var stemsTimeLeft: TimeInterval? {
+        guard case .separating(let progress?) = stemStatus, let stemsBegan else { return nil }
+        let done = progress - stemsBegan.progress
+        let elapsed = CACurrentMediaTime() - stemsBegan.time
+        guard done >= 0.05, elapsed >= 5 else { return nil }
+        return elapsed / done * (1 - progress)
+    }
+
     /// Keeps observable state in step with the audio thread (end of track, brake, etc.).
     func tick() {
         followTempoMap()
@@ -655,7 +667,11 @@ final class Deck {
         if loopActive != renderer.loopActive { loopActive = renderer.loopActive }
         if loopArmed != isLoopAhead { loopArmed = isLoopAhead }
         if loopMarks != (renderer.loopStart, renderer.loopEnd) { loopMarks = (renderer.loopStart, renderer.loopEnd) }
-        if !renderer.braking { activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin } }
+        // Only if there's something to remove. Removing nothing still counts as a change to an observed array, and at this
+        // rate it had everything that looks at the effects redrawing all the time: most of the decks page's idle CPU.
+        if !renderer.braking, activeFX.contains(where: { $0.effect == .brake || $0.effect == .backspin }) {
+            activeFX.removeAll { $0.effect == .brake || $0.effect == .backspin }
+        }
         // A deck that's stopped itself, by reaching the end or by a brake, has finished its echo out too.
         if echoingOut && !isPlaying { endEchoOut() }
     }

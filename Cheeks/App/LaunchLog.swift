@@ -12,6 +12,8 @@ enum LaunchLog {
     private static let start = CACurrentMediaTime()
     nonisolated(unsafe) private static var bakes = 0
     nonisolated(unsafe) private static var bakeTime = 0.0
+    /// The audio thread's share of its time, 0...1. It's a relaxed atomic, so it can be read from the watching thread.
+    nonisolated(unsafe) static var audioLoad: (() -> Float)?
     /// A freeze this long is six frames gone, which anyone would notice. A walk round the app looks closer.
     private static let stallLimit = ProcessInfo.processInfo.environment["CHEEKS_SELF_TOUR"] == nil ? 0.1 : 0.05
 
@@ -61,8 +63,9 @@ enum LaunchLog {
                 }
                 if now - lastReport >= 5 {
                     let cpu = cpuSeconds()
-                    write(String(format: "PERF:  %7.1f s  CPU %4.0f%% of a core, memory %5.0f MB, %d freezes, worst %.0f ms",
-                                 now - start, (cpu - lastCPU) / (now - lastReport) * 100, memoryMB(), stalls, worst * 1000))
+                    write(String(format: "PERF:  %7.1f s  CPU %4.0f%% of a core, memory %5.0f MB, %d freezes, worst %.0f ms, audio %.0f%%",
+                                 now - start, (cpu - lastCPU) / (now - lastReport) * 100, memoryMB(), stalls, worst * 1000,
+                                 (audioLoad?() ?? 0) * 100))
                     lastReport = now
                     lastCPU = cpu
                     stalls = 0

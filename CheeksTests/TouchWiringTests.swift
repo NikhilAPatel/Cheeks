@@ -375,6 +375,17 @@ final class TouchWiringTests: XCTestCase {
         assertRollEnded(deck, dj: dj, heldFrom: start, frames: 44_100)
     }
 
+    /// The browser stays built while the decks are showing and the other way about, so nothing's built twice.
+    func testClosingTheBrowserBringsBackTheSameDeck() async throws {
+        _ = try await makeScreen()
+        let cue = try XCTUnwrap(window?.hitTest(CGPoint(x: 36, y: 544), with: nil))
+        try await pressBrowse()
+        XCTAssertNil(cue.window, "Out of sight, it's out of the window")
+        try await pressBrowse()
+        XCTAssertNotNil(cue.window)
+        XCTAssertTrue(window?.hitTest(CGPoint(x: 36, y: 544), with: nil) === cue)
+    }
+
     func testOpeningTheBrowserWithCueHeldEndsThePreview() async throws {
         let (dj, _) = try await makeScreen()
         let deck = dj.decks[0]

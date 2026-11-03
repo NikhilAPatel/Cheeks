@@ -130,7 +130,9 @@ final class AutoDJ {
     @ObservationIgnored private var coreIsRunning = false
     @ObservationIgnored private var prepared: Prepared?
     /// The old deck of a move that was stopped part-way, which is still as the score left it.
-    @ObservationIgnored private var leftBehind: Deck?
+    /// What a stopped move left on the screen, for pressing the key again to clear. A deck that was playing when it stopped
+    /// can be either of the two, and whichever gets mixed out of next, it mustn't still be on the move's stems and EQ.
+    @ObservationIgnored private var leftBehind: [(deck: Deck, wasOld: Bool)] = []
     /// A move's been cut short: how it'll end, and what to say when it has.
     @ObservationIgnored private var ending: (how: Ending, message: String)?
     /// Ticks since then. With the audio stopped the core never lets go, and there's nothing to wait for.
@@ -155,7 +157,9 @@ final class AutoDJ {
     var legend: String {
         let name = mixSet == nil ? "AUTO" : "MIX"
         switch phase {
-        case .idle, .running: return name
+        // A mix with no plan yet is waiting for something, like a loop to end, and shouldn't look as if it's just sitting there.
+        case .idle: return mixSet == nil ? name : "\(name)…"
+        case .running: return name
         case .waitingForStems, .planning: return "\(name)…"
         case .armed: return "\(name) \(barsToGo)"
         }
@@ -405,8 +409,8 @@ final class AutoDJ {
     /// A deck about to be mixed out of can't be held in a loop, or it'd never get to its moment. And pressing the key again
     /// after stopping a move is asking to start over, so what that move left on the deck goes as well.
     private func getReadyToLeave(_ deck: Deck) {
-        if deck === leftBehind { clearAfterMove(deck, isOld: true) }
-        leftBehind = nil
+        for left in leftBehind { clearAfterMove(left.deck, isOld: left.wasOld) }
+        leftBehind = []
         if deck.renderer.loopActive { deck.exitLoop() }
     }
 
@@ -576,7 +580,9 @@ final class AutoDJ {
         case .waitingForStems:
             guard let outgoing, let incoming else { return }
             if !outgoing.isPlaying {
+                let number = outgoing.index + 1
                 cancel()
+                if mixSet == nil { say("Auto DJ stopped: deck \(number) stopped before the stems were ready.", .info) }
                 return
             }
             if !planIfReady(), ![outgoing, incoming].allSatisfy({ $0.trackMap != nil || $0.stemsAreOnTheWay }) {
@@ -714,7 +720,8 @@ final class AutoDJ {
                 clearAfterMove(incoming, isOld: false)
                 putBackPrepared()
             }
-            leftBehind = outgoing
+            leftBehind = [(outgoing, true)]
+            if incoming.renderer.isPlaying { leftBehind.append((incoming, false)) }
         case .oldCarriesOn:
             clearAfterMove(outgoing, isOld: true)
             clearAfterMove(incoming, isOld: false)

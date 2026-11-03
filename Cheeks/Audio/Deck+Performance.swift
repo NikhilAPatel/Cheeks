@@ -84,10 +84,11 @@ extension Deck {
     static let memoryItemsPerPage = 8
     var memoryPageCount: Int { max(1, (memoryItems.count + Self.memoryItemsPerPage - 1) / Self.memoryItemsPerPage) }
 
-    /// Saves the cue point, or where the playhead is if the deck's playing.
+    /// Saves where the deck is. Stopped on its cue, that's the cue exactly, whether or not that's on the grid.
     func saveMemoryCueHere() {
         guard isLoaded else { return }
-        let time = isPlaying ? snap(renderer.playhead) / sampleRate : cuePoint
+        let isOnItsCue = !isPlaying && abs(renderer.playhead / sampleRate - cuePoint) < 0.01
+        let time = isOnItsCue ? cuePoint : snap(renderer.playhead) / sampleRate
         guard track?.memoryCues.contains(where: { abs($0.time - time) < 0.01 }) == false else {
             onMessage?("There's already a memory cue here.", .refused)
             return
@@ -674,6 +675,7 @@ extension Deck {
         }
         // A split that's already saved only takes a moment to read, which isn't worth announcing.
         stemStatus = StemCache.shared.contains(track.id) ? .reading : .separating(nil)
+        stemsBegan = nil
         let id = track.id
         // Results from a separation started before another track was loaded are dropped.
         let generation = loadGeneration
@@ -686,7 +688,9 @@ extension Deck {
                     Task { @MainActor [weak self] in
                         guard let self, self.loadGeneration == generation else { return }
                         switch self.stemStatus {
-                        case .separating, .reading: self.stemStatus = .separating(progress)
+                        case .separating, .reading:
+                            if self.stemsBegan == nil { self.stemsBegan = (CACurrentMediaTime(), progress) }
+                            self.stemStatus = .separating(progress)
                         default: break
                         }
                     }
@@ -724,6 +728,10 @@ extension Deck {
         trackMap = map
         guard let track, track.gridSource == .analysis, map.isSteady else { return }
         let id = track.id
+        // A small correction nobody needs to hear about. A big one moves what's on the screen, and maybe what's playing in sync.
+        if let before = track.bpm, abs(map.bpm / before - 1) > 0.005 {
+            onMessage?(String(format: "Deck %d's tempo corrected from its drums: %g BPM.", index + 1, (map.bpm * 100).rounded() / 100), .info)
+        }
         updateTrack { t in
             t.bpm = map.bpm
             t.firstBeat = map.firstBar

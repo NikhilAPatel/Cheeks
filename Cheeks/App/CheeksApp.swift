@@ -37,6 +37,8 @@ struct CheeksApp: App {
                 // The main thread's free again once this runs, so touches work from here.
                 DispatchQueue.main.async {
                     LaunchLog.mark("main thread free")
+                    // The meters' sweep and the jog's wake-up would otherwise happen behind the logo.
+                    LiveRenderer.shared.launchTime = CACurrentMediaTime()
                     withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.25)) { isOpening = false }
                 }
                 SelfTour.start(dj, library)

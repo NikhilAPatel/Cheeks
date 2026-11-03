@@ -43,6 +43,7 @@ struct CompactScreen: View {
     @Environment(DJEngine.self) private var dj
     let layout: ScreenLayout
     @Binding var showLibrary: Bool
+    var browserBuilt: Bool
     var keyboardHeight: CGFloat
 
     var body: some View {
@@ -50,16 +51,23 @@ struct CompactScreen: View {
             VStack(spacing: 2) {
                 TopBar(showLibrary: $showLibrary)
                     .zIndex(1)
-                if showLibrary {
-                    BrowserView()
-                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                        .padding(.bottom, keyboardHeight)
-                        .padding(.horizontal, 3)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if layout == .portrait {
-                    portrait(size: geo.size)
-                } else {
-                    landscape(size: geo.size)
+                // Both stay built, and only move out of sight, as with the full screen's panels.
+                ZStack {
+                    Offstage(showLibrary) {
+                        if layout == .portrait {
+                            portrait(size: geo.size)
+                        } else {
+                            landscape(size: geo.size)
+                        }
+                    }
+                    if browserBuilt || showLibrary {
+                        Offstage(!showLibrary, y: geo.size.height) {
+                            BrowserView(isOpen: showLibrary)
+                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .padding(.bottom, keyboardHeight)
+                                .padding(.horizontal, 3)
+                        }
+                    }
                 }
             }
             .padding(.bottom, 4)
@@ -105,6 +113,7 @@ struct CompactScreen: View {
 /// One deck on a phone: a line of track details, CUE and PLAY at the outer edge, and either the pads or the jog.
 struct CompactDeck: View {
     @Environment(\.compactDeckStartsOnJog) private var startsOnJog
+    @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
     /// Upright, a deck is wide and short, so the keys beside the jog go in two columns.
     var keysSideBySide = false
@@ -114,9 +123,15 @@ struct CompactDeck: View {
     var body: some View {
         VStack(spacing: 3) {
             HStack(spacing: 3) {
-                if mirrored { pageKey }
+                if mirrored {
+                    pageKey
+                    if !showJog { syncKey }
+                }
                 DeckHeader(deck: deck, compact: true, showsArt: false)
-                if !mirrored { pageKey }
+                if !mirrored {
+                    if !showJog { syncKey }
+                    pageKey
+                }
             }
             .frame(height: 30)
             HStack(spacing: 4) {
@@ -133,6 +148,13 @@ struct CompactDeck: View {
         .controlSurface()
         .overlay { DeckLoadingOverlay(deck: deck) }
         .onAppear { if startsOnJog { showJog = true } }
+    }
+
+    /// It's the second thing anyone needs, so the pads page keeps it. The jog page has it among its keys.
+    private var syncKey: some View {
+        Key("SYNC", lit: deck.syncOn, size: 8, feel: .toggle, accessibilityName: "Beat sync, deck \(deck.index + 1)", onPress: { dj.toggleSync(deck) })
+            .frame(width: 38)
+            .needsATrack(on: deck)
     }
 
     /// Swaps the pads for the jog and the keys beside it.
@@ -156,6 +178,7 @@ struct CompactDeck: View {
                     keys
                 }
             }
+            .needsATrack(on: deck)
         } else {
             PadSection(deck: deck)
         }
@@ -206,10 +229,8 @@ struct CompactMixer: View {
     private var centre: some View {
         VStack(spacing: 3) {
             AutoKey().frame(height: 22)
-            Key(color: Theme.accent, accessibilityName: "More mixer controls", onPress: { showMore = true }) {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 9, weight: .semibold))
-            }
-            .frame(height: 22)
+            Key("MORE", color: Theme.accent, size: 7, accessibilityName: "More mixer controls", onPress: { showMore = true })
+                .frame(height: 22)
             LimiterLight()
             CentreMeters().frame(maxHeight: .infinity)
         }

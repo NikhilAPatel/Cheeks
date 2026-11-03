@@ -24,6 +24,27 @@ final class LayoutAndFeedbackTests: CheeksUITestCase {
         closeBrowser()
     }
 
+    /// The browser stays built when it closes, so what only makes sense while it's open has to end by itself.
+    func testClosingTheBrowserEndsAnAuditionAndASearch() throws {
+        guard app.windows.firstMatch.frame.width >= 900 else { throw XCTSkip("A phone's rows have no preview") }
+        openBrowser()
+        waitFor(app.buttons["Preview"].firstMatch, seconds: 30)
+        press(app.buttons["Preview"].firstMatch)
+        waitFor(app.buttons["Stop preview"].firstMatch, seconds: 5)
+        let search = app.textFields.firstMatch
+        search.tap()
+        app.typeText("nothing has this name\n")
+        sleep(1)
+        XCTAssertFalse(app.buttons["Preview"].exists, "The search hides every row")
+        closeBrowser()
+        XCTAssertFalse(app.textFields.firstMatch.exists, "Out of sight is out of reach of VoiceOver as well")
+        XCTAssertFalse(app.buttons["Stop preview"].exists)
+        openBrowser()
+        waitFor(app.buttons["Preview"].firstMatch, seconds: 5)
+        XCTAssertFalse(app.buttons["Stop preview"].exists, "Closing the browser stops the audition")
+        closeBrowser()
+    }
+
     func testStoppingARecordingOffersBothAnswers() throws {
         press(button("Record"))
         sleep(2)

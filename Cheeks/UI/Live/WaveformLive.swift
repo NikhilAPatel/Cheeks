@@ -387,9 +387,10 @@ final class WaveformLiveView: LiveView {
 }
 
 struct ScrollingWaveform: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     let deck: Deck
     func makeUIView(context: Context) -> WaveformLiveView { WaveformLiveView(deck: deck) }
-    func updateUIView(_ view: WaveformLiveView, context: Context) {}
+    func updateUIView(_ view: WaveformLiveView, context: Context) { view.isPaused = isOffstage }
 }
 
 // MARK: Overview
@@ -530,9 +531,10 @@ final class OverviewLiveView: LiveView {
 }
 
 struct OverviewWaveform: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     let deck: Deck
     func makeUIView(context: Context) -> OverviewLiveView { OverviewLiveView(deck: deck) }
-    func updateUIView(_ view: OverviewLiveView, context: Context) {}
+    func updateUIView(_ view: OverviewLiveView, context: Context) { view.isPaused = isOffstage }
 }
 
 // MARK: Beat and phase strip
@@ -591,10 +593,11 @@ final class PhaseLiveView: LiveView {
 }
 
 struct PhaseStrip: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     let decks: [Deck]
     let positions: @MainActor () -> [Double]
     func makeUIView(context: Context) -> PhaseLiveView { PhaseLiveView(decks: decks, positions: positions) }
-    func updateUIView(_ view: PhaseLiveView, context: Context) {}
+    func updateUIView(_ view: PhaseLiveView, context: Context) { view.isPaused = isOffstage }
 }
 
 // MARK: Meters
@@ -648,7 +651,7 @@ final class MeterLiveView: LiveView {
                     pp.withMemoryRebound(to: Float.self, capacity: 4) { p in
                         for i in 0..<min(levels.count, 4) {
                             var target = position(levels[i])
-                            // Timed from launch, not from this view being built, because the mixer can
+                            // Timed from the logo lifting, not from this view being built, because the mixer can
                             // be rebuilt at any time and a meter moving with no audio is a lie.
                             let age = now - LiveRenderer.shared.launchTime
                             if age < Self.sweepSeconds && !UIAccessibility.isReduceMotionEnabled && !LiveRenderer.shared.captureMode {
@@ -686,9 +689,10 @@ final class MeterLiveView: LiveView {
 }
 
 struct LEDMeter: UIViewRepresentable {
+    @Environment(\.isOffstage) private var isOffstage
     var bars = 1
     var vertical = true
     let read: @MainActor () -> [Float]
     func makeUIView(context: Context) -> MeterLiveView { MeterLiveView(bars: bars, vertical: vertical, read: read) }
-    func updateUIView(_ view: MeterLiveView, context: Context) {}
+    func updateUIView(_ view: MeterLiveView, context: Context) { view.isPaused = isOffstage }
 }

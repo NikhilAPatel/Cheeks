@@ -134,6 +134,61 @@ final class AnalysisTests: XCTestCase {
     }
 
     @MainActor
+    func testABigCorrectionSaysSoAndASmallOneDoesnt() throws {
+        var said: [String] = []
+        let (small, map) = try deckWithMap(source: .analysis)
+        small.onMessage = { message, _ in said.append(message) }
+        small.applyTrackMap(map)
+        XCTAssertEqual(said, [], "123.5 to about 124 isn't worth mentioning")
+
+        let (big, bigMap) = try deckWithMap(source: .analysis)
+        big.track?.bpm = 178
+        big.onMessage = { message, _ in said.append(message) }
+        big.applyTrackMap(bigMap)
+        XCTAssertEqual(said.count, 1)
+        XCTAssertTrue(said.first?.contains("BPM") == true, "\(said)")
+    }
+
+    /// Kicks on every beat and a hit every beat and a half, which is what read as two-thirds of the tempo.
+    func testADottedRhythmDoesntPassForATempo() {
+        let fps = 44100.0 / Double(TrackAnalyzer.tempoHop)
+        let bpm = 154.0
+        var onset = [Float](repeating: 0, count: Int(fps * 240))
+        var beat = 0.0
+        while Int(beat) < onset.count {
+            onset[Int(beat)] = 1
+            beat += fps * 60 / bpm
+        }
+        var dotted = 0.0
+        while Int(dotted) < onset.count {
+            onset[Int(dotted)] += 0.5
+            dotted += fps * 60 / bpm * 1.5
+        }
+        XCTAssertEqual(TrackAnalyzer.detectTempo(onset: onset, sampleRate: 44100).bpm, bpm, accuracy: 0.1)
+    }
+
+    /// A track whose level hardly moves has its tempo only in the highs, and the phase still comes from the kicks.
+    func testTheHighsCanSayTheTempoAndTheKicksStillSayTheBeat() {
+        let fps = 44100.0 / Double(TrackAnalyzer.tempoHop)
+        let bpm = 148.0
+        let period = fps * 60 / bpm
+        var kicks = [Float](repeating: 0, count: Int(fps * 240))
+        var highs = kicks
+        var index = 0
+        while Int(Double(index) * period) + Int(period / 2) < kicks.count {
+            // Weak kicks on the beat, and strong hats on the offbeat.
+            kicks[Int(Double(index) * period)] = 0.3
+            highs[Int(Double(index) * period + period / 2)] = 1
+            index += 1
+        }
+        let found = TrackAnalyzer.detectTempo(onset: kicks, highs: highs, sampleRate: 44100)
+        XCTAssertEqual(found.bpm, bpm, accuracy: 0.1)
+        let beat = 60 / bpm
+        let off = abs(found.firstBeat.truncatingRemainder(dividingBy: beat))
+        XCTAssertLessThan(min(off, beat - off), 0.03, "On the kicks, not the hats")
+    }
+
+    @MainActor
     func testStemsLeaveAGridSomeoneSet() throws {
         let (deck, map) = try deckWithMap(source: .person)
         deck.applyTrackMap(map)

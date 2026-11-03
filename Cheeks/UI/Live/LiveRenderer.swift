@@ -19,7 +19,7 @@ final class LiveRenderer {
     private let views = NSHashTable<LiveView>.weakObjects()
     private var link: CADisplayLink?
 
-    /// When the app started, for things that only happen once, at launch.
+    /// When the logo lifted, for things that only happen once, at launch.
     var launchTime = CACurrentMediaTime()
     /// Seconds per host-clock tick, for placing the playhead between audio callbacks.
     let secondsPerTick: Double
@@ -84,7 +84,7 @@ final class LiveRenderer {
         guard let buffer = queue.makeCommandBuffer() else { return }
         let now = mach_absolute_time()
         var drew = false
-        for view in views.allObjects where view.window != nil && !view.isHidden {
+        for view in views.allObjects where view.window != nil && !view.isHidden && !view.isPaused {
             guard view.update(hostTime: now) else { continue }
             guard let drawable = view.metalLayer.nextDrawable() else {
                 // It's taken this frame as drawn, so tell it otherwise.
@@ -168,6 +168,10 @@ class LiveView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     private var overlay: CALayer?
+    /// Out of sight but still there (`isOffstage`). It keeps its last picture, and draws afresh when it's back.
+    var isPaused = false {
+        didSet { if oldValue && !isPaused { forceRedraw() } }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

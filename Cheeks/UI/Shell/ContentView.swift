@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(DJEngine.self) private var dj
     @Environment(Library.self) private var library
     @State var showLibrary = false
+    @State private var browserBuilt = false
     @State private var keyboardHeight: CGFloat = 0
     /// With no music yet, the first thing to see is where to add some.
     var opensBrowserWhenEmpty = true
@@ -18,35 +19,15 @@ struct ContentView: View {
             let layout = ScreenLayout(size: geo.size)
             Group {
             if layout.isCompact {
-                CompactScreen(layout: layout, showLibrary: $showLibrary, keyboardHeight: keyboardHeight)
+                CompactScreen(layout: layout, showLibrary: $showLibrary, browserBuilt: browserBuilt, keyboardHeight: keyboardHeight)
             } else {
             VStack(spacing: 3) {
                 TopBar(showLibrary: $showLibrary)
                 WaveformPanel(waveHeight: waveHeight)
                     .padding(.horizontal, 3)
-                HStack(spacing: 3) {
-                    if showLibrary {
-                        VStack(spacing: 3) {
-                            MiniDecks()
-                            BrowserView()
-                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                // Only the list makes way for the keyboard; the mixer stays put.
-                                .padding(.bottom, keyboardHeight)
-                        }
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                    } else {
-                        DeckPanel(deck: dj.decks[0])
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                    }
-                    // Stays the same view when the browser opens, so its meters and knobs carry on.
-                    MixerPanel().frame(width: mixerWidth)
-                    if !showLibrary {
-                        DeckPanel(deck: dj.decks[1])
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                }
-                .padding(.horizontal, 3)
-                .padding(.bottom, 8)
+                panels(width: geo.size.width - 6, mixerWidth: mixerWidth)
+                    .padding(.horizontal, 3)
+                    .padding(.bottom, 8)
             }
             .animation(Theme.panel, value: showLibrary)
             }
@@ -66,9 +47,157 @@ struct ContentView: View {
         .environment(\.openBrowser, { showLibrary = true })
         .onReceive(NotificationCenter.default.publisher(for: SelfTour.openBrowser)) { _ in showLibrary = true }
         .onReceive(NotificationCenter.default.publisher(for: SelfTour.closeBrowser)) { _ in showLibrary = false }
+        // An audition belongs to the browser. With nothing on screen to stop it, it would play on, through the master without a split cable.
+        .onChange(of: showLibrary) { _, isOpen in
+            if !isOpen, dj.previewingTrack != nil { dj.stopPreview() }
+        }
         .task {
             if opensBrowserWhenEmpty && library.tracks.isEmpty { showLibrary = true }
+            // Built while nothing's going on yet, so the first open is as quick as the rest.
+            try? await Task.sleep(for: .seconds(1.5))
+            browserBuilt = true
         }
+    }
+
+    /// The decks, the mixer, and the browser that takes the decks' place. Everything stays built and only moves out of
+    /// sight (`offstage`), as building a screenful of views again was nearly all of what opening the browser cost.
+    private func panels(width: CGFloat, mixerWidth: CGFloat) -> some View {
+        let deck = (width - mixerWidth - 6) / 2
+        let browser = width - mixerWidth - 3
+        return ZStack(alignment: .leading) {
+            Offstage(showLibrary, x: -deck - 3) {
+                DeckPanel(deck: dj.decks[0])
+            }
+            .frame(width: deck)
+            Offstage(showLibrary, x: deck + 3) {
+                DeckPanel(deck: dj.decks[1])
+            }
+            .frame(width: deck)
+            .offset(x: deck + mixerWidth + 6)
+            if browserBuilt || showLibrary {
+                Offstage(!showLibrary, x: -browser - 3) {
+                    VStack(spacing: 3) {
+                        MiniDecks()
+                        BrowserView(isOpen: showLibrary)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            // Only the list makes way for the keyboard; the mixer stays put.
+                            .padding(.bottom, keyboardHeight)
+                    }
+                }
+                .frame(width: browser)
+            }
+            // Never out of sight when the browser opens, so its meters and knobs carry on.
+            MixerPanel()
+                .frame(width: mixerWidth)
+                // Without this, SwiftUI hands an animating position down to every leaf, and redraws them on each frame.
+                .geometryGroup()
+                .offset(x: showLibrary ? browser + 3 : deck + 3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+}
+
+private struct IsOffstageKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// This part of the screen is built but out of sight, so what it does by itself every frame or tenth of a second can stop.
+    var isOffstage: Bool {
+        get { self[IsOffstageKey.self] }
+        set { self[IsOffstageKey.self] = newValue }
+    }
+}
+
+/// A part of the screen that stays built while it's out of sight, ready to come straight back. It slides away, and then its
+/// view leaves the window, so nothing can find it: VoiceOver and touch can't, and it isn't drawn. Its state and all it's built
+/// from stay. That takes a controller of its own, as SwiftUI's own ways of hiding a view leave it where VoiceOver can find it.
+struct Offstage<Content: View>: View {
+    let isOffstage: Bool
+    let x: CGFloat
+    let y: CGFloat
+    @ViewBuilder var content: () -> Content
+
+    init(_ isOffstage: Bool, x: CGFloat = 0, y: CGFloat = 0, @ViewBuilder content: @escaping () -> Content) {
+        self.isOffstage = isOffstage
+        self.x = x
+        self.y = y
+        self.content = content
+    }
+
+    var body: some View {
+        OffstageHost(isOffstage: isOffstage, content: content)
+            .offset(x: isOffstage ? x : 0, y: isOffstage ? y : 0)
+            .opacity(isOffstage ? 0 : 1)
+            .allowsHitTesting(!isOffstage)
+    }
+}
+
+private final class OffstageController: UIViewController {
+    let host: UIHostingController<AnyView>
+    private var leaving: DispatchWorkItem?
+
+    init(rootView: AnyView) {
+        host = UIHostingController(rootView: rootView)
+        // What's around it has already allowed for the home indicator and the keyboard.
+        host.safeAreaRegions = []
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("Not used") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        host.view.backgroundColor = .clear
+        addChild(host)
+        attach()
+        host.didMove(toParent: self)
+    }
+
+    private func attach() {
+        guard host.view.superview == nil else { return }
+        host.view.frame = view.bounds
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(host.view)
+    }
+
+    func update(isOffstage: Bool) {
+        leaving?.cancel()
+        leaving = nil
+        guard isOffstage else {
+            attach()
+            return
+        }
+        guard host.view.superview != nil else { return }
+        // Once it's finished sliding. Built out of sight, this also gives a list time to make its first rows.
+        let leave = DispatchWorkItem { [weak host] in host?.view.removeFromSuperview() }
+        leaving = leave
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: leave)
+    }
+}
+
+private struct OffstageHost<Content: View>: UIViewControllerRepresentable {
+    let isOffstage: Bool
+    let content: () -> Content
+
+    func makeUIViewController(context: Context) -> OffstageController {
+        OffstageController(rootView: rooted(context))
+    }
+
+    func updateUIViewController(_ controller: OffstageController, context: Context) {
+        controller.host.rootView = rooted(context)
+        controller.update(isOffstage: isOffstage)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: OffstageController, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    /// The view hosted, with everything it would have had if it weren't hosted.
+    private func rooted(_ context: Context) -> AnyView {
+        AnyView(content().environment(\.isOffstage, isOffstage).environment(\.self, context.environment))
     }
 }
 
@@ -170,13 +299,16 @@ struct MiniDeck: View {
                 Text("CUE").font(Theme.silk(9))
             }
             .frame(width: 34)
+            .needsATrack(on: deck)
             TransportButton(color: Theme.play, lit: deck.isPlayingOrAboutTo, accessibilityName: deck.isPlayingOrAboutTo ? "Pause" : "Play", onPress: deck.togglePlay) {
                 Image(systemName: deck.isPlayingOrAboutTo ? "pause.fill" : "play.fill").font(.system(size: 11, weight: .semibold))
             }
             .frame(width: 34)
+            .needsATrack(on: deck)
             DeckHeader(deck: deck, compact: true)
             Key("SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: { dj.toggleSync(deck) })
                 .frame(width: 36, height: 36)
+                .needsATrack(on: deck)
         }
         .padding(4)
         .controlSurface()
@@ -245,7 +377,6 @@ struct TopBar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay { if layout != .portrait { StatusCapsule() } }
             AnalysisIndicator()
-            EngineLoad()
             if !layout.isCompact {
                 TimelineView(.everyMinute) { context in
                     Text(context.date, style: .time)
@@ -326,25 +457,16 @@ private struct MasterTempo: View {
 }
 
 /// How hard the audio engine is working, as a pro app would show it. It only appears when it matters.
-private struct EngineLoad: View {
-    @Environment(DJEngine.self) private var dj
-
-    var body: some View {
-        if dj.loadWarning > 0 {
-            Text("DSP \(dj.loadWarning)%")
-                .silk(8, color: dj.loadWarning > 85 ? Theme.danger : Theme.warn)
-        }
-    }
-}
-
 private struct AnalysisIndicator: View {
     @Environment(Library.self) private var library
+    @Environment(\.screenLayout) private var layout
 
     var body: some View {
         if let analyzing = library.analyzing, let track = library.track(analyzing) {
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini)
-                Text("Analysing \(track.title)").font(Theme.text(9.5)).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                // Upright, there's only room left for "A…".
+                if layout != .portrait { Text("Analysing \(track.title)").font(Theme.text(9.5)).foregroundStyle(Theme.textTertiary).lineLimit(1) }
             }
             .frame(maxWidth: 170)
             .transition(.opacity)

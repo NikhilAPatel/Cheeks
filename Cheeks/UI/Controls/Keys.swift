@@ -70,6 +70,20 @@ private final class Hold {
     var down = false
 }
 
+/// A control can go away or out of sight with a finger still on it, and that touch never ends as far as it's concerned.
+private struct LetsGo: ViewModifier {
+    @Environment(\.isOffstage) private var isOffstage
+    let released: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onDisappear(perform: released)
+            .onChange(of: isOffstage) { _, gone in
+                if gone { released() }
+            }
+    }
+}
+
 /// A hardware key. It acts on the finger's first contact, moves like a real key, and clicks.
 struct Key<Label: View>: View {
     var color: Color = Theme.accent
@@ -115,8 +129,7 @@ struct Key<Label: View>: View {
                 }, onUp: released)
                 .padding(-touchMargin)
             }
-            // The page can change with a finger still on it, and the touch never ends then.
-            .onDisappear(perform: released)
+            .modifier(LetsGo(released: released))
             // Otherwise the glow's margin counts towards the key's frame for VoiceOver.
             .contentShape(.accessibility, Rectangle())
             .accessibilityElement(children: .ignore)
@@ -235,8 +248,7 @@ struct Pad<Label: View>: View {
                 onDrag?(translation)
             }, onUp: released)
         }
-        // The page can change with a finger still on it, and the touch never ends then.
-        .onDisappear(perform: released)
+        .modifier(LetsGo(released: released))
         .contentShape(.accessibility, Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
@@ -332,7 +344,7 @@ struct TransportButton<Label: View>: View {
             }
         }
         // Opening the browser takes the decks away, with a finger still on it perhaps.
-        .onDisappear(perform: released)
+        .modifier(LetsGo(released: released))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(.isButton)

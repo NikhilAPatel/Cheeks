@@ -336,3 +336,44 @@ With the browser open, for comparison:
 - **Surprising, in a good way:** how well `AUTO` hands the decks back. Every way I took over ended somewhere sensible and said what had happened. Two very different tempos still got a move and no hole.
 
 **3. Which control was hardest to find or hit?** `BEAT SYNC` upright on the small iPhone: it took a wrong guess to find it behind `JOG`, and it's the second thing anyone needs. To hit: `DEL`, 30 pt wide at the end of the tab row, jammed up beside `SAMPLE`.
+
+## What happened next
+
+**Fixed**
+- **A3, idle CPU.** `Deck.tick` called `activeFX.removeAll` 30 times a second on each deck. Removing nothing still counts as a change to an observed array, so `PadTabs` and everything else looking at the effects redrew all the time. It now only does that when there's something to remove. `QuietTickTests`.
+- **BA5, the Files folder.** `LSSupportsOpeningDocumentsInPlace` is on, so the promised `Segue DJ` folder should be there.
+- **LR1.** Pressing `AUTO` after a stopped move now clears what it left on both decks, whichever one gets mixed out of next. `testPressingAgainClearsWhatAStoppedMoveLeftOnTheNewDeckToo`.
+- **J3.** The drums were right: 148 is the tempo, in every 40 s of the track, by a separate check of its onsets (8 to 9, against 1.3 for 178). The bug was the first analysis, which took the slope at the edge of its range for a tempo. It now uses autocorrelation at a beat and its multiples, gets near from the highs as well as the kick and the level, and takes the phase from those two alone. On 40 tracks, right to 0.15 BPM went from 34 to 39, and all 40 are within reach of the right one. A change of more than 0.5% when the stems finish now says so.
+- **BA4.** `OpeningCover` centred the logo in the safe area, and the launch screen centres it in the whole screen.
+- **B2.** The sweep and the jog's wake-up are timed from the logo lifting.
+- **`DSP n%`** is gone from the top bar. It's in `LaunchLog`'s `PERF:` lines, for measuring.
+- **An empty deck** is dim, and a press says there's no track on it, apart from the tabs and the sampler's pads.
+- **`BEAT SYNC` behind `JOG`.** A phone's pads page has a `SYNC` key beside `JOG`.
+- **The unlabelled icon** on a phone's mixer says `MORE`.
+- **`AUTO…` giving up in silence** says why. `testRunningOutWhileWaitingForStemsSaysSo`.
+- **BB4.** A mix with no plan yet reads `MIX…`.
+- **F2.** `SAVE CUE` saves where the deck is, and on its cue when it's stopped there.
+- **`DEPTH` and `VOLUME`** go to where you touch.
+- **`Add to Playlist`** doesn't offer History.
+- **The stems wait** has a rough time left in the header, once a split's been going for a few seconds.
+- **"A…"** upright is just the spinner.
+
+**Found while fixing those**
+- **Opening and closing the browser.** BIG3 and the owner's priorities pointed here, as it was the slowest thing left. Nearly all the time went on building a screenful of views. The browser and the decks now stay built and take turns out of sight (`Offstage` in `CLAUDE.md`). Measured on the old and new code one after the other on the same Mac, over 24 rounds with 2,000 tracks and both decks playing: opening went from about 4 freezes and 380 ms frozen in all to usually none of 50 ms or more, worst 52 ms. Closing went from about 230 ms to usually none, worst 96 ms. It costs about 16 to 20 MB. So the list keeps its place too, and a phone deck stays on `JOG`.
+- **An audition kept playing after closing the browser,** with nothing on screen to stop it, through the master without a split cable. Nobody had tried it. Closing the browser now stops it, and the search goes as well. `testClosingTheBrowserEndsAnAuditionAndASearch`.
+- **Searching and filtering a long list** animated the whole change, which is where the dim row and the 400 to 620 ms stalls came from. Lists over 200 tracks don't animate now.
+- **A preview's marker** was on a 0.1 s `TimelineView`, against the rules. Twice a second's plenty at a third of a point a second.
+
+**Decided against changing**
+- **A relaunch leaves both decks empty.** That's what DJ software does, and loading two tracks' audio and stems at launch would cost a lot for little.
+- **The crossfader stays where you put it after a move,** as the rules say.
+- **A new playlist isn't selected.** You make one to add to it, and that happens from All Tracks.
+- **The menu needing a tap to close and the partial swipe action** are the system's own behaviour.
+
+**Not done yet**
+- **A seek on the old deck during a Loop build** still gets taken back with no word.
+- **`SPACE` lighting `LIM`** either way of the knob on a loud part.
+- **The sheets** (`LIST`, `SET`, the colour well) still look like iOS Settings.
+- **What needs explaining (FU4),** and that FX pads slide (H2): nothing says so yet.
+- **The file picker's blank 3 to 8 s** is the system's. Whether what's behind it still shifts is in the next round.
+- **BC4,** one missed "Echo throw done" that couldn't be forced.

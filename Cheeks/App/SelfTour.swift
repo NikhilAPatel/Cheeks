@@ -6,6 +6,8 @@ import Foundation
 @MainActor
 enum SelfTour {
     static let isOn = ProcessInfo.processInfo.environment["CHEEKS_SELF_TOUR"] != nil
+    /// CHEEKS_SELF_TOUR=browser goes straight to opening and closing the browser, over and over, for a profiler to watch.
+    private static let browserOnly = ProcessInfo.processInfo.environment["CHEEKS_SELF_TOUR"] == "browser"
     static let openBrowser = Notification.Name("CheeksSelfTourOpenBrowser")
     static let closeBrowser = Notification.Name("CheeksSelfTourCloseBrowser")
 
@@ -40,17 +42,19 @@ enum SelfTour {
         dj.decks.forEach { $0.play() }
         await wait(5)
 
-        for _ in 0..<2 {
-            for mode in PadMode.allCases {
-                LaunchLog.step("deck 1 pads to \(mode.rawValue)")
-                dj.decks[0].padMode = mode
-                await wait(0.7)
+        if !browserOnly {
+            for _ in 0..<2 {
+                for mode in PadMode.allCases {
+                    LaunchLog.step("deck 1 pads to \(mode.rawValue)")
+                    dj.decks[0].padMode = mode
+                    await wait(0.7)
+                }
             }
+            dj.decks[0].padMode = .hotCue
+            await wait(1)
         }
-        dj.decks[0].padMode = .hotCue
-        await wait(1)
 
-        for round in 1...3 {
+        for round in 1...(browserOnly ? 25 : 3) {
             LaunchLog.step("open the browser, \(round)")
             NotificationCenter.default.post(name: openBrowser, object: nil)
             await wait(1.5)
