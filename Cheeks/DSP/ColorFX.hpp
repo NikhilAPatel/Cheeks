@@ -77,8 +77,10 @@ private:
                 echoLine[c][echoWrite] = (c == 0 ? left[i] : right[i]) * echoSend + back / (1 + std::abs(back) * 0.3f);
             }
             echoWrite = (echoWrite + 1) & kEchoMask;
-            left[i] += wet[0];
-            right[i] += wet[1];
+            // Room for what's being added, or a loud track goes straight into the limiter. The tail keeps its level once the knob's back.
+            const float room = 1 - 0.4f * echoSend;
+            left[i] = (left[i] + wet[0]) * room;
+            right[i] = (right[i] + wet[1]) * room;
             loudest = std::max(loudest, std::max(std::abs(wet[0]), std::abs(wet[1])));
         }
         echoIdle = sendTarget <= 0 && echoSend < 0.0005f && loudest < 0.00003f;
@@ -111,15 +113,17 @@ private:
                 spaceLine[l][spacePosition[l]] = (out[l] - householder) * spaceDecay[l] + input;
                 spacePosition[l] = (spacePosition[l] + 1) % kSpaceLengths[l];
             }
-            float wetL = (out[0] - out[1] + out[2] - out[3] + out[4] - out[5] + out[6] - out[7]) * 0.4f;
-            float wetR = (out[0] + out[1] - out[2] - out[3] + out[4] + out[5] - out[6] - out[7]) * 0.4f;
+            float wetL = (out[0] - out[1] + out[2] - out[3] + out[4] - out[5] + out[6] - out[7]) * 0.34f;
+            float wetR = (out[0] + out[1] - out[2] - out[3] + out[4] + out[5] - out[6] - out[7]) * 0.34f;
             // The bright side takes the low end out of the reverb, so it doesn't muddy the bass.
             spaceLow[0] += (wetL - spaceLow[0]) * 0.02f;
             spaceLow[1] += (wetR - spaceLow[1]) * 0.02f;
             wetL -= spaceLow[0] * thinning;
             wetR -= spaceLow[1] * thinning;
-            left[i] += wetL;
-            right[i] += wetR;
+            // Room for what's being added, or a loud track goes straight into the limiter.
+            const float room = 1 - 0.4f * spaceSend * spaceSend;
+            left[i] = (left[i] + wetL) * room;
+            right[i] = (right[i] + wetR) * room;
             loudest = std::max(loudest, std::max(std::abs(wetL), std::abs(wetR)));
         }
         spaceIdle = sendTarget <= 0 && spaceSend < 0.0005f && loudest < 0.00003f;
@@ -155,7 +159,7 @@ private:
         const float white = float(int32_t(noiseSeed)) / 2147483648.0f;
         float low, band, high;
         noiseFilter.process(white, low, band, high);
-        const float shaped = (dark ? low : high) * a * a * 0.5f;
+        const float shaped = (dark ? low : high) * a * a * 0.32f;
         l += shaped;
         r += shaped;
     }

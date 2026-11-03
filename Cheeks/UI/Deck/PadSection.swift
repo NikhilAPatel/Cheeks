@@ -33,9 +33,23 @@ struct PadSection: View {
         switch deck.padMode {
         case .memory: MemoryControlRow(deck: deck)
         case .stems: StemControlRow(deck: deck)
-        case .fx: FXControlRow(deck: deck)
+        case .fx: FXControlRow(deck: deck).modifier(FXPadHint())
         case .sampler: SamplerControlRow(deck: deck)
         default: LoopRow(deck: deck)
+        }
+    }
+}
+
+/// Nothing on an FX pad says it slides, and a slide's half of what they do. So it's said once, the first time the page opens.
+private struct FXPadHint: ViewModifier {
+    @Environment(DJEngine.self) private var dj
+    @AppStorage("fxPadHintShown") private var shown = false
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !shown else { return }
+            shown = true
+            dj.say("FX pads slide: up and down for depth, left and right for the beat.", .info)
         }
     }
 }

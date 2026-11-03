@@ -370,10 +370,13 @@ With the browser open, for comparison:
 - **A new playlist isn't selected.** You make one to add to it, and that happens from All Tracks.
 - **The menu needing a tap to close and the partial swipe action** are the system's own behaviour.
 
+**Fixed straight after**
+- **A seek or hot cue on the old deck during a move,** before the new track lands, now hands the decks back and says so. `testMovingTheOldDeckDuringAMoveHandsItBack`.
+- **`SPACE`, `DUB` and `NOISE`** make room for what they add. At full on the test tracks, `SPACE`'s limiting went from about 6 dB to about 1, by `LevelTests.testColorFXLevels`. Nobody's heard it yet.
+- **The sheets:** the cue list and a sampler pad's sheet have smaller type on a dark ground, and the colour well offers the eight colours pads use.
+- **H2:** the first time on the `FX` page, it says the pads slide.
+
 **Not done yet**
-- **A seek on the old deck during a Loop build** still gets taken back with no word.
-- **`SPACE` lighting `LIM`** either way of the knob on a loud part.
-- **The sheets** (`LIST`, `SET`, the colour well) still look like iOS Settings.
-- **What needs explaining (FU4),** and that FX pads slide (H2): nothing says so yet.
+- **What needs explaining (FU4).** Many controls still rely on someone knowing DJ gear. It needs a proper think about where help should go.
 - **The file picker's blank 3 to 8 s** is the system's. Whether what's behind it still shifts is in the next round.
 - **BC4,** one missed "Echo throw done" that couldn't be forced.

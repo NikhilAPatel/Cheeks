@@ -46,6 +46,53 @@ final class LevelTests: XCTestCase {
         measure("both decks", decks: [0, 1])
     }
 
+    /// What each Color FX does to the deck's meter and the limiter, against the same stretch dry, on real music at each end of the knob.
+    func testColorFXLevels() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let a = env["CHEEKS_FIXTURE_A"], let b = env["CHEEKS_FIXTURE_B"] else { throw XCTSkip("Set CHEEKS_FIXTURE_A and CHEEKS_FIXTURE_B") }
+        for (path, from) in [(a, 53.0), (b, 129.0)] {
+            let dj = DJEngine(library: Library())
+            dj.stopRealtimeForTesting()
+            let deck = dj.decks[0]
+            let pcm = try AudioDecoder.decode(url: URL(filePath: path), sampleRate: sr)
+            let analysis = TrackAnalyzer.analyze(pcm)
+            deck.renderer.setSources([pcm])
+            deck.track = Track(id: UUID(), title: "T", artist: "", fileName: "none", duration: Double(pcm.frames) / sr, bpm: analysis.bpm)
+            deck.setAutoGainForTesting(loudness: analysis.loudness)
+
+            func measure(_ effect: ColorEffect, knob: Float) -> (top: Float, level: Float, limiter: Float) {
+                deck.filter = 0
+                _ = dj.renderOffline(frames: Int(sr) * 3) // Tails die down.
+                deck.colorFX = effect
+                deck.filter = knob
+                deck.renderer.playhead = from * sr
+                deck.renderer.isPlaying = true
+                dj.updateVolumes()
+                var top: Float = 0, energy: Float = 0, count = 0, limiter: Float = 0
+                for i in 0..<(13 * 60) {
+                    let out = dj.renderOffline(frames: Int(sr / 60))
+                    guard i > 120 else { continue }
+                    top = max(top, deck.level)
+                    limiter = max(limiter, dj.limiterReduction)
+                    for x in out.left { energy += x * x }
+                    count += out.left.count
+                }
+                deck.renderer.isPlaying = false
+                return (20 * log10(max(top, 0.0001)), 10 * log10(max(energy / Float(max(count, 1)), 1e-9)), limiter)
+            }
+
+            let name = (path as NSString).lastPathComponent
+            let dry = measure(.filter, knob: 0)
+            print("COLORLEVEL: \(name) dry: top \(String(format: "%+.1f", dry.top)) dB, limiter \(String(format: "%.1f", dry.limiter))")
+            for effect in ColorEffect.allCases where effect != .filter {
+                for knob: Float in [-1, -0.5, 0.5, 1] {
+                    let wet = measure(effect, knob: knob)
+                    print("COLORLEVEL: \(name) \(effect.rawValue) \(knob): top \(String(format: "%+.1f", wet.top)) dB, level \(String(format: "%+.1f", wet.level - dry.level)) dB, limiter \(String(format: "%.1f", wet.limiter))")
+                }
+            }
+        }
+    }
+
     /// What each beat effect does to the deck's meter and the level, against the same stretch dry.
     /// It reads the meter 60 times a second, and works out what the screen would show from
     /// `MeterLiveView`'s ballistics: a single peak over 0 dB holds a red LED up for over a second.

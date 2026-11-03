@@ -136,6 +136,7 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
   | Press `AUTO` | The decks are yours: stems, EQ, filter and loop stay. The score's effects and noise go, because nothing on screen could turn them off | The old deck stops and the new one's on |
   | Stop the new deck, or load another track on it | The old deck carries on, clean | Both stop |
   | Stop the old deck | The new one comes in at once, whole | The move plays out |
+  | Send the old deck somewhere: a seek, a hot cue or a beat jump | The decks are yours, as with pressing `AUTO`, and it says so | The move plays out |
 
   A new deck that nobody's heard yet goes back to how it was, with its stems up and its tempo where it had it, the same as calling it off during the countdown. A stem left all the way down shows as off, and a tap or `ALL` brings it back. Only a move that plays out asks for a rating or counts as a move played.
 

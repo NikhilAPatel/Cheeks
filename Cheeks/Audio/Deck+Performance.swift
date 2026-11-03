@@ -47,6 +47,7 @@ extension Deck {
         } else {
             renderer.playhead = target
         }
+        onMovedByHand?()
     }
 
     /// Going past a loop, or out of the one the deck's in, would only get the deck pulled back. A

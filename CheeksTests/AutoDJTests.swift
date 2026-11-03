@@ -562,6 +562,22 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(b.eqHigh, 0)
     }
 
+    func testMovingTheOldDeckDuringAMoveHandsItBack() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
+        let there = a.trackMap!.seconds(atBar: 70)
+        a.seek(to: there)
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1 was moved. The decks are yours.")
+        XCTAssertTrue(a.isPlaying)
+        XCTAssertFalse(b.renderer.isPlaying, "Nobody's heard it")
+        _ = dj.renderOffline(frames: 44_100)
+        dj.tickForTesting()
+        XCTAssertEqual(a.position, there + 1, accuracy: 1.5, "And nothing takes it back")
+    }
+
     func testRunningOutWhileWaitingForStemsSaysSo() throws {
         let dj = try ready()
         dj.decks[1].trackMap = nil

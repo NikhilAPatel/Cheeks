@@ -11,6 +11,44 @@ extension CueColor {
     }
 }
 
+/// The colours a pad and a waveform show well, and not the system's picker, with its Grid, Spectrum and Sliders.
+private struct CueColorWell: View {
+    let color: Color
+    var onPick: (Color) -> Void
+    @State private var isOpen = false
+    private static let names = ["Red", "Blue", "Green", "Purple", "Teal", "Orange", "Pink", "Yellow"]
+
+    var body: some View {
+        Button {
+            Haptics.shared.key()
+            isOpen = true
+        } label: {
+            Circle().fill(color)
+                .frame(width: 22, height: 22)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.35)))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Colour")
+        .popover(isPresented: $isOpen) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 10), count: 4), spacing: 10) {
+                ForEach(Theme.hotCueColors.indices, id: \.self) { index in
+                    Button {
+                        Haptics.shared.key()
+                        onPick(Theme.hotCueColors[index])
+                        isOpen = false
+                    } label: {
+                        Circle().fill(Theme.hotCueColors[index]).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Self.names[index])
+                }
+            }
+            .padding(14)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
 /// Everything saved on the track on this deck, in a native list: names, colours, and which loop
 /// turns on at load. It edits the track directly, so the pads and waveform change as you go.
 struct CueListView: View {
@@ -31,6 +69,10 @@ struct CueListView: View {
                 memoryCueSection
                 savedLoopSection
             }
+            .font(Theme.text(13))
+            .environment(\.defaultMinListRowHeight, 36)
+            .scrollContentBackground(.hidden)
+            .background(Color(white: 0.07))
             .navigationTitle(deck.track?.title ?? "Cues and loops")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -57,11 +99,9 @@ struct CueListView: View {
                     if let time = deck.track?.hotCues[slot] {
                         Text(time.clockString).font(Theme.digits(13)).foregroundStyle(.secondary)
                     }
-                    ColorPicker("Colour", selection: Binding(
-                        get: { deck.hotCueColor(slot) },
-                        set: { color in deck.updateTrack { $0.hotCueInfo[slot, default: HotCueInfo()].color = CueColor(color) } }),
-                                supportsOpacity: false)
-                        .labelsHidden()
+                    CueColorWell(color: deck.hotCueColor(slot)) { color in
+                        deck.updateTrack { $0.hotCueInfo[slot, default: HotCueInfo()].color = CueColor(color) }
+                    }
                 }
             }
             .onDelete { rows in

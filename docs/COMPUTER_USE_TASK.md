@@ -117,6 +117,10 @@ It's been rebuilt underneath. The browser and the decks now stay built and take 
 9. **`Add to Playlist`** shouldn't offer History any more.
 10. **The stems estimate.** After about 5 s of a split, the header should read something like `Stems 28% · 2 min`, on a phone where there's room. Is it in the right area, as far as you can tell? Does it jump around?
 11. **Upright, while analysing,** the top bar should show a spinner and not "A…".
+12. **Moving the old deck during a move.** During a Loop build, before the new track lands, tap the old deck's overview, then another time press a hot cue on it. It should say the deck was moved and that the decks are yours, and it should stay where you sent it, with the new deck stopped. After the new track's landed, the move should just play out. *Last time: the score took it back about a minute, with no word.*
+13. **`SPACE`, `DUB` and `NOISE` at full,** on a loud part, both ways of the knob. `LIM` should light rarely if at all, and the level shouldn't jump as the knob comes back to centre. *Last time: `SPACE` lit `LIM` the whole time.* Levels only: nobody can judge here how it sounds.
+14. **The cue list and a sampler pad's sheet.** Smaller type on a dark ground. The colour well now opens eight colours in a small popover, and picking one should reach the pad and the waveform at once. `ca-cue-list`, `ca-colours`.
+15. **The first time on the `FX` page** should say that pads slide, once, and never again after a relaunch.
 
 ## The first-time user
 Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Last time, the Files folder and `BEAT SYNC` upright were what stopped you, and both have changed.

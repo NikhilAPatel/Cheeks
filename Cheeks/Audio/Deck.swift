@@ -135,6 +135,8 @@ final class Deck {
     var trackMap: TrackMap?
     /// Someone moved a control Auto DJ may be moving, so it should leave that one alone from now on.
     var onManualControl: ((CheeksAutoKind, Int) -> Void)?
+    /// Someone's sent the deck somewhere: a seek, a hot cue or a beat jump.
+    var onMovedByHand: (() -> Void)?
     /// True while Auto DJ is moving the controls, which isn't someone taking them.
     private var followingAuto = false
 
@@ -570,6 +572,7 @@ final class Deck {
         leaveLoop(ifGoingTo: target)
         renderer.playhead = target
         renderer.reachedEnd = false
+        onMovedByHand?()
     }
 
     /// Club-deck cue: while playing, jump back to the cue and stop; while paused, set the

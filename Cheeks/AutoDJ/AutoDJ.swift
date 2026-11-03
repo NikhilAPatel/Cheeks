@@ -148,6 +148,9 @@ final class AutoDJ {
         for deck in decks {
             let index = Int32(deck.index)
             deck.onManualControl = { kind, control in cheeks_engine_auto_release(core, index, Int32(kind.rawValue), Int32(control)) }
+            deck.onMovedByHand = { [weak self, weak deck] in
+                if let self, let deck { self.noticeMoved(deck) }
+            }
         }
     }
 
@@ -671,6 +674,15 @@ final class AutoDJ {
             mixSet = nil
             endEarly(.oldStops(startNew: true), message)
         }
+    }
+
+    /// Sending the old deck somewhere else means taking it, or the score's loop would take it straight back, with no word.
+    /// Past the handover it's on its way out, and the score can carry on seeing it off.
+    private func noticeMoved(_ deck: Deck) {
+        guard case .running = phase, ending == nil, deck === outgoing, let score, cheeks_engine_auto_beat(core) < score.handover else { return }
+        let message = "\(stoppedBy): deck \(deck.index + 1) was moved. The decks are yours."
+        mixSet = nil
+        endEarly(.decksAreYours, message)
     }
 
     /// Stops the clock. The next tick finishes up, when nothing in the audio core can still be writing to the controls.
