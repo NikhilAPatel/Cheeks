@@ -28,26 +28,26 @@ xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination "platform=iOS S
 # Expect: ** BUILD SUCCEEDED **
 
 xcrun simctl boot "$SIM" 2>/dev/null
-xcrun simctl uninstall "$SIM" com.nikhilpatel.cheeks 2>/dev/null   # start clean
+xcrun simctl uninstall "$SIM" com.nikhilpatel.seguedj 2>/dev/null   # start clean
 xcrun simctl install "$SIM" build/Build/Products/Debug-iphonesimulator/Cheeks.app
 
 # Two test tracks, dropped where the app imports from at launch
 tools/test-music/fetch.sh /tmp/cheeks-music
-DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.cheeks data)
+DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.seguedj data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
-xcrun simctl launch "$SIM" com.nikhilpatel.cheeks
+xcrun simctl launch "$SIM" com.nikhilpatel.seguedj
 mkdir -p docs/test-results-9
 ```
 
 **The small iPhone:** use `iPhone SE Cheeks` (59B64076-E0E9-491A-AA6F-A82A60C3D2D2, iOS 27.2), which the owner's given the touch tool access to. It needs a fresh install. Never use `iPhone SE (3rd generation)`: by name that's another project's simulator.
 
 **Things the last run learned about this setup:**
-- **Use the iPhone Duo, unfolded (951×669 pt).** The simulator tool reports a 678×466 space, but taps land in 951×669.
+- **Use the iPhone Duo, unfolded (951×669 pt).** The simulator tool can report a 678×466 space, but taps land in 951×669. Don't reboot it: that folds it, and only Device Hub can open it again.
 - **Tap length:** default taps last about 10 ms, and system switches ignore them. Use a 0.2 s press on those. Taps sent while a sheet is closing get lost.
 - **Measure the right process.** Other simulators can be running their own `Cheeks`, so never use `pgrep -x Cheeks`. Get this simulator's with:
   ```sh
-  PID=$(xcrun simctl spawn "$SIM" launchctl list | awk '/UIKitApplication:com\.nikhilpatel\.cheeks\[/{print $1}' | head -1)
+  PID=$(xcrun simctl spawn "$SIM" launchctl list | awk '/UIKitApplication:com\.nikhilpatel\.seguedj\[/{print $1}' | head -1)
   ```
   The PID changes every time the app restarts, so get it again after one. `ps` reports an average over the process's whole life, so measure CPU with `top -l 7 -s 5 -pid $PID -stats cpu`, and ignore the first line of numbers.
 - **Logs:** to see real problems, filter on the level, not on words, because `grep fault` also matches "Default":
@@ -74,7 +74,7 @@ To see what these were, look in `docs/COMPUTER_USE_RESULTS_8.md`, which ends wit
 
 **Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
 
-**Other sessions:** the other session may be running low-priority jobs on this Mac for a separate feature, off the simulators. It'll pause them if you ask before measuring. Check which app's in the Duo's foreground before relying on a tap: another project's session took it for 10 minutes last time.
+**Other sessions:** the other session may be running low-priority jobs on this Mac for a separate feature, off the simulators. It'll pause them if you ask before measuring. Check which app's in the simulator's foreground before relying on a tap: another project's session took it for 10 minutes last time.
 
 **With two fingers:** as last time, both land together and the second slides. Say which way round each test went.
 
@@ -94,6 +94,8 @@ The first time it ran on a real phone, it took about 20 s to load things, with "
    ```
 2. **Launching again.** The same three times more, with no reinstall.
 3. **Does it look the same?** Compare the knobs, keys, fader caps and round `CUE` and `PLAY` with a screenshot from `docs/test-results-8/`, up close, lit and unlit, pressed and not. The ring's metal highlight and the knob's sheen may be a touch brighter. Is anything else different? Is anything blank, at any point in the launch? Screenshot `ba3-parts`.
+4. **The logo.** New: from the moment the app opens until the decks are there, you should see the platter with `SEGUE DJ` under it, then a quick fade. Is there ever a black or blank moment? Does the logo jump when the launch screen hands over to the app? Try a fresh install and a normal launch, on the Duo and on the small iPhone both ways up. Screenshot `ba4-logo`.
+5. **The new name.** The app's now called Segue DJ, with the bundle ID `com.nikhilpatel.seguedj`. Uninstall the old `com.nikhilpatel.cheeks` from the simulators you use. Check the home screen, the app's folder in Files, the top bar in the full layout, the empty lists, Settings' backup text, a saved backup's file name and a recording's tracklist. Report anywhere a person can still see "Cheeks".
 
 ### BB. `AUTO` with a loop
 1. **A loop you set.** On a playing deck, `IN` then `OUT`, then `AUTO`. The loop should go, and it should plan and get there. *Last time: it counted down forever.*
@@ -110,6 +112,7 @@ The first time it ran on a real phone, it took about 20 s to load things, with "
 5. **An empty list.** With nothing typed: `IN KEY` and `±6% BPM` emptying a list should say to turn them off, and an empty playlist should say how to add to it. With something typed, the usual search message.
 6. **The tracklist.** During a recording: play a track, then another, then go back to the first on the same deck, for over 10 s each. All three should be in the tracklist, at the right times, and in that day's History. Stopping and starting a track with nothing in between should give one line. *Last time: the return was missing.*
 7. **Ratings on a small iPhone.** Try AX5 again, on the simulator below. With an Undo and a rating showing: is the text readable, and can you press the keys? Can you still use the overview and the browser's keys beside and under the capsule?
+8. **Both decks on the jog, upright.** On `iPhone SE Cheeks`, press `JOG` on both decks. Both should stay whole on the screen, with the keys beside each jog in two columns. Scratch with one jog and press `PLAY`, `CUE`, `Q`, `REV` and `KEY SYNC` on the other. Then go back to `PADS`, and check that pads and tabs are where they were. *Last time: nobody had tried it, and deck 2's `CUE`, `PLAY` and jog were off the bottom of the screen.*
 
 ### BD. When nothing else will do
 New. When no move passes its audition, it now echoes the old track out on a phrase, and the new one starts where its beat comes in, at its own tempo, not stretched to match. It used to refuse, or a mix would just start the next track. You can't force this. Run `AUTO` and `MIX` on your tracks in every order you can, and report any "Echo throw" where the new track starts in its first third with its tempo at +0.0. How does the join look, in levels and gaps? Does anything still say it couldn't find a way?

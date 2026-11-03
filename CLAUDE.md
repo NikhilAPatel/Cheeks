@@ -2,6 +2,8 @@
 
 **New session? Read `docs/HANDOFF.md` first.** It covers project status, decisions, and what to do next.
 
+**The app is called Segue DJ** (`com.nikhilpatel.seguedj`). Cheeks is only the name of the code, its folders and its build targets: never show it to anyone using the app. The launch logo comes from `tools/make-launch-logo.py`, and `OpeningCover` keeps it up until the first screen's built.
+
 Standalone iOS DJ app (SwiftUI, Metal and a C++ audio core hosted in AVAudioEngine). It's designed first for a wide landscape screen, the owner's iPhone Duo unfolded (951×669 pt) or an iPad, and every other screen gets a compact layout (`UI/Shell/CompactScreen.swift`). See README.md for features.
 
 ## Build, test, run (macOS with Xcode 16+)
@@ -29,12 +31,13 @@ TEST_RUNNER_CHEEKS_STEM_MODEL=1 xcodebuild test -project Cheeks.xcodeproj -schem
 # the real app driven by real touch events (see CheeksUITests/). Prints UITEST: lines, and screenshots go to $CHEEKS_UI_SHOTS
 tools/ui-tests.sh "iPhone Duo"
 tools/ui-tests.sh "iPad Air 13-inch (M4)" -only-testing:CheeksUITests/UndoAndRefusalTests
+tools/ui-tests.sh "iPhone SE Cheeks" -only-testing:CheeksUITests/PhoneLayoutTests
 
 # CPU in each state, on this simulator's own process (it takes a few minutes)
 tools/measure-cpu.sh "iPhone Duo"
 
 # where launch time goes: each step, each shader and pre-rendered part, every freeze of 100 ms or more, and CPU and memory
-SIMCTL_CHILD_CHEEKS_LAUNCH_LOG=1 xcrun simctl launch --console-pty --terminate-running-process "iPhone 17" com.nikhilpatel.cheeks
+SIMCTL_CHILD_CHEEKS_LAUNCH_LOG=1 xcrun simctl launch --console-pty --terminate-running-process "iPhone 17" com.nikhilpatel.seguedj
 
 # what freezes the app: its own walk round itself, with a big library and nothing touching it (Cheeks/App/SelfTour.swift)
 # CHEEKS_PERF_STEMS=1 lets stems split during it. CHEEKS_SELF_TOUR=1 and CHEEKS_LAUNCH_LOG=1 do the same on a phone
@@ -48,13 +51,13 @@ tools/perf-tour.sh "iPhone 17" 2000
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null
 xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build build
 xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/Cheeks.app
-xcrun simctl launch booted com.nikhilpatel.cheeks
+xcrun simctl launch booted com.nikhilpatel.seguedj
 xcrun simctl io booted screenshot screenshot.png
 ```
 
 - **Simulator names:** list the installed ones with `xcrun simctl list devices available`. Xcode 27 here has no standalone Simulator.app; use `simctl` or the Claude simulator panel.
-- **iPhone Duo simulator:** it boots folded, so the app shows on the 466-pt-tall cover screen and the inner screen stays black. `simctl` can't unfold it (toggling screen power crashes SpringBoard), but it's currently unfolded on this Mac, and UI tests reach it at 951×669. If a UI test prints a different window size, use the layout snapshots for the unfolded size. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
-- **Measuring the app:** other simulators can be running their own `Cheeks`, so never use `pgrep -x Cheeks`. Get the PID from that simulator's `launchctl list`, matching `UIKitApplication:com\.nikhilpatel\.cheeks\[`, since the UI test runner's name starts the same way.
+- **iPhone Duo simulator:** it boots folded, with the app on the 466-pt-tall cover screen, and a reboot folds it again. Nothing on the command line can unfold it (turning a screen's power off only leaves SpringBoard crashing until a reboot). [Apple's docs](https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub) put the control in Device Hub, Xcode 27's device window: select the Duo, then the Open pose button under the bezel. It's unfolded on this Mac now. To check: `hingeState:` in SpringBoard's log should say `OpenFlat`, and the app should be on the inner screen at 2853×2007 px with the cover black. Its screenshots need `--display=primary` (cover) or `--display=primary-1` (inner).
+- **Measuring the app:** other simulators can be running their own `Cheeks`, so never use `pgrep -x Cheeks`. Get the PID from that simulator's `launchctl list`, matching `UIKitApplication:com\.nikhilpatel\.seguedj\[`, since the UI test runner's name starts the same way.
 - **Installing on the phone:** this needs a signing team (`DEVELOPMENT_TEAM`). The owner sets it once in Xcode; don't invent one.
 
 ## Architecture rules
@@ -135,6 +138,7 @@ The look is **black display screens set into a club controller's matte control s
 - **Respect the system:** `UIAccessibility.isReduceMotionEnabled` for decorative motion, accessibility labels and adjustable actions on controls, continuous corners everywhere.
 - **Deck 2 is mirrored** so each deck's tempo fader and CUE/PLAY sit at the screen edge.
 - **The screen has three layouts** (`ScreenLayout`): full at 900×600 or more, and compact on its side or upright below that. Compact keeps both decks' pads and the mixer on screen, and a deck's `JOG` key swaps its pads for the jog. Anything that changes a control's size has to fit the smallest, 667×375. Decks have fixed widths there, so a page that's too wide gets clipped and can't push the screen sideways. Check with the `small`, `small-up`, `iphone` and `iphone-up` snapshots, and `PhoneLayoutTests` on an iPhone simulator.
+- **Upright, each deck has a fixed height,** half of what's left, so one deck's page can't push the other off the screen. A deck's that wide and short there, so the keys beside its jog go in two columns (`DeckKeys.sideBySide`). `PhoneLayoutTests` checks both decks on the jog at once.
 - **Don't name other DJ brands in the app.** The library import says "DJ library", and the code does too.
 - **The Duo has a centre crease when unfolded**, so the mixer sits across it and the waveform playhead sits off-centre.
 - **Check visual changes with the snapshot test at the Duo size** before calling them done, using real music (below). Synthetic fixtures make waveforms look much worse than they are.

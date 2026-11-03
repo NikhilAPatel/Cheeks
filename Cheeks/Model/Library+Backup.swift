@@ -62,7 +62,7 @@ extension Library {
     }
 
     var suggestedBackupName: String {
-        "Cheeks Library \(Self.dayFormatter.string(from: Date()))"
+        "Segue DJ Library \(Self.dayFormatter.string(from: Date()))"
     }
 
     /// Brings today's automatic copy up to date and clears out old ones. Each day's copy ends up as
@@ -70,7 +70,7 @@ extension Library {
     /// middle of a mix, so unless it's asked to, this leaves a copy made in the last few minutes alone.
     func writeAutomaticBackup(now: Date = Date(), evenIfRecent: Bool = false) {
         guard !tracks.isEmpty else { return }
-        let url = Self.backupDirectory.appending(path: "Cheeks Library \(Self.dayFormatter.string(from: now)).json")
+        let url = Self.backupDirectory.appending(path: "Segue DJ Library \(Self.dayFormatter.string(from: now)).json")
         if !evenIfRecent, let made = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
            abs(now.timeIntervalSince(made)) < Self.automaticBackupInterval {
             return
@@ -82,7 +82,7 @@ extension Library {
 
     private func pruneAutomaticBackups() {
         let files = (try? FileManager.default.contentsOfDirectory(at: Self.backupDirectory, includingPropertiesForKeys: nil)) ?? []
-        let dated = files.filter { $0.lastPathComponent.hasPrefix("Cheeks Library ") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+        let dated = files.filter { $0.lastPathComponent.hasPrefix("Segue DJ Library ") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
         for old in dated.dropFirst(Self.automaticBackupsKept) { try? FileManager.default.removeItem(at: old) }
     }
 

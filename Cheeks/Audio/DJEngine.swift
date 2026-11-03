@@ -26,7 +26,7 @@ final class DJEngine {
     @ObservationIgnored private(set) var autoDJ: AutoDJ!
     @ObservationIgnored private var sourceNode: AVAudioSourceNode?
     /// Session and engine calls can block for a while, so they stay off the main thread.
-    @ObservationIgnored private let audioQueue = DispatchQueue(label: "com.nikhilpatel.cheeks.audio-session", qos: .userInitiated)
+    @ObservationIgnored private let audioQueue = DispatchQueue(label: "com.nikhilpatel.seguedj.audio-session", qos: .userInitiated)
 
     var crossfader: Float = 0 { didSet { updateVolumes() } }
     /// What the COLOR knobs do, on both channels.

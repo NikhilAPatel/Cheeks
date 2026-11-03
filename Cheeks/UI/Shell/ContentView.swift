@@ -212,7 +212,7 @@ struct TopBar: View {
             if !layout.isCompact {
                 HStack(spacing: 4) {
                     CheeksMark(size: 13)
-                    Text("cheeks").font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(Theme.textPrimary)
+                    Text("SEGUE DJ").font(Theme.silk(12)).tracking(1).foregroundStyle(Theme.textPrimary).fixedSize()
                 }
                 .padding(.horizontal, 3)
             }

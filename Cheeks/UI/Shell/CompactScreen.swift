@@ -85,11 +85,18 @@ struct CompactScreen: View {
 
     private func portrait(size: CGSize) -> some View {
         let width = size.width - 6
+        let mixer = min(210, max(150, size.height * 0.22))
         return VStack(spacing: 2) {
             WaveformPanel(waveHeight: max(30, min(90, size.height * 0.07)), overviewHeight: 11, phaseHeight: 6)
-            CompactDeck(deck: dj.decks[0]).frame(width: width)
-            CompactMixer(layout: .portrait).frame(height: min(210, max(150, size.height * 0.22)))
-            CompactDeck(deck: dj.decks[1]).frame(width: width)
+            // Fixed heights, so one deck's page can never push the other off the screen.
+            GeometryReader { geo in
+                let deck = max(0, (geo.size.height - mixer - 4) / 2)
+                VStack(spacing: 2) {
+                    CompactDeck(deck: dj.decks[0], keysSideBySide: true).frame(width: width, height: deck)
+                    CompactMixer(layout: .portrait).frame(height: mixer)
+                    CompactDeck(deck: dj.decks[1], keysSideBySide: true).frame(width: width, height: deck)
+                }
+            }
         }
         .padding(.horizontal, 3)
     }
@@ -99,6 +106,8 @@ struct CompactScreen: View {
 struct CompactDeck: View {
     @Environment(\.compactDeckStartsOnJog) private var startsOnJog
     @Bindable var deck: Deck
+    /// Upright, a deck is wide and short, so the keys beside the jog go in two columns.
+    var keysSideBySide = false
     @State private var showJog = false
     private var mirrored: Bool { deck.index == 1 }
 
@@ -135,15 +144,16 @@ struct CompactDeck: View {
     @ViewBuilder
     private var page: some View {
         if showJog {
+            let keys = DeckKeys(deck: deck, sideBySide: keysSideBySide).frame(width: keysSideBySide ? 128 : 62)
             HStack(spacing: 4) {
                 if mirrored {
-                    DeckKeys(deck: deck).frame(width: 62)
+                    keys
                     JogSection(deck: deck)
                     TempoSection(deck: deck).frame(width: 32)
                 } else {
                     TempoSection(deck: deck).frame(width: 32)
                     JogSection(deck: deck)
-                    DeckKeys(deck: deck).frame(width: 62)
+                    keys
                 }
             }
         } else {

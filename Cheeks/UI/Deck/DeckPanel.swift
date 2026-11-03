@@ -112,33 +112,61 @@ struct TempoSection: View {
 struct DeckKeys: View {
     @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
+    /// Two columns, for a deck too short to stack them: a phone held upright.
+    var sideBySide = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            Key("BEAT SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: {
-                let wasOn = deck.syncOn
-                dj.toggleSync(deck)
-                if !wasOn && deck.syncOn { Haptics.shared.confirm() }
-            })
-            .frame(height: 32)
-            Key("MASTER", color: Theme.cue, lit: dj.masterIndex == deck.index && deck.isLoaded, size: 8.5, feel: .toggle, onPress: { dj.setMaster(deck) })
-                .frame(height: 22)
-            Spacer(minLength: 2)
-            jumpSection
-            Spacer(minLength: 2)
-            HStack(spacing: 3) {
-                Key("Q", lit: deck.quantize, feel: .toggle, onPress: { deck.quantize.toggle() })
-                Key("SLIP", lit: deck.slipMode, size: 8.5, feel: .toggle, onPress: { deck.slipMode.toggle() })
+        if sideBySide {
+            HStack(spacing: 4) {
+                VStack(spacing: 4) {
+                    syncKeys
+                    Spacer(minLength: 2)
+                    switches
+                }
+                VStack(spacing: 4) {
+                    jumpSection
+                    Spacer(minLength: 2)
+                    keySection
+                }
             }
-            .frame(height: 24)
-            HStack(spacing: 3) {
-                Key("KEY", lit: deck.keyLock, size: 8.5, feel: .toggle, onPress: { deck.keyLock.toggle() })
-                Key("REV", color: Theme.danger, lit: deck.reverse, size: 8.5, feel: .toggle, onPress: { deck.reverse.toggle() })
+        } else {
+            VStack(spacing: 4) {
+                syncKeys
+                Spacer(minLength: 2)
+                jumpSection
+                Spacer(minLength: 2)
+                switches
+                Spacer(minLength: 2)
+                keySection
             }
-            .frame(height: 24)
-            Spacer(minLength: 2)
-            keySection
         }
+    }
+
+    @ViewBuilder
+    private var syncKeys: some View {
+        Key("BEAT SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: {
+            let wasOn = deck.syncOn
+            dj.toggleSync(deck)
+            if !wasOn && deck.syncOn { Haptics.shared.confirm() }
+        })
+        .frame(height: 32)
+        Key("MASTER", color: Theme.cue, lit: dj.masterIndex == deck.index && deck.isLoaded, size: 8.5, feel: .toggle, onPress: { dj.setMaster(deck) })
+            .frame(height: 22)
+    }
+
+    /// Quantize, slip, key lock and reverse.
+    @ViewBuilder
+    private var switches: some View {
+        HStack(spacing: 3) {
+            Key("Q", lit: deck.quantize, feel: .toggle, onPress: { deck.quantize.toggle() })
+            Key("SLIP", lit: deck.slipMode, size: 8.5, feel: .toggle, onPress: { deck.slipMode.toggle() })
+        }
+        .frame(height: 24)
+        HStack(spacing: 3) {
+            Key("KEY", lit: deck.keyLock, size: 8.5, feel: .toggle, onPress: { deck.keyLock.toggle() })
+            Key("REV", color: Theme.danger, lit: deck.reverse, size: 8.5, feel: .toggle, onPress: { deck.reverse.toggle() })
+        }
+        .frame(height: 24)
     }
 
     /// Beat jump: tap the number to change how far.

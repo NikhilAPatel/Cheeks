@@ -39,7 +39,12 @@ final class PhoneLayoutTests: CheeksUITestCase {
             press(jog)
             usleep(300_000)
             assertEverythingFits("\(name), jog")
+            // Both at once as well: upright, the second deck used to get pushed off the screen.
+            press(button("Show jog, deck 2"))
+            usleep(300_000)
+            assertEverythingFits("\(name), both on the jog")
             screenshot("phone-\(name)-jog")
+            press(button("Show pads, deck 2"))
             press(button("Show pads, deck 1"))
         }
         let more = button("More mixer controls")

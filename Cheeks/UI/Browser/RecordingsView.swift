@@ -17,7 +17,7 @@ struct RecordingsView: View {
             List {
                 if recordings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "record.circle",
-                                           description: Text("Tap REC at the top of the screen to record your mix. Recordings also appear in the Files app under Cheeks › Recordings, with a tracklist next to each one."))
+                                           description: Text("Tap REC at the top of the screen to record your mix. Recordings also appear in the Files app under Segue DJ › Recordings, with a tracklist next to each one."))
                 }
                 ForEach(recordings, id: \.self) { url in
                     row(url)
@@ -198,7 +198,7 @@ final class RecordingPlayer {
 
     private final class Core: NSObject, AVAudioPlayerDelegate {
         var onFinished: ((URL) -> Void)?
-        private let queue = DispatchQueue(label: "com.nikhilpatel.cheeks.recording-player", qos: .userInitiated)
+        private let queue = DispatchQueue(label: "com.nikhilpatel.seguedj.recording-player", qos: .userInitiated)
         private var player: AVAudioPlayer?
 
         func play(_ url: URL, started: @escaping (Bool) -> Void) {

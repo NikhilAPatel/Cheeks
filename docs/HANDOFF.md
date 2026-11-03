@@ -70,7 +70,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 - The iPhone Duo is a real simulator here (iOS 27.2).
   - Inner screen: 2007×2853 px @3x, which is **669×951 pt (951×669 landscape)**.
   - Cover screen: 466×678 pt.
-  - It boots folded and `simctl` can't unfold it. On this Mac it's currently unfolded, and UI tests reach the inner screen. If one prints a window that isn't 951×669, it's folded again.
+  - The owner named the app Segue DJ on 2 Nov 2026. The name still has to be reserved in App Store Connect and checked by a trademark lawyer; MegaSeg DJ, a Mac DJ app, is the closest name found so far.
+  - It boots folded, and a reboot folds it again. Nothing on the command line can unfold it. Apple's docs put the control in Device Hub, Xcode 27's device window: select the Duo, then the Open pose button under the bezel. It's unfolded on this Mac now, and if a UI test prints a window that isn't 951×669, it's folded again.
   - `XCUIScreen.main` is the cover screen, which is black. UI tests screenshot the app's window instead, and those can come out rotated.
 - Xcode 27 ships no standalone Simulator.app.
 - Metal layers don't appear in `drawHierarchy`, so the snapshot test sets `LiveRenderer.captureMode` and each live view paints itself into an image overlay. Animations that start from zero (waveform reveal, ring sweep) skip to the end in that mode.

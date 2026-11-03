@@ -160,7 +160,7 @@ final class RecordingDrain: @unchecked Sendable {
         self.core = core
         self.recorder = recorder
         self.buffer = buffer
-        timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.nikhilpatel.cheeks.recording", qos: .userInitiated))
+        timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.nikhilpatel.seguedj.recording", qos: .userInitiated))
         cheeks_engine_set_recording(core, true)
         timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
         timer.setEventHandler { [unowned self] in drain() }
@@ -233,7 +233,7 @@ enum Setlist {
     /// CUE sheet: gives chapter markers in players and mix-upload sites.
     static func cueSheet(_ entries: [SetlistEntry], title: String, audioFileName: String) -> String {
         func clean(_ s: String) -> String { s.replacingOccurrences(of: "\"", with: "'") }
-        var lines = ["TITLE \"\(clean(title))\"", "PERFORMER \"Cheeks\"", "FILE \"\(clean(audioFileName))\" WAVE"]
+        var lines = ["TITLE \"\(clean(title))\"", "PERFORMER \"Segue DJ\"", "FILE \"\(clean(audioFileName))\" WAVE"]
         var previous = -75
         for (i, e) in entries.enumerated() {
             // CUE frames are 1/75 s; indexes must increase, so tracks that started together are 1 s apart.

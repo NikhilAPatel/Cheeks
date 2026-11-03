@@ -391,7 +391,7 @@ struct BrowserView: View {
                 ContentUnavailableView {
                     Label("No music yet", systemImage: "music.note.house")
                 } description: {
-                    Text("Tap Import to add music from Files, or drop audio into the Cheeks folder in the Files app or Finder.")
+                    Text("Tap Import to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder.")
                 }
             } else if !search.isEmpty {
                 ContentUnavailableView.search(text: search)

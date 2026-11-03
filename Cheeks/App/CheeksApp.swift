@@ -5,6 +5,7 @@ struct CheeksApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var library: Library
     @State private var dj: DJEngine
+    @State private var isOpening = true
 
     init() {
         LaunchLog.mark("app starting")
@@ -18,19 +19,28 @@ struct CheeksApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(library)
-                .environment(dj)
-                .statusBarHidden()
-                .persistentSystemOverlays(.hidden)
-                .defersSystemGestures(on: .all)
-                .onAppear {
-                    UIApplication.shared.isIdleTimerDisabled = true
-                    LaunchLog.mark("first screen appeared")
-                    // The main thread's free again once this runs, so touches work from here.
-                    DispatchQueue.main.async { LaunchLog.mark("main thread free") }
-                    SelfTour.start(dj, library)
+            ZStack {
+                ContentView()
+                    .environment(library)
+                    .environment(dj)
+                if isOpening {
+                    OpeningCover()
+                        .transition(.opacity)
                 }
+            }
+            .statusBarHidden()
+            .persistentSystemOverlays(.hidden)
+            .defersSystemGestures(on: .all)
+            .onAppear {
+                UIApplication.shared.isIdleTimerDisabled = true
+                LaunchLog.mark("first screen appeared")
+                // The main thread's free again once this runs, so touches work from here.
+                DispatchQueue.main.async {
+                    LaunchLog.mark("main thread free")
+                    withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.25)) { isOpening = false }
+                }
+                SelfTour.start(dj, library)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

@@ -13,28 +13,28 @@ cd "$ROOT"
 xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -configuration $CONFIG -destination "platform=iOS Simulator,name=$SIM" -derivedDataPath build build > /tmp/cheeks-tour-build.log 2>&1 \
   || { grep -E "error:|BUILD FAILED" /tmp/cheeks-tour-build.log | head -20; exit 1; }
 xcrun simctl boot "$SIM" 2>/dev/null
-xcrun simctl uninstall "$SIM" com.nikhilpatel.cheeks 2>/dev/null
+xcrun simctl uninstall "$SIM" com.nikhilpatel.seguedj 2>/dev/null
 xcrun simctl install "$SIM" build/Build/Products/$CONFIG-iphonesimulator/Cheeks.app
-DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.cheeks data)
+DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.seguedj data)
 mkdir -p "$DATA/Library/Application Support"
 python3 -I tools/test-music/big_library.py "$DATA/Library/Application Support/library.json" "$TRACKS" > /dev/null
 tools/test-music/fetch.sh /tmp/cheeks-music > /dev/null 2>&1
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 # Stems stay off unless asked for, as they'd swamp everything else.
 if [ -n "${CHEEKS_PERF_STEMS:-}" ]; then
-  xcrun simctl spawn "$SIM" defaults delete com.nikhilpatel.cheeks prepareStemsOnLoad 2>/dev/null
+  xcrun simctl spawn "$SIM" defaults delete com.nikhilpatel.seguedj prepareStemsOnLoad 2>/dev/null
 else
-  xcrun simctl spawn "$SIM" defaults write com.nikhilpatel.cheeks prepareStemsOnLoad -bool NO
+  xcrun simctl spawn "$SIM" defaults write com.nikhilpatel.seguedj prepareStemsOnLoad -bool NO
 fi
 # Twice, as the first launch after an install has shaders to build, and what matters most is the second one.
 for run in first second; do
   rm -f "$LOG"
-  SIMCTL_CHILD_CHEEKS_LAUNCH_LOG="$LOG" SIMCTL_CHILD_CHEEKS_SELF_TOUR=1 xcrun simctl launch --terminate-running-process "$SIM" com.nikhilpatel.cheeks > /dev/null
+  SIMCTL_CHILD_CHEEKS_LAUNCH_LOG="$LOG" SIMCTL_CHILD_CHEEKS_SELF_TOUR=1 xcrun simctl launch --terminate-running-process "$SIM" com.nikhilpatel.seguedj > /dev/null
   for i in {1..120}; do
     sleep 1
     grep -qE "STEP:  (done|stopped)" "$LOG" 2>/dev/null && break
   done
-  xcrun simctl terminate "$SIM" com.nikhilpatel.cheeks 2>/dev/null
+  xcrun simctl terminate "$SIM" com.nikhilpatel.seguedj 2>/dev/null
   echo "=== $run launch, $CONFIG, $SIM, $TRACKS tracks"
   grep -E "STEP:|STALL:|PERF:|first screen|main thread free" "$LOG"
 done

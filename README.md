@@ -1,4 +1,4 @@
-# Cheeks
+# Segue DJ
 
 A professional DJ app for iPhone and iPad. You perform entirely on the screen, with no controller. It's built like a club booth: black screens set into a matte control surface, and it feels like an Apple app.
 
@@ -58,7 +58,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 - Tap a row's waveform to **preview** it: in the cue ear with a split cable, or quietly on the main output without one.
 - Import from the Files app, or drop files into the app's folder through Files or Finder.
 - **DJ library import:** export your collection as XML from your DJ software, then Import → DJ library. Import your audio first; tracks are matched by file name, and bring over their beat grid including tempo changes, BPM, key, hot cues and hot loops with their names and colours, every memory cue, saved loops and playlists.
-- **Backup:** Settings saves your grids, cues, loops, keys and playlists to a file, and restores them, even on a fresh install. Cheeks also keeps a copy each day in the Files app. A track whose audio file has gone is marked, and gets its cues back when the file's imported again.
+- **Backup:** Settings saves your grids, cues, loops, keys and playlists to a file, and restores them, even on a fresh install. Segue DJ also keeps a copy each day in the Files app. A track whose audio file has gone is marked, and gets its cues back when the file's imported again.
 
 **The small things**
 - Haptics designed per control. Keys that move like keys, pads that flare when struck.
@@ -87,7 +87,7 @@ Once a track's stems are ready, its drums also correct its beat grid, unless you
 
 ## Stems
 
-Separation needs a machine-learning model. Cheeks uses [HT-Demucs](https://github.com/facebookresearch/demucs) converted to Core ML. `tools/stems/` has the conversion script and instructions, and the result goes at `Cheeks/Stems.mlpackage`. It's large, so it isn't kept in git. **Personal use is fine, but the weights can't go in a public release as things stand**, since they were trained on a research dataset. [docs/RELEASE.md](docs/RELEASE.md) has the options.
+Separation needs a machine-learning model. Segue DJ uses [HT-Demucs](https://github.com/facebookresearch/demucs) converted to Core ML. `tools/stems/` has the conversion script and instructions, and the result goes at `Cheeks/Stems.mlpackage`. It's large, so it isn't kept in git. **Personal use is fine, but the weights can't go in a public release as things stand**, since they were trained on a research dataset. [docs/RELEASE.md](docs/RELEASE.md) has the options.
 
 Without the model, the app falls back to a frequency-based split, and the status shows **≈EQ**. That's only good for rough "drop the bass" moves.
 

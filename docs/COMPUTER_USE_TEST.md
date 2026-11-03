@@ -22,15 +22,15 @@ xcodebuild -project Cheeks.xcodeproj -scheme Cheeks \
 # Expect: ** BUILD SUCCEEDED **
 
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null
-xcrun simctl uninstall "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks 2>/dev/null   # start clean
+xcrun simctl uninstall "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj 2>/dev/null   # start clean
 xcrun simctl install "iPad Pro 13-inch (M5)" build/Build/Products/Debug-iphonesimulator/Cheeks.app
 
 # Two test tracks, then drop them in the app's Documents folder, which it imports from at launch
 tools/test-music/fetch.sh /tmp/cheeks-music
-DATA=$(xcrun simctl get_app_container "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks data)
+DATA=$(xcrun simctl get_app_container "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
-xcrun simctl launch "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks
+xcrun simctl launch "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj
 ```
 
 **Seeing and touching the simulator:** Xcode 27 has no standalone Simulator.app on this Mac, so use the Claude simulator panel, or try `open -a Simulator` if it turns out to exist. To save a screenshot:
@@ -140,12 +140,12 @@ For each one, record PASS, FAIL or BLOCKED, what you actually saw, and any scree
 1. Tap `REC` while a deck plays. It should widen, turn red and show a running timer.
 2. After 20 seconds, tap it again: it asks for confirmation. Choose "Stop and save". A "Saving your mix…" capsule should appear, then "Saved Mix…". Screenshot `l2-saved`.
 3. Open Recordings (waveform icon). The mix should be listed with its length and size. Play it. Rename it. Check that its tracklist shows if a track was on air for 10+ seconds.
-4. Check the file exists: `ls -la "$(xcrun simctl get_app_container "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks data)/Documents/Recordings/"`.
+4. Check the file exists: `ls -la "$(xcrun simctl get_app_container "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj data)/Documents/Recordings/"`.
 
 ### M. Settings and resilience
 1. Open the gear. Switch **Waveform colours** to RGB and back, and check the waveforms change. Toggle the others. Check that the sheet looks like a normal iOS settings screen.
-2. **Background:** with a deck playing, send the app to the background (`xcrun simctl launch "iPad Pro 13-inch (M5)" com.apple.Preferences`), wait 10 seconds, and return (`xcrun simctl launch "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks`). The state should be right, with no frozen visuals.
-3. **Persistence:** set a hot cue, terminate (`xcrun simctl terminate "iPad Pro 13-inch (M5)" com.nikhilpatel.cheeks`), relaunch and reload the track. The cue should still be there.
+2. **Background:** with a deck playing, send the app to the background (`xcrun simctl launch "iPad Pro 13-inch (M5)" com.apple.Preferences`), wait 10 seconds, and return (`xcrun simctl launch "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj`). The state should be right, with no frozen visuals.
+3. **Persistence:** set a hot cue, terminate (`xcrun simctl terminate "iPad Pro 13-inch (M5)" com.nikhilpatel.seguedj`), relaunch and reload the track. The cue should still be there.
 4. **Crash-safe recording:** start a recording, wait 15 seconds, terminate as above, relaunch. A "Recovered…" capsule should appear and the mix should be in Recordings.
 
 ### N. Performance
