@@ -134,9 +134,12 @@ final class DJEngine {
                 self?.say(liked ? "Got it. More like that." : "Got it. Less like that.", .done)
             }
         }
+        LaunchLog.mark("  engine: decks and Auto DJ made")
         buildGraph()
+        LaunchLog.mark("  engine: audio graph built")
         updateVolumes()
         startAudio()
+        LaunchLog.mark("  engine: audio started")
         observeSession()
         // .common mode keeps sync and transport state updating while a list is being scrolled.
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in

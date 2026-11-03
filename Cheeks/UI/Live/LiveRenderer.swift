@@ -57,7 +57,9 @@ final class LiveRenderer {
         descriptor.vertexFunction = library.makeFunction(name: "fullscreen_vertex")
         descriptor.fragmentFunction = library.makeFunction(name: fragment)
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        let started = CACurrentMediaTime()
         let state = try! device.makeRenderPipelineState(descriptor: descriptor)
+        LaunchLog.mark(String(format: "shader %@ built in %.0f ms", fragment, (CACurrentMediaTime() - started) * 1000))
         pipelines[fragment] = state
         return state
     }

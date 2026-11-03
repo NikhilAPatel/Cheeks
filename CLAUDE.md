@@ -33,6 +33,9 @@ tools/ui-tests.sh "iPad Air 13-inch (M4)" -only-testing:CheeksUITests/UndoAndRef
 # CPU in each state, on this simulator's own process (it takes a few minutes)
 tools/measure-cpu.sh "iPhone Duo"
 
+# where launch time goes: prints each step, each shader, and each pre-rendered part. Install a fresh copy for a first launch
+SIMCTL_CHILD_CHEEKS_LAUNCH_LOG=1 xcrun simctl launch --console-pty --terminate-running-process "iPhone 17" com.nikhilpatel.cheeks
+
 # run in the simulator and screenshot
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null
 xcodebuild -project Cheeks.xcodeproj -scheme Cheeks -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -derivedDataPath build build
@@ -105,6 +108,7 @@ The look is **black display screens set into a club controller's matte control s
 - **Anything that moves is drawn in Metal** (`UI/Live/`), by a shared display link that skips any view whose uniforms didn't change. An idle screen costs nothing. Don't put per-frame work in SwiftUI: no `TimelineView(.animation)`, no observed playhead.
 - **No `TimelineView` shorter than about 0.25 s, even when it's only updating a label.** It keeps SwiftUI's display link running, which re-renders the whole view graph every frame: this was most of the app's idle CPU. Use `DeckClock`, or an observed value set from `DJEngine.tick` that only changes when the number on screen would.
 - **Hardware parts are pre-rendered once** (`Baked` in `UI/Design/Theme.swift`) and composited as bitmaps. Shadows, blurs and gradients are fine inside a bake, and should be avoided outside one, because they cost GPU time on every frame.
+- **A bake draws into real pixels straight away, through `ImageRenderer.render`. Never use `.uiImage` or `.cgImage` for this.** Those hand back an image still to be drawn on the GPU, and until its shaders are built, each one waits for a time-out ("image provider timed out" in the log). That cost about 20 s the first time the app opened on a real phone. Going this way, a `Canvas`'s conic gradient comes out mirrored top to bottom, so `KnobArt.cap` flips it back.
 - **Performance controls take touches from UIKit** through `TouchSurface`, not SwiftUI gestures: true multitouch, and they act on first contact. Browser and settings screens are ordinary SwiftUI, and should look and feel native.
 - **Anything along the screen's top edge is a `TouchSurface` key,** not a SwiftUI `Button`. A button there failed every tap in the hands-on test.
 - **Don't fade between pages of pads:** they change instantly. While they faded, a tap within about 0.15 s of changing tab fired the old page's pad in the hands-on test.

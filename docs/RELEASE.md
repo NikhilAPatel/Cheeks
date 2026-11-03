@@ -4,7 +4,7 @@ What stands between this app and the public, and who has to do what. Personal us
 
 | | What | Who | State |
 |---|---|---|---|
-| 1 | Pick a signing team in Xcode, and install on a phone | Owner | Not done. The app has never run on a real phone |
+| 1 | Pick a signing team in Xcode, and install on a phone | Owner | Done, on an iPhone 15 Pro Max. The first launch took about 20 s, which led to the fix below, not yet tried on the phone |
 | 2 | The stem model's licence | Owner decides, see below | **Blocks a public release** |
 | 3 | Speed, heat and memory on a real phone, including how long a split takes | Owner's phone, then me | Not measured. `MIX` needs a split to finish while the track before it plays |
 | 4 | A real finger on small screens, and how it sounds in headphones | Owner, using `docs/TEST_PLAN.md` §2 | Not done. Everything so far is simulated touch |

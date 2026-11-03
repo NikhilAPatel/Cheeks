@@ -7,9 +7,12 @@ struct CheeksApp: App {
     @State private var dj: DJEngine
 
     init() {
+        LaunchLog.mark("app starting")
         let library = Library()
+        LaunchLog.mark("library ready, \(library.tracks.count) tracks")
         _library = State(initialValue: library)
         _dj = State(initialValue: DJEngine(library: library))
+        LaunchLog.mark("engine ready")
     }
 
     var body: some Scene {
@@ -20,7 +23,12 @@ struct CheeksApp: App {
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
                 .defersSystemGestures(on: .all)
-                .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+                .onAppear {
+                    UIApplication.shared.isIdleTimerDisabled = true
+                    LaunchLog.mark("first screen appeared")
+                    // The main thread's free again once this runs, so touches work from here.
+                    DispatchQueue.main.async { LaunchLog.mark("main thread free") }
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

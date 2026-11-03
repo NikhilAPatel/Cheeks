@@ -201,7 +201,11 @@ enum KnobArt {
                 context.fill(circle, with: .linearGradient(Gradient(colors: [Color(white: 0.28), Color(white: 0.13)]),
                                                            startPoint: CGPoint(x: rect.minX, y: rect.minY), endPoint: CGPoint(x: rect.maxX, y: rect.maxY)))
                 // Satin sheen: a soft bright wedge from the top left.
-                context.fill(circle, with: .conicGradient(Gradient(colors: [.clear, .white.opacity(0.22), .clear, .clear, .white.opacity(0.08), .clear]),
+                // Drawn straight into a bitmap, a Canvas's conic gradient comes out mirrored top to bottom, so it's flipped back.
+                var flipped = context
+                flipped.translateBy(x: 0, y: canvas.height)
+                flipped.scaleBy(x: 1, y: -1)
+                flipped.fill(circle, with: .conicGradient(Gradient(colors: [.clear, .white.opacity(0.22), .clear, .clear, .white.opacity(0.08), .clear]),
                                                           center: c, angle: .degrees(-85)))
                 context.stroke(circle, with: .linearGradient(Gradient(colors: [.white.opacity(0.35), .black.opacity(0.5)]),
                                                              startPoint: CGPoint(x: rect.midX, y: rect.minY), endPoint: CGPoint(x: rect.midX, y: rect.maxY)), lineWidth: 0.75)

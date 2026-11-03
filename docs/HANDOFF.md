@@ -29,6 +29,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **Hands-on testing is a loop now:** the owner told the two Claude sessions to work directly and keep going until told to stop. The computer-use session runs `docs/COMPUTER_USE_TASK.md` and commits its results to local `master`. This side merges, fixes, verifies, pushes, and messages it what to retest. Stay off a simulator while it's testing there.
 
+**First time on a real phone (iPhone 15 Pro Max, 2026-11-02):** it took about 20 s to load things after opening, with "image provider timed out" in the console. Reproduced in the simulator: one time-out per pre-rendered part, on the first launch after an install. `Baked` now draws them into real pixels straight away. In the simulator that's no time-outs, 0.56 to 1.1 s to a free main thread (it was up to 3.85 s), and 30 ms for all 19 parts, with 2,000 tracks adding about 50 ms. It hasn't been tried on the phone yet. "fopen failed for data file" comes from `libCoreFSCache`, a system library, and shows up on a fresh install. It isn't ours.
+
 **After the seventh hands-on test:** 46 of 54 passed, on fdcacdc, with no crashes. The worst was Auto DJ auditioning the wrong decks from deck 2, and the rest was what happens when someone takes over mid-move. See the end of `docs/COMPUTER_USE_RESULTS_7.md`. The next retest is at the top of `docs/COMPUTER_USE_TASK.md`.
 
 **After the fifth hands-on test:** 23 of 24 passed, on c5eeab6, with no crashes. See the end of `docs/COMPUTER_USE_RESULTS_5.md`. The next retest is at the top of `docs/COMPUTER_USE_TASK.md`.

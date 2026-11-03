@@ -121,12 +121,30 @@ enum Baked {
 
     static func image<Content: View>(_ key: String, @ViewBuilder content: () -> Content) -> UIImage {
         if let hit = cache[key] { return hit }
-        let renderer = ImageRenderer(content: content())
-        renderer.scale = 3
-        renderer.isOpaque = false
-        let image = renderer.uiImage ?? UIImage()
+        let started = CACurrentMediaTime()
+        let image = draw(content()) ?? UIImage()
         cache[key] = image
+        LaunchLog.baked(key, took: CACurrentMediaTime() - started)
         return image
+    }
+
+    /// Draws a part into real pixels, now. `ImageRenderer.uiImage` looks the same, but it hands back an image that hasn't
+    /// been drawn yet, which is then drawn on the GPU when it's first needed. With its shaders not yet built, every part
+    /// waited for its time-out. On a phone that took about 20 s after opening, and on a busy Mac it came out blank.
+    private static func draw<Content: View>(_ content: Content) -> UIImage? {
+        let scale: CGFloat = 3
+        let renderer = ImageRenderer(content: content)
+        renderer.isOpaque = false
+        var image: CGImage?
+        renderer.render(rasterizationScale: scale) { size, draw in
+            guard let context = CGContext(data: nil, width: Int((size.width * scale).rounded(.up)), height: Int((size.height * scale).rounded(.up)),
+                                          bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return }
+            context.scaleBy(x: scale, y: scale)
+            draw(context)
+            image = context.makeImage()
+        }
+        return image.map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
     }
 }
 
