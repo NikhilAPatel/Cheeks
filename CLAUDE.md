@@ -33,8 +33,16 @@ tools/ui-tests.sh "iPad Air 13-inch (M4)" -only-testing:CheeksUITests/UndoAndRef
 # CPU in each state, on this simulator's own process (it takes a few minutes)
 tools/measure-cpu.sh "iPhone Duo"
 
-# where launch time goes: prints each step, each shader, and each pre-rendered part. Install a fresh copy for a first launch
+# where launch time goes: each step, each shader and pre-rendered part, every freeze of 100 ms or more, and CPU and memory
 SIMCTL_CHILD_CHEEKS_LAUNCH_LOG=1 xcrun simctl launch --console-pty --terminate-running-process "iPhone 17" com.nikhilpatel.cheeks
+
+# what freezes the app: its own walk round itself, with a big library and nothing touching it (Cheeks/App/SelfTour.swift)
+# CHEEKS_PERF_STEMS=1 lets stems split during it. CHEEKS_SELF_TOUR=1 and CHEEKS_LAUNCH_LOG=1 do the same on a phone
+CONFIG=Release tools/self-tour.sh "iPhone 17" 2000
+
+# the same driven by a UI test, for the browser's sorting and typing. A UI test freezes the app itself whenever it looks at
+# the screen, so believe tools/self-tour.sh over this: pad pages read 130 to 250 ms here and nothing at all there
+tools/perf-tour.sh "iPhone 17" 2000
 
 # run in the simulator and screenshot
 xcrun simctl boot "iPad Pro 13-inch (M5)" 2>/dev/null

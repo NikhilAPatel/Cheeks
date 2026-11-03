@@ -8,6 +8,7 @@ struct CheeksApp: App {
 
     init() {
         LaunchLog.mark("app starting")
+        LaunchLog.startWatching()
         let library = Library()
         LaunchLog.mark("library ready, \(library.tracks.count) tracks")
         _library = State(initialValue: library)
@@ -28,6 +29,7 @@ struct CheeksApp: App {
                     LaunchLog.mark("first screen appeared")
                     // The main thread's free again once this runs, so touches work from here.
                     DispatchQueue.main.async { LaunchLog.mark("main thread free") }
+                    SelfTour.start(dj, library)
                 }
         }
         .onChange(of: scenePhase) { _, phase in

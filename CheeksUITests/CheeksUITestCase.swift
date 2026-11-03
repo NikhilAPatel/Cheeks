@@ -5,10 +5,13 @@ import XCTest
 /// `tools/ui-tests.sh` does that and runs these.
 class CheeksUITestCase: XCTestCase {
     var app: XCUIApplication!
+    /// Anything a test wants the app to start with.
+    var launchEnvironment: [String: String] { [:] }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        app.launchEnvironment = launchEnvironment
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         // The app's landscape only. A simulator that thinks it's upright reports frames sideways.

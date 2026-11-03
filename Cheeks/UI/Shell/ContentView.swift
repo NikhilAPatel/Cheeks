@@ -64,6 +64,8 @@ struct ContentView: View {
         .background(Theme.chassis.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .environment(\.openBrowser, { showLibrary = true })
+        .onReceive(NotificationCenter.default.publisher(for: SelfTour.openBrowser)) { _ in showLibrary = true }
+        .onReceive(NotificationCenter.default.publisher(for: SelfTour.closeBrowser)) { _ in showLibrary = false }
         .task {
             if opensBrowserWhenEmpty && library.tracks.isEmpty { showLibrary = true }
         }
