@@ -31,6 +31,8 @@ final class AutoDJ {
         var plannedFor: UUID?
         /// How many times a plan's failed from where it was looking, so it looks further back in the track each time.
         var stepsBack = 0
+        /// It's looked as far back as it can, and an echo out is what's left.
+        var lastResort = false
         /// Something's just been said that matters more than what's up next, which the deck shows anyway.
         var keepsQuietAboutNext = false
         /// Where the track on air has nothing left to hear, once it's near enough the end to look.
@@ -300,12 +302,19 @@ final class AutoDJ {
             deck.prepareStems()
         }
         guard set.plannedFor != next, let map = air.trackMap, waiting.trackMap != nil else { return }
-        // As late as it'll go, and no further back than a third of the way in: past that it's better to let the track finish.
-        let from = TransitionPlanner.setExit(in: map) - TransitionPlanner.setStepBack * set.stepsBack
-        guard set.stepsBack == 0 || from >= map.barCount / 3 else {
-            mixSet?.plannedFor = next
-            say("No clean way in. Next track starts when this one ends.", .info)
-            return
+        // As late as it'll go, and no further back than a third of the way in: past that it's better to echo out from
+        // where it would have left anyway, and past that to let the track finish.
+        let usual = TransitionPlanner.setExit(in: map)
+        var from = usual - TransitionPlanner.setStepBack * set.stepsBack
+        let lookedEverywhere = set.stepsBack > 0 && from < map.barCount / 3
+        if lookedEverywhere {
+            guard !set.lastResort else {
+                mixSet?.plannedFor = next
+                say("No clean way in. Next track starts when this one ends.", .info)
+                return
+            }
+            from = usual
+            mixSet?.lastResort = true
         }
         outgoing = air
         incoming = waiting
@@ -315,6 +324,7 @@ final class AutoDJ {
         } else {
             outgoing = nil
             incoming = nil
+            mixSet?.lastResort = false
         }
     }
 
@@ -325,6 +335,7 @@ final class AutoDJ {
         mixSet?.plannedFor = nil
         mixSet?.stepsBack = 0
         mixSet?.silentFrom = nil
+        mixSet?.lastResort = false
     }
 
     /// There was no move ready: stems weren't there in time, or there was no clean way in. The music mustn't stop.
@@ -408,7 +419,9 @@ final class AutoDJ {
                                       lagA: lagFor(outgoing, rateA, outgoing.keyShift), lagB: lagFor(incoming, playingBPM / mapB.bpm, 0),
                                       lagShifted: cheeks_deck_stem_lag(incoming.renderer.handle, playingBPM / mapB.bpm),
                                       earliest: max(soonest, leaveFrom), recentMoves: recentMoves,
-                                      avoid: leavesOut.union(mixSet == nil ? [] : [.brakeDrop]), wantsTimeOnNext: mixSet != nil, taste: ratings.taste)
+                                      avoid: leavesOut.union(mixSet == nil ? [] : [.brakeDrop]), wantsTimeOnNext: mixSet != nil, taste: ratings.taste,
+                                      // Someone's pressed the key and wants something to happen. A mix looks further back first.
+                                      fallsBackToEchoOut: mixSet?.lastResort ?? true)
         planning = Task.detached(priority: .userInitiated) { [weak self] in
             let chosen = choice.choose(isCancelled: { Task.isCancelled })
             if Task.isCancelled { return }

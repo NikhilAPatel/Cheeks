@@ -273,6 +273,8 @@ struct TransitionChoice {
     var wantsTimeOnNext = false
     /// What each move gains or loses from how it's been rated.
     var taste: [TransitionMove: Double] = [:]
+    /// Whether to settle for an echo out if nothing else passes.
+    var fallsBackToEchoOut = false
 
     var playingBPM: Double { mapA.bpm * rateA }
 
@@ -297,17 +299,42 @@ struct TransitionChoice {
                 return plan
             }
             .sorted { $0.score > $1.score }
-        // Too far apart to stretch, so the new track lands at its own tempo.
-        let ownTempo = abs(playingBPM / mapB.bpm - 1) > TransitionPlanner.maxStretch
-        let rateB = ownTempo ? 1 : playingBPM / mapB.bpm
         for plan in TransitionPlanner.shortlist(plans) {
             if isCancelled() { return nil }
-            let score = TransitionScore(plan: plan,
+            let score = score(for: plan)
+            if review(score, isCancelled)?.passes == true { return score }
+        }
+        return fallsBackToEchoOut ? echoOut(isCancelled) : nil
+    }
+
+    private func score(for plan: TransitionPlan) -> TransitionScore {
+        // Too far apart to stretch, so the new track lands at its own tempo.
+        let ownTempo = abs(playingBPM / mapB.bpm - 1) > TransitionPlanner.maxStretch
+        return TransitionScore(plan: plan,
+                               a: .init(deck: deckA, map: mapA, rate: rateA, lag: lagA),
+                               b: .init(deck: deckB, map: mapB, rate: ownTempo ? 1 : playingBPM / mapB.bpm, lag: plan.shift != 0 ? lagShifted : (ownTempo ? 0 : lagB)))
+    }
+
+    private func review(_ score: TransitionScore, _ isCancelled: () -> Bool) -> TransitionAudition.Review? {
+        TransitionAudition.review(score, stemsA: stemsA, stemsB: stemsB, levelA: levelA, levelB: levelB, isCancelled: isCancelled)
+    }
+
+    /// What a DJ does with two tracks that don't go: the old one echoes out on a phrase, and the new one starts near its
+    /// top, at its own tempo. It overlaps nothing and builds to nothing, so a new track that's smaller than the last isn't
+    /// a let-down: only a level that pushes the limiter can stop it. Anything's better than one track just ending and
+    /// another just starting.
+    private func echoOut(_ isCancelled: () -> Bool) -> TransitionScore? {
+        let track = PlannerTrack(mapA), next = PlannerTrack(mapB)
+        let lines = track.lines.filter { $0 >= earliest }
+        // Where the beat comes in, if that's early on. A long beatless intro after a club track felt "way too slow".
+        let entry = next.lines.first { $0 < next.bars / 3 && next.kick($0, $0 + 8) > 0.5 } ?? 0
+        // From a full section if it can: leaving from a breakdown means the track was already gone.
+        for exit in (lines.filter { track.level($0 - 8, $0) > -3 } + lines).prefix(4) {
+            if isCancelled() { return nil }
+            let score = TransitionScore(plan: TransitionPlan(move: .echoDrop, exit: exit, entry: entry, score: 0),
                                         a: .init(deck: deckA, map: mapA, rate: rateA, lag: lagA),
-                                        b: .init(deck: deckB, map: mapB, rate: rateB, lag: plan.shift != 0 ? lagShifted : (ownTempo ? 0 : lagB)))
-            if TransitionAudition.review(score, stemsA: stemsA, stemsB: stemsB, levelA: levelA, levelB: levelB, isCancelled: isCancelled)?.passes == true {
-                return score
-            }
+                                        b: .init(deck: deckB, map: mapB, rate: 1, lag: 0))
+            if let review = review(score, isCancelled), !review.problems.contains(TransitionAudition.limiterPushed) { return score }
         }
         return nil
     }
@@ -325,6 +352,7 @@ enum TransitionAudition {
 
     /// Bars of the old track to measure before the move, and of the new one after it.
     private static let settleBars = 4
+    static let limiterPushed = "limiter pushed"
 
     /// `levelA` and `levelB` are each channel's trim and fader together, as the live mixer has them.
     static func review(_ score: TransitionScore, stemsA: [PCM16Stereo], stemsB: [PCM16Stereo], levelA: Float, levelB: Float, isCancelled: () -> Bool = { false },
@@ -401,7 +429,7 @@ enum TransitionAudition {
             let bar = settleBars + Int((landing / 4).rounded())
             if bar < energy.count, median(energy[bar..<min(energy.count, bar + 4)]) - was < -1.5 { problems.append("drop lands low") }
         }
-        if limiter > 3 { problems.append("limiter pushed") }
+        if limiter > 3 { problems.append(limiterPushed) }
         return Review(passes: problems.isEmpty, problems: problems, change: change)
     }
 }

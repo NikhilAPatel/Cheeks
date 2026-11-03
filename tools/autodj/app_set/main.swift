@@ -60,10 +60,10 @@ for (index, nameB) in names.enumerated().dropFirst() {
     let lagB = abs(rateNext - 1) > 1e-6 ? cheeks_deck_stem_lag(probe.handle, rateNext) : 0
     let heard = mapA.heard(shiftedBy: shiftA)
     let soonest = enteredAt + TransitionScore.leadBars + 1
-    func attempt(from bar: Int) -> TransitionScore? {
+    func attempt(from bar: Int, echoOut: Bool = false) -> TransitionScore? {
         TransitionChoice(mapA: heard, mapB: mapB, stemsA: stemsA, stemsB: stemsB, deckA: Int32((index - 1 + firstDeck) % 2), deckB: Int32((index + firstDeck) % 2), rateA: rateA, levelA: level(nameA), levelB: level(nameB),
                          lagA: lagA, lagB: lagB, lagShifted: cheeks_deck_stem_lag(probe.handle, rateNext), earliest: max(soonest, bar),
-                         recentMoves: recentMoves, avoid: [.brakeDrop], wantsTimeOnNext: true).choose()
+                         recentMoves: recentMoves, avoid: [.brakeDrop], wantsTimeOnNext: true, fallsBackToEchoOut: echoOut).choose()
     }
     let usual = TransitionPlanner.setExit(in: mapA)
     var chosen = attempt(from: usual)
@@ -73,6 +73,10 @@ for (index, nameB) in names.enumerated().dropFirst() {
         chosen = attempt(from: usual - TransitionPlanner.setStepBack * back)
         how = "\(back) back"
         back += 1
+    }
+    if chosen == nil {
+        chosen = attempt(from: usual, echoOut: true)
+        how = "echo out, nothing else passed"
     }
     let bpmText = String(format: "%.1f>%.1f", playingBPM, mapB.bpm)
     guard let score = chosen else {

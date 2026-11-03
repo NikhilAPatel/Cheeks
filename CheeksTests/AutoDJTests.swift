@@ -234,6 +234,51 @@ final class AutoDJTests: XCTestCase {
         XCTAssertGreaterThan(out.left.map { abs($0) }.max() ?? 0, 0.1)
     }
 
+    // MARK: When nothing else will do
+
+    func testWithNothingElseItEchoesOutToWhereTheBeatComesIn() throws {
+        let a = try map(), b = try map(bpm: 122, firstBar: 0.2)
+        var choice = TransitionChoice(mapA: a.map, mapB: b.map, stemsA: a.stems, stemsB: b.stems, levelA: 0.7, levelB: 0.7, earliest: 32,
+                                      avoid: Set(TransitionMove.allCases))
+        XCTAssertNil(choice.choose(), "It doesn't settle unless it's told to")
+        choice.fallsBackToEchoOut = true
+        let score = try XCTUnwrap(choice.choose())
+        XCTAssertEqual(score.plan.move, .echoDrop)
+        XCTAssertLessThan(score.plan.entry, b.map.barCount / 3, "Near the top")
+        XCTAssertTrue(b.map.hasKick[score.plan.entry], "With a beat")
+        XCTAssertEqual(score.b.rate, 1, "At its own tempo, as nothing overlaps")
+        XCTAssertGreaterThanOrEqual(score.plan.exit, 32)
+    }
+
+    func testPressingAutoWithNoGoodPlanStillMixes() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.leavesOut = Set(TransitionMove.allCases)
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        XCTAssertEqual(dj.autoDJ.phase, .armed(.echoDrop))
+        try await run(dj) { b.renderer.isPlaying }
+        XCTAssertLessThan(b.position, b.trackMap!.seconds(atBar: b.trackMap!.barCount / 3), "Near the top of the track")
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertFalse(a.isPlaying)
+        XCTAssertTrue(b.isPlaying)
+        XCTAssertEqual(dj.statusKind, .done)
+    }
+
+    func testAMixLooksEverywhereThenEchoesOutFromWhereItWouldHaveLeft() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.leavesOut = Set(TransitionMove.allCases)
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        XCTAssertEqual(dj.autoDJ.phase, .armed(.echoDrop))
+        XCTAssertEqual(dj.autoDJ.mixSet?.lastResort, true)
+        XCTAssertGreaterThan(dj.autoDJ.barsToGo, 16, "The track still gets its time")
+        try await run(dj, until: { dj.decks[1].isPlaying && !dj.decks[0].isPlaying }, seconds: 400)
+        XCTAssertEqual(dj.statusKind, .done)
+        XCTAssertEqual(dj.autoDJ.mixSet?.lastResort, false, "The next pair starts afresh")
+    }
+
     // MARK: Taking over
 
     private func isRunning(_ dj: DJEngine) -> Bool { if case .running = dj.autoDJ.phase { return true } else { return false } }
