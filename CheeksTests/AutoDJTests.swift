@@ -502,6 +502,80 @@ final class AutoDJTests: XCTestCase {
         XCTAssertClean(b)
     }
 
+    func testAutoTakesARunningLoopOff() async throws {
+        let dj = try ready()
+        let a = dj.decks[0]
+        let frame = a.renderer.playhead
+        a.renderer.setLoop(start: frame, end: frame + 2 * Synth.sampleRate, active: true)
+        a.loopActive = true
+        dj.autoDJ.press()
+        XCTAssertFalse(a.renderer.loopActive, "It'd never get to its moment")
+        try await run(dj) { self.isRunning(dj) }
+    }
+
+    func testALoopSetDuringTheCountdownCallsItOff() async throws {
+        let dj = try ready()
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        let frame = a.renderer.playhead
+        a.renderer.setLoop(start: frame, end: frame + 2 * Synth.sampleRate, active: true)
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1 is in a loop.")
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
+    }
+
+    func testPressingAgainAfterStoppingStartsOverClean() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 8 + 50 }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertTrue(a.renderer.loopActive, "It's left as it was")
+        XCTAssertNotEqual(a.filter, 0, "It's left as it was")
+        dj.autoDJ.press()
+        XCTAssertFalse(a.renderer.loopActive)
+        XCTAssertEqual(a.filter, 0)
+        XCTAssertEqual(a.eqLow, 0)
+        XCTAssertEqual(a.stemLevels, [1, 1, 1, 1])
+        try await run(dj) { self.isRunning(dj) }
+    }
+
+    func testPausingDuringTheCountdownSaysThat() async throws {
+        let dj = try ready()
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        dj.decks[0].pause()
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1 was stopped.")
+    }
+
+    func testLoadingTheNewDeckMidMoveLeavesTheOldOnePlayingClean() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 8 + 50 }
+        XCTAssertTrue(a.renderer.loopActive)
+        put(try map(bpm: 118, firstBar: 0.3), on: b, name: "C")
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertTrue(a.isPlaying)
+        XCTAssertClean(a)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: the track changed. Deck 1 carries on.")
+    }
+
+    func testAnOldDecksReverseGoesWhenItStops() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        a.reverse = true
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertFalse(a.reverse)
+    }
+
     func testStemsThatAreAllTheWayDownComeBackWhenAskedFor() throws {
         let dj = makeEngine()
         let deck = dj.decks[0]
@@ -746,6 +820,38 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 20)
         XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
         XCTAssertEqual(dj.statusKind, .info)
+    }
+
+    func testStoppingAMixMidMoveSaysSo() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isRunning(dj) }, seconds: 300)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertTrue(dj.statusMessage?.hasPrefix("Mix off.") == true, dj.statusMessage ?? "")
+    }
+
+    func testAMixWaitsForALoopSetDuringTheCountdown() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        let a = dj.decks[0], frame = a.renderer.playhead
+        a.renderer.setLoop(start: frame, end: frame + 2 * Synth.sampleRate, active: true)
+        a.loopActive = true
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertNotNil(dj.autoDJ.mixSet, "Holding a track longer isn't stopping the mix")
+        XCTAssertEqual(dj.statusMessage, "The mix will carry on when deck 1's loop ends.")
+        for _ in 0..<20 {
+            _ = dj.renderOffline(frames: 4410)
+            dj.tickForTesting()
+        }
+        XCTAssertEqual(dj.autoDJ.phase, .idle, "It doesn't plan while it's held")
+        a.exitLoop()
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 5)
     }
 
     /// A long fade into silence isn't worth waiting for, and the message saying why stays up.

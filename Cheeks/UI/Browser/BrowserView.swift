@@ -393,8 +393,14 @@ struct BrowserView: View {
                 } description: {
                     Text("Tap Import to add music from Files, or drop audio into the Cheeks folder in the Files app or Finder.")
                 }
+            } else if !search.isEmpty {
+                ContentUnavailableView.search(text: search)
+            } else if inKeyOnly || nearBPMOnly {
+                ContentUnavailableView("Nothing fits right now", systemImage: "line.3.horizontal.decrease.circle",
+                                       description: Text("Nothing here is in key or close in tempo with what's on the deck. Turn off IN KEY or ±6% BPM to see the rest."))
             } else {
-                ContentUnavailableView.search
+                ContentUnavailableView("Nothing in this playlist yet", systemImage: "music.note.list",
+                                       description: Text("Go to All Tracks, press and hold a track, and add it from there."))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -230,9 +230,35 @@ Not CPU-table conditions: other simulators were running. Figures for this simula
 - Hot cues: Skylander A at 1:46, Houston A at 0:22, Gepzene A at 1:57.
 - Three recordings, kept in the app.
 - The Duo is back on its side at 951×669.
-- The iPhone SE has the app with copied music and stems, and I shut it down.
+- The iPhone SE has the app with copied music and stems, and I shut it down. That was someone else's simulator (`7EBC0621`), used by mistake. The app and its data have since been taken off it, at the owner's request. Small iPhones are tested on `iPhone SE Cheeks` from here on.
 
 **`Cheeks.xcodeproj/project.pbxproj` has an uncommitted change, not mine:** `DEVELOPMENT_TEAM` set, at 16:19 during this round. I left it alone and out of this commit.
 
 ## First impressions
 Not run. This round was the retest only.
+
+## What happened next
+
+**Fixed**
+- **PH: `AUTO` with a loop running never getting there.** The lead was right: a looping deck never reaches its moment, and nothing noticed. Pressing `AUTO` or `MIX` now takes the loop off, and pressing `AUTO` after stopping a move also clears what that move left on the deck, so that's one press to start again and not `EXIT` and two knobs. A loop set during the countdown calls off `AUTO`, with a message saying why. A mix waits for it and says so, as holding a track longer isn't stopping the mix. `testAutoTakesARunningLoopOff`, `testALoopSetDuringTheCountdownCallsItOff`, `testPressingAgainAfterStoppingStartsOverClean`, `testAMixWaitsForALoopSetDuringTheCountdown`.
+- **AQ11: `Mix off:` when the key's pressed mid-move.** `testStoppingAMixMidMoveSaysSo`.
+
+**Your suggestions, taken**
+- **Loading the waiting deck mid-move** now does what stopping that deck does: the old deck carries on, clean. It's in the table. `testLoadingTheNewDeckMidMoveLeavesTheOldOnePlayingClean`.
+- **"None of these ask for a rating"** was the sentence that was wrong, as you said. It now says only a move that plays out asks.
+- **Stopping late in a Loop build** stays as it is, for the reason you gave: it all shows on screen. Pressing `AUTO` again is now the quick way back.
+
+**Also fixed, from Looks wrong**
+- **A tracklist skipping a track that comes back.** A real bug, and History had it too: each deck remembered its last track, so one coming back on the same deck had no line. Now a track gets another line if it comes back after something else has had one. Stopping and starting with nothing in between is still the one play. `OnAirLogTests`.
+- **"No Results. Check the spelling…"** with nothing typed. An empty list now says whether it's the search, the filters or an empty playlist.
+- **"Lost its moment"** when the deck was paused now says it was stopped. `testPausingDuringTheCountdownSaysThat`.
+- **`REV` staying lit on a stopped old deck** now goes with everything else. `testAnOldDecksReverseGoesWhenItStops`.
+
+**Decided against changing**
+- **AX4: one press changing a plan.** That's how it should work when two moves are close, and it only ever went between the two. Ratings lean and don't decide.
+- **`REV` on a move's new deck ending in a green "is on":** it's what was asked for, and the move did finish.
+- **UIKit's "Decomposition of 'bounds'" faults:** they come from the system's alert and context menus, and nothing visibly went wrong.
+
+**Not run**
+- **AX5 on a small iPhone.** It needs the owner's OK for the touch tool on each new simulator, which nobody was there to give. `PhoneLayoutTests` and the snapshots still cover that layout, and it's back on the list.
+

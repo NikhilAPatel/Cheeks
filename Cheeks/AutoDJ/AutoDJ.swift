@@ -129,6 +129,8 @@ final class AutoDJ {
     @ObservationIgnored private var recentMoves: [TransitionMove] = []
     @ObservationIgnored private var coreIsRunning = false
     @ObservationIgnored private var prepared: Prepared?
+    /// The old deck of a move that was stopped part-way, which is still as the score left it.
+    @ObservationIgnored private var leftBehind: Deck?
     /// A move's been cut short: how it'll end, and what to say when it has.
     @ObservationIgnored private var ending: (how: Ending, message: String)?
     /// Ticks since then. With the audio stopped the core never lets go, and there's nothing to wait for.
@@ -173,11 +175,12 @@ final class AutoDJ {
             cancel()
             say(wasSet ? "Mix off. The track playing just carries on." : "Auto DJ off.", .info)
         case .running:
+            let stopped = wasSet ? "Mix off." : "Auto DJ stopped."
             // Once the new track's taken over there's nothing left to take over from: the old one was on its way out.
             if let incoming, cheeks_engine_auto_beat(core) >= score?.handover ?? .infinity {
-                endEarly(.oldStops(startNew: false), "Auto DJ stopped. Deck \(incoming.index + 1) is on.")
+                endEarly(.oldStops(startNew: false), "\(stopped) Deck \(incoming.index + 1) is on.")
             } else {
-                endEarly(.decksAreYours, "Auto DJ stopped. The decks are yours.")
+                endEarly(.decksAreYours, "\(stopped) The decks are yours.")
             }
         }
     }
@@ -208,6 +211,7 @@ final class AutoDJ {
         if phase != .idle { cancel() }
         askedForStems = []
         if let air = playing.first {
+            getReadyToLeave(air)
             mixSet = MixSet(name: name, queue: queue, onAir: air.index)
             say("Mixing through \(name).", .info)
         } else {
@@ -290,6 +294,8 @@ final class AutoDJ {
             startWithoutAMove(waiting)
             return
         }
+        // Someone's holding this track in a loop, so it isn't leaving yet.
+        if air.renderer.loopActive { return }
         if hasNothingLeftToHear(air) {
             air.pause()
             startWithoutAMove(waiting)
@@ -381,6 +387,7 @@ final class AutoDJ {
             say("Load the next track on the other deck first.", .refused)
             return
         }
+        getReadyToLeave(from)
         outgoing = from
         incoming = to
         if planIfReady() { return }
@@ -393,6 +400,14 @@ final class AutoDJ {
         }
         phase = .waitingForStems
         say("Auto DJ is waiting for the stems to finish.", .info)
+    }
+
+    /// A deck about to be mixed out of can't be held in a loop, or it'd never get to its moment. And pressing the key again
+    /// after stopping a move is asking to start over, so what that move left on the deck goes as well.
+    private func getReadyToLeave(_ deck: Deck) {
+        if deck === leftBehind { clearAfterMove(deck, isOld: true) }
+        leftBehind = nil
+        if deck.renderer.loopActive { deck.exitLoop() }
     }
 
     /// Starts planning if both tracks have been mapped.
@@ -537,10 +552,16 @@ final class AutoDJ {
     private var stoppedBy: String { mixSet == nil ? "Auto DJ stopped" : "Mix off" }
 
     private func cancelForChange(_ why: String) {
-        let message = "\(stoppedBy): \(why)"
+        var message = "\(stoppedBy): \(why)"
         mixSet = nil
-        if case .running = phase {
-            endEarly(.decksAreYours, message)
+        if case .running = phase, let outgoing {
+            // The new deck's gone, the same as if it had been stopped.
+            if outgoing.renderer.isPlaying {
+                message += " Deck \(outgoing.index + 1) carries on."
+                endEarly(.oldCarriesOn, message)
+            } else {
+                endEarly(.oldStops(startNew: false), message)
+            }
         } else {
             cancel()
             say(message, .info)
@@ -567,13 +588,28 @@ final class AutoDJ {
             if cheeks_engine_auto_running(core) {
                 coreIsRunning = true
                 phase = .running(move)
-            } else if let score, let outgoing, !outgoing.isPlaying || outgoing.renderer.playhead > score.armFrame + AudioConfig.sampleRate {
-                cancel()
-                if mixSet == nil {
-                    say("Auto DJ lost its moment when the deck moved.", .info)
-                } else {
-                    // A mix just plans again from wherever the deck's got to.
-                    mixSet?.plannedFor = nil
+            } else if let score, let outgoing {
+                let number = outgoing.index + 1
+                if !outgoing.isPlaying {
+                    cancel()
+                    // A mix says so itself, as it goes on to see what's become of the deck.
+                    if mixSet == nil { say("Auto DJ stopped: deck \(number) was stopped.", .info) }
+                } else if outgoing.renderer.playhead > score.armFrame + AudioConfig.sampleRate {
+                    cancel()
+                    if mixSet == nil {
+                        say("Auto DJ lost its moment when the deck moved.", .info)
+                    } else {
+                        // A mix just plans again from wherever the deck's got to.
+                        mixSet?.plannedFor = nil
+                    }
+                } else if isHeldBack(outgoing, before: score.armFrame) {
+                    cancel()
+                    if mixSet == nil {
+                        say("Auto DJ stopped: deck \(number) is in a loop.", .info)
+                    } else {
+                        mixSet?.plannedFor = nil
+                        say("The mix will carry on when deck \(number)'s loop ends.", .info)
+                    }
                 }
             }
         case .running:
@@ -591,6 +627,11 @@ final class AutoDJ {
         case .idle, .planning:
             break
         }
+    }
+
+    /// A loop that ends before this frame, with the deck in it or on its way to it, means the deck will never get there.
+    private func isHeldBack(_ deck: Deck, before frame: Double) -> Bool {
+        deck.renderer.loopActive && deck.renderer.loopEnd <= frame && deck.renderer.playhead < deck.renderer.loopEnd
     }
 
     /// Moves what's on screen with what the score's doing, so the knobs turn by themselves.
@@ -648,8 +689,8 @@ final class AutoDJ {
         if let move { recentMoves.append(move) }
         recentMoves = Array(recentMoves.suffix(4))
         outgoing.pause()
-        clearAfterMove(outgoing)
-        clearAfterMove(incoming)
+        clearAfterMove(outgoing, isOld: true)
+        clearAfterMove(incoming, isOld: false)
         cheeks_engine_auto_stop(core)
         let number = incoming.index + 1
         if mixSet != nil { handOver(to: incoming) }
@@ -670,36 +711,38 @@ final class AutoDJ {
             outgoing.applyFilter()
             // Nobody's heard the new deck yet, so there's no reason for it to be left quiet or at another tempo.
             if !incoming.renderer.isPlaying {
-                clearAfterMove(incoming)
+                clearAfterMove(incoming, isOld: false)
                 putBackPrepared()
             }
+            leftBehind = outgoing
         case .oldCarriesOn:
-            clearAfterMove(outgoing)
-            clearAfterMove(incoming)
+            clearAfterMove(outgoing, isOld: true)
+            clearAfterMove(incoming, isOld: false)
             putBackPrepared()
         case .oldStops(let startNew):
             outgoing.pause()
-            clearAfterMove(outgoing)
+            clearAfterMove(outgoing, isOld: true)
             if startNew, !incoming.renderer.isPlaying, let score {
                 incoming.seek(to: score.b.map.seconds(atBar: score.plan.entry))
                 incoming.play()
             }
-            clearAfterMove(incoming)
+            clearAfterMove(incoming, isOld: false)
         }
     }
 
     /// Hands a deck back with everything neutral. On a deck that's still playing, whatever someone's taken stays as they
     /// set it, because that's what people are hearing.
-    private func clearAfterMove(_ deck: Deck) {
+    private func clearAfterMove(_ deck: Deck, isOld: Bool) {
         let playing = deck.renderer.isPlaying
         func isFree(_ kind: CheeksAutoKind, _ index: Int) -> Bool {
             !playing || !cheeks_engine_auto_released(core, Int32(deck.index), Int32(kind.rawValue), Int32(index))
         }
         cheeks_deck_restore_source(deck.renderer.handle)
         // A score only loops and fires effects on the old deck, so anything on the new one is someone's own.
-        if deck === outgoing {
+        if isOld {
             deck.renderer.setLoop(start: deck.renderer.loopStart, end: deck.renderer.loopEnd, active: false)
             if playing { deck.restoreFXChain() } else { deck.clearFX() }
+            if !playing, deck.reverse { deck.reverse = false }
         }
         for band in 0..<3 where isFree(CheeksAutoEQ, band) { deck.followAuto(CheeksAutoEQ, index: band, value: 1) }
         if isFree(CheeksAutoFilter, 0) { deck.followAuto(CheeksAutoFilter, index: 0, value: 0) }

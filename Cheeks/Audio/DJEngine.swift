@@ -92,11 +92,8 @@ final class DJEngine {
     @ObservationIgnored private weak var library: Library?
 
     // On-air detection for the tracklist and History playlists
-    @ObservationIgnored private var onAirSince: [Date?] = [nil, nil]
-    /// Last track per deck added to History, and to the current recording's tracklist.
-    @ObservationIgnored private var loggedTrack: [UUID?] = [nil, nil]
-    @ObservationIgnored private var setlistTrack: [UUID?] = [nil, nil]
-    private static let onAirSeconds: TimeInterval = 10
+    @ObservationIgnored private var historyLog = OnAirLog()
+    @ObservationIgnored private var setlistLog = OnAirLog()
 
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var nowPlaying: NowPlaying?
@@ -459,22 +456,14 @@ final class DJEngine {
         let now = Date()
         for deck in decks {
             let i = deck.index
-            guard let track = deck.track, deck.isPlaying, channelGains[i] > 0.05 else {
-                onAirSince[i] = nil
-                continue
-            }
-            let since = onAirSince[i] ?? now
-            onAirSince[i] = since
-            let audibleFor = now.timeIntervalSince(since)
-            guard audibleFor >= Self.onAirSeconds else { continue }
-            if loggedTrack[i] != track.id {
-                loggedTrack[i] = track.id
+            let audible = deck.isPlaying && channelGains[i] > 0.05
+            if let track = deck.track, historyLog.update(deck: i, track: track.id, audible: audible, now: now) != nil {
                 library?.logPlay(track.id)
             }
-            if isRecording && setlistTrack[i] != track.id {
-                setlistTrack[i] = track.id
+            guard isRecording else { continue }
+            if let since = setlistLog.update(deck: i, track: deck.track?.id, audible: audible, now: now) {
                 // Position in the captured audio when the track became audible.
-                appendToSetlist(deck, at: recorder.recordedSeconds - audibleFor)
+                appendToSetlist(deck, at: recorder.recordedSeconds - now.timeIntervalSince(since))
             }
         }
     }
@@ -512,8 +501,8 @@ final class DJEngine {
         recordingStarted = Date()
         isRecording = true
         setlist = []
-        // Tracks already on air start the tracklist at 0:00; the rest are added as they come in.
-        setlistTrack = [nil, nil]
+        // Tracks already on air start the tracklist at 0:00, once they've had their 10 s; the rest are added as they come in.
+        setlistLog = OnAirLog()
         trackOnAir()
         if let minutesLeft, minutesLeft < 120 {
             say("Free space for about \(Int(minutesLeft)) min of recording.", .info)

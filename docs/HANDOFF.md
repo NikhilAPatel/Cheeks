@@ -33,6 +33,8 @@ The owner kept rejecting the look ("still looks really bad"), and asked for the 
 
 **How it runs, by `tools/self-tour.sh` in a simulator, on a Mac (nothing's been measured on a phone):** with no stems splitting, pad pages, loading tracks and moving knobs freeze nothing for 50 ms or more. Playing two decks takes about 15% of a core and about 170 MB, and a library of 2,000 tracks adds about 50 ms to launch. Opening the browser is the slowest thing left: 3 or 4 freezes, the worst 120 to 300 ms, the same with 20 tracks as with 2,000, so it's the rebuilding of the screen and not the list. Closing it is about 70 ms at worst. With both decks' stems splitting on the CPU, it's about 190% of a core and about 800 MB, and the screen stays responsive. SwiftUI builds a shader of its own on a fresh install, which took from under a second to 3.7 s here depending on what the Mac was doing, and 0.66 s for one on the phone. That isn't ours to avoid.
 
+**After the eighth hands-on test:** 25 of 30 passed, on 970a91f, with 2 failures and no crashes. All of round 7's failures held. See the end of `docs/COMPUTER_USE_RESULTS_8.md`. The next round is bigger: the retest, a first-time user, a big library, and Parts 1 to 3, which hadn't been run since round 2.
+
 **After the seventh hands-on test:** 46 of 54 passed, on fdcacdc, with no crashes. The worst was Auto DJ auditioning the wrong decks from deck 2, and the rest was what happens when someone takes over mid-move. See the end of `docs/COMPUTER_USE_RESULTS_7.md`. The next retest is at the top of `docs/COMPUTER_USE_TASK.md`.
 
 **After the fifth hands-on test:** 23 of 24 passed, on c5eeab6, with no crashes. See the end of `docs/COMPUTER_USE_RESULTS_5.md`. The next retest is at the top of `docs/COMPUTER_USE_TASK.md`.

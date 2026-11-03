@@ -134,10 +134,12 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
   | What you do | Before the new track has taken over | After |
   | --- | --- | --- |
   | Press `AUTO` | The decks are yours: stems, EQ, filter and loop stay. The score's effects and noise go, because nothing on screen could turn them off | The old deck stops and the new one's on |
-  | Stop the new deck | The old deck carries on, clean | Both stop |
+  | Stop the new deck, or load another track on it | The old deck carries on, clean | Both stop |
   | Stop the old deck | The new one comes in at once, whole | The move plays out |
 
-  A new deck that nobody's heard yet goes back to how it was, with its stems up and its tempo where it had it, the same as calling it off during the countdown. A stem left all the way down shows as off, and a tap or `ALL` brings it back. None of these ask for a rating or count as a move played.
+  A new deck that nobody's heard yet goes back to how it was, with its stems up and its tempo where it had it, the same as calling it off during the countdown. A stem left all the way down shows as off, and a tap or `ALL` brings it back. Only a move that plays out asks for a rating or counts as a move played.
+
+  A loop would hold the old deck back from ever reaching its moment. So pressing `AUTO` or `MIX` takes a loop off, and pressing `AUTO` again after stopping a move clears what that move left on the deck. A loop set during the countdown calls off `AUTO`, and a mix just waits until it's over, as holding a track longer isn't stopping the mix.
 - **At the end:** the old deck's stopped and both decks are back to neutral. The new track carries on at the playing tempo.
 
 **Next:**
