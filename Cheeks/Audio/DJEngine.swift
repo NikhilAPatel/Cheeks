@@ -95,6 +95,8 @@ final class DJEngine {
 
     // On-air detection for the tracklist and History playlists
     @ObservationIgnored private var historyLog = OnAirLog()
+    /// What's been on air since the app opened, which NEXT doesn't offer again until there's nothing else.
+    private(set) var heardThisSession = Set<UUID>()
     @ObservationIgnored private var setlistLog = OnAirLog()
 
     @ObservationIgnored private var timer: Timer?
@@ -125,6 +127,9 @@ final class DJEngine {
         autoDJ.loadTrack = { [weak self] id, deck in
             guard let self, let track = self.library?.track(id), self.load(track, onto: deck) else { return nil }
             return track.title
+        }
+        for deck in decks {
+            deck.syncLeader = { [unowned self, unowned deck] in self.master(for: deck) }
         }
         autoDJ.isAskingForRating = { [weak self] in self?.rateAction != nil }
         autoDJ.crossfaderIsCentred = { [weak self] in self?.crossfader == 0 }
@@ -476,6 +481,7 @@ final class DJEngine {
             let audible = deck.isPlaying && channelGains[i] > 0.05
             if let track = deck.track, historyLog.update(deck: i, track: track.id, audible: audible, now: now) != nil {
                 library?.logPlay(track.id)
+                heardThisSession.insert(track.id)
             }
             guard isRecording else { continue }
             if let since = setlistLog.update(deck: i, track: deck.track?.id, audible: audible, now: now) {

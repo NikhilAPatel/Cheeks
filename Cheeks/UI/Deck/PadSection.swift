@@ -635,7 +635,8 @@ struct FXPad: View {
             if wasOn ? !adjusted : held > 0.25 { deck.fxRelease(effect) }
             pressTime = nil
         }, onDrag: { translation in
-            if hypot(translation.width, translation.height) > 8 { adjusted = true }
+            // It's already moving the depth by here, and a slide that small read as a tap, and turned the effect off.
+            if hypot(translation.width, translation.height) > 5 { adjusted = true }
             let depth = min(1, max(0, startDepth + Float(-translation.height / 80)))
             if abs(depth - deck.fxDepth) > 0.001 { deck.fxDepth = depth }
             let steps = Int((translation.width / 26).rounded())

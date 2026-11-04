@@ -101,6 +101,9 @@ final class LayoutSnapshots: XCTestCase {
         WhatsThis.shared.explain("SLIP", at: CGPoint(x: 0.1, y: 0.6))
         try await snapAll("whats-this", ContentView(opensBrowserWhenEmpty: false))
         WhatsThis.shared.toggle()
+        dj.say("Exhilarate's file is missing. Import it again and it'll get its cues back.", .refused)
+        try await snapAll("long-message", ContentView(opensBrowserWhenEmpty: false))
+        dj.statusMessage = nil
         try await snapAll("browser", ContentView(showLibrary: true))
         library.tracks = saved
         try await snapAll("recordings", RecordingsView())

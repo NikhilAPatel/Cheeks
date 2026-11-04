@@ -11,6 +11,8 @@ final class AutoDJ {
         /// Both decks are ready to go except for their stems.
         case waitingForStems
         case planning
+        /// There's no move to make, so the waiting track starts when this one's done.
+        case waitingForTheEnd
         /// It's chosen its moment, and the audio core will start the clock when the deck gets there.
         case armed(TransitionMove)
         case running(TransitionMove)
@@ -35,8 +37,6 @@ final class AutoDJ {
         var lastResort = false
         /// Something's just been said that matters more than what's up next, which the deck shows anyway.
         var keepsQuietAboutNext = false
-        /// Where the track on air has nothing left to hear, once it's near enough the end to look.
-        var silentFrom: Double?
         /// It's said that this is the last one.
         var saidItsTheLast = false
     }
@@ -143,6 +143,9 @@ final class AutoDJ {
     @ObservationIgnored private var ticksEnding = 0
     @ObservationIgnored private var plannedA: UUID?
     @ObservationIgnored private var plannedB: UUID?
+    /// Where a track has nothing left to hear, once it's near enough the end to look.
+    @ObservationIgnored private var silentFrom: (track: UUID, frame: Double)?
+    @ObservationIgnored private var saidItsStarting = false
 
     init(core: OpaquePointer, decks: [Deck], say: @escaping (String, StatusKind) -> Void, prepareMixer: @escaping (Deck) -> (() -> Void)) {
         self.core = core
@@ -173,10 +176,11 @@ final class AutoDJ {
             // The last track on the list has nothing to wait for, and "MIX…" read as if it was still thinking.
             if mixSet.next == nil, mixSet.queue.isEmpty, !mixSet.needsStart { return name }
             return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
-        case .running: return name
+        // The clock starts a couple of bars ahead of the move, and it's still counting those.
+        case .running: return barsToGo > 0 ? "\(name) \(barsToGo)" : name
         // "AUTO…" read like a clipped label for nearly 4 minutes, with nothing tying it to the percentage on the deck.
         case .waitingForStems: return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
-        case .planning: return "\(name)…"
+        case .planning, .waitingForTheEnd: return "\(name)…"
         case .armed: return "\(name) \(barsToGo)"
         }
     }
@@ -200,7 +204,7 @@ final class AutoDJ {
             } else {
                 begin()
             }
-        case .waitingForStems, .planning, .armed:
+        case .waitingForStems, .waitingForTheEnd, .planning, .armed:
             cancel()
             say(wasSet ? "Mix off. The track playing just carries on." : "Auto DJ off.", .info)
         case .running:
@@ -326,14 +330,14 @@ final class AutoDJ {
                 endSet("Mix off: deck \(air.index + 1) was stopped.")
                 return
             }
-            startWithoutAMove(waiting)
+            startWithoutAMove(waiting, "No clean way in.")
             return
         }
         // Someone's holding this track in a loop, so it isn't leaving yet.
         if air.renderer.loopActive { return }
         if hasNothingLeftToHear(air) {
             air.pause()
-            startWithoutAMove(waiting)
+            startWithoutAMove(waiting, "No clean way in.")
             return
         }
 
@@ -375,30 +379,61 @@ final class AutoDJ {
         mixSet?.next = nil
         mixSet?.plannedFor = nil
         mixSet?.stepsBack = 0
-        mixSet?.silentFrom = nil
         mixSet?.lastResort = false
     }
 
     /// There was no move ready: stems weren't there in time, or there was no clean way in. The music mustn't stop.
-    private func startWithoutAMove(_ deck: Deck) {
+    private func startWithoutAMove(_ deck: Deck, _ why: String) {
+        // Its fader can be down, or the crossfader away from it, which a move would have seen to.
+        _ = prepareMixer(deck)
         deck.setTempo(0)
         deck.play()
         handOver(to: deck)
         mixSet?.keepsQuietAboutNext = true
-        say("No clean way in. Deck \(deck.index + 1) just started.", .info)
+        say("\(why) Deck \(deck.index + 1) just started.", .info)
+    }
+
+    /// AUTO's been pressed and there's no move yet. Running out here left silence with the next track sitting ready, on a
+    /// first-time user's first press, so it does what a mix does. Says whether that's the end of it.
+    private func startNextIfThisOnesDone(_ from: Deck, _ to: Deck) -> Bool {
+        let number = to.index + 1
+        if to.isPlaying {
+            cancel()
+            say("Auto DJ stopped: you started deck \(number) yourself.", .info)
+            return true
+        }
+        let why = phase == .waitingForStems ? "The stems didn't get there in time." : "No clean way in."
+        if !from.isPlaying {
+            let ranOut = from.renderer.reachedEnd
+            let stopped = "Auto DJ stopped: deck \(from.index + 1) stopped before the stems were ready."
+            cancel()
+            if ranOut, to.isLoaded {
+                startWithoutAMove(to, why)
+            } else {
+                say(stopped, .info)
+            }
+            return true
+        }
+        if !from.renderer.loopActive, to.isLoaded, hasNothingLeftToHear(from) {
+            cancel()
+            from.pause()
+            startWithoutAMove(to, why)
+            return true
+        }
+        return false
     }
 
     /// Whether a track on air has got to where it's faded away, so the next one needn't sit through the silence.
     private func hasNothingLeftToHear(_ deck: Deck) -> Bool {
         let look = Int(Self.tailToSearch * AudioConfig.sampleRate)
-        guard deck.renderer.frameCount > 0, Double(deck.renderer.frameCount) - deck.renderer.playhead < Double(look) else { return false }
-        if mixSet?.silentFrom == nil {
+        guard deck.renderer.frameCount > 0, Double(deck.renderer.frameCount) - deck.renderer.playhead < Double(look), let id = deck.track?.id else { return false }
+        if silentFrom?.track != id {
             // Stems are stored at half level, so the same sound is half the size in one.
             let last = deck.renderer.stemSources?.map { $0.lastSound(withinLast: look, above: Self.silence / 2) }.max()
                 ?? deck.renderer.mixSource?.lastSound(withinLast: look, above: Self.silence)
-            mixSet?.silentFrom = last.map(Double.init) ?? .infinity
+            silentFrom = (id, last.map(Double.init) ?? .infinity)
         }
-        return deck.renderer.playhead >= mixSet?.silentFrom ?? .infinity
+        return deck.renderer.playhead >= silentFrom?.frame ?? .infinity
     }
 
     /// How far from the end of a track a fade into silence is looked for.
@@ -438,7 +473,7 @@ final class AutoDJ {
             return
         }
         phase = .waitingForStems
-        say("Auto DJ is waiting for the stems to finish.", .info)
+        say("Auto DJ is waiting for the stems. If this track ends first, deck \(to.index + 1) starts.", .info)
     }
 
     /// A deck about to be mixed out of can't be held in a loop, or it'd never get to its moment. And pressing the key again
@@ -488,11 +523,13 @@ final class AutoDJ {
         guard phase == .planning else { return }
         planning = nil
         guard let score else {
-            reset()
             guard mixSet != nil else {
-                say("Auto DJ couldn't find a clean way between these two from here.", .refused)
+                // Too near the end, as a rule. Someone's pressed the key, and the music carries on all the same.
+                if let incoming { say("No clean way in from here. Deck \(incoming.index + 1) starts when this one ends.", .info) }
+                phase = .waitingForTheEnd
                 return
             }
+            reset()
             // There may be a way from further back in the track, so the next tick asks again.
             mixSet?.stepsBack += 1
             mixSet?.plannedFor = nil
@@ -619,26 +656,23 @@ final class AutoDJ {
         guard planStillHolds else { return }
         switch phase {
         case .waitingForStems:
-            guard let outgoing, let incoming else { return }
-            if !outgoing.isPlaying {
-                let number = outgoing.index + 1
-                cancel()
-                if mixSet == nil { say("Auto DJ stopped: deck \(number) stopped before the stems were ready.", .info) }
-                return
-            }
-            if !planIfReady(), ![outgoing, incoming].allSatisfy({ $0.trackMap != nil || $0.stemsAreOnTheWay }) {
+            guard let outgoing, let incoming, !startNextIfThisOnesDone(outgoing, incoming) else { return }
+            if planIfReady() {
+                // "Waiting for the stems" stayed up for up to 13 s after they'd finished.
+                say("The stems are ready. Auto DJ is choosing a move.", .info)
+            } else if ![outgoing, incoming].allSatisfy({ $0.trackMap != nil || $0.stemsAreOnTheWay }) {
                 cancel()
                 say("Auto DJ needs stems, and this track doesn't have them.", .refused)
             }
+        case .waitingForTheEnd:
+            guard let outgoing, let incoming else { return reset() }
+            _ = startNextIfThisOnesDone(outgoing, incoming)
         case .armed(let move):
             updateBarsToGo()
             if cheeks_engine_auto_running(core) {
                 coreIsRunning = true
                 phase = .running(move)
-                // Knobs move and a loop appears, and without this nothing says why.
-                if !isAskingForRating() {
-                    say(mixSet == nil ? "\(move.title) starting. Touch a control to take it back." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
-                }
+                countIn(move)
             } else if let score, let outgoing {
                 let number = outgoing.index + 1
                 if !outgoing.isPlaying {
@@ -663,10 +697,11 @@ final class AutoDJ {
                     }
                 }
             }
-        case .running:
+        case .running(let move):
             if ending == nil {
                 followControls()
                 if cheeks_engine_auto_running(core) {
+                    countIn(move)
                     noticeStoppedDeck()
                 } else {
                     finish()
@@ -678,7 +713,22 @@ final class AutoDJ {
         case .idle:
             bringInWhatsLeftAfterAStoppedMove()
         case .planning:
-            break
+            // The plan's for a track that's over by the time it comes. A mix sees to this for itself.
+            if mixSet == nil, let outgoing, let incoming { _ = startNextIfThisOnesDone(outgoing, incoming) }
+        }
+    }
+
+    /// The clock starts a couple of bars ahead of the move, to get the new deck going. Round 12 saw "starting" come with the
+    /// key still counting, as that went by the clock and the count by the move. Both go by the move now: it's when knobs move
+    /// and a loop appears, and without this nothing says why.
+    private func countIn(_ move: TransitionMove) {
+        guard let score, !saidItsStarting else { return }
+        let left = max(0, Int(((score.start - cheeks_engine_auto_beat(core)) / 4).rounded(.up)))
+        if left != barsToGo { barsToGo = left }
+        guard left == 0 else { return }
+        saidItsStarting = true
+        if !isAskingForRating() {
+            say(mixSet == nil ? "\(move.title) starting. Touch a control to take it back." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
         }
     }
 
@@ -761,6 +811,7 @@ final class AutoDJ {
         guard let outgoing, let incoming else { return reset() }
         if let ending {
             finishEarly(ending.how, outgoing, incoming)
+            forgetTheScoresLoop(outgoing)
             reset()
             say(ending.message, .info)
             return
@@ -773,6 +824,7 @@ final class AutoDJ {
         outgoing.pause()
         clearAfterMove(outgoing, isOld: true)
         clearAfterMove(incoming, isOld: false)
+        forgetTheScoresLoop(outgoing)
         cheeks_engine_auto_stop(core)
         let number = incoming.index + 1
         if mixSet != nil { handOver(to: incoming) }
@@ -780,6 +832,12 @@ final class AutoDJ {
         Haptics.shared.confirm()
         say("\(title) done. Deck \(number) is on.", .done)
         if let move { askForRating?(move, from, to) }
+    }
+
+    /// RELOOP took a deck back a minute and a half, to a loop nobody set. One someone's still in is theirs now.
+    private func forgetTheScoresLoop(_ deck: Deck) {
+        guard score?.plan.move == .loopDrop, !deck.renderer.loopActive else { return }
+        deck.renderer.setLoop(start: 0, end: 0, active: false)
     }
 
     private func finishEarly(_ how: Ending, _ outgoing: Deck, _ incoming: Deck) {
@@ -876,6 +934,7 @@ final class AutoDJ {
         barsToGo = 0
         leaveFrom = 0
         prepared = nil
+        saidItsStarting = false
         ending = nil
     }
 }

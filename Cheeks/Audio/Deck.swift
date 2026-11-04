@@ -226,6 +226,8 @@ final class Deck {
     var keyLock = true { didSet { applyTempo() } }
     var keyShift = 0 { didSet { applyTempo() } }
     var syncOn = false
+    /// The deck this one follows with sync on.
+    @ObservationIgnored var syncLeader: (() -> Deck)?
 
     // Performance
     var padMode: PadMode = .hotCue
@@ -548,6 +550,7 @@ final class Deck {
         cuePreviewing = false
         // A deck that's run out has nothing left to play, so it starts again from the cue.
         if isAtEnd { seek(to: restartPoint) }
+        if syncOn, !renderer.isPlaying, !renderer.loopActive, !reverse, let leader = syncLeader?(), leader.isPlaying { alignBars(to: leader) }
         // Backwards from the very start it would only stop again, unless a loop starting there holds it.
         if reverse && renderer.playhead <= 0 && (!renderer.loopActive || isLoopAhead) {
             onMessage?("Deck \(index + 1) is at the start. Turn REV off to play it forward.", .refused)

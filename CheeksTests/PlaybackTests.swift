@@ -111,6 +111,54 @@ final class DeckTests: XCTestCase {
         XCTAssertTrue(deck.syncOn)
     }
 
+    /// Round 12: a first-time user's whole first mix was a beat out, with SYNC on and the marker green.
+    func testADeckStartedWithSyncOnStartsInBar() {
+        for offset in [0.0, 0.5, 1.0, 1.5, 3.2] {
+            let master = makeDeck(0, bpm: 128, firstBeat: 0.11, at: 10.3)
+            let deck = makeDeck(1, bpm: 125, firstBeat: 0.42, at: 20 + offset)
+            deck.syncLeader = { master }
+            master.play()
+            deck.sync(to: master)
+            deck.play()
+            let theirs = master.beatPosition(master.renderer.playhead)
+            let mine = deck.beatPosition(deck.renderer.playhead)
+            var apart = (theirs - mine).truncatingRemainder(dividingBy: 4)
+            if apart > 2 { apart -= 4 }
+            if apart < -2 { apart += 4 }
+            XCTAssertEqual(apart, 0, accuracy: 0.01, "Starting from \(20 + offset) s")
+        }
+    }
+
+    func testADeckStartedInBarDoesntGoBackPastTheStart() {
+        let master = makeDeck(0, bpm: 120, firstBeat: 0, at: 1.5)
+        let deck = makeDeck(1, bpm: 120, firstBeat: 0, at: 0)
+        deck.syncLeader = { master }
+        master.play()
+        deck.sync(to: master)
+        deck.play()
+        XCTAssertGreaterThanOrEqual(deck.renderer.playhead, 0)
+        XCTAssertLessThan(deck.renderer.playhead / deck.sampleRate, 2.1)
+    }
+
+    func testAPlayingDeckOnlyMovesToTheNearestBeat() {
+        let master = makeDeck(0, bpm: 120, firstBeat: 0, at: 10)
+        let deck = makeDeck(1, bpm: 120, firstBeat: 0, at: 11)
+        master.play()
+        deck.play()
+        deck.syncLeader = { master }
+        deck.sync(to: master)
+        XCTAssertEqual(deck.renderer.playhead / deck.sampleRate, 11, accuracy: 0.26, "People may be hearing it")
+    }
+
+    func testStartingWithSyncOffLeavesItWhereItIs() {
+        let master = makeDeck(0, bpm: 120, firstBeat: 0, at: 10)
+        let deck = makeDeck(1, bpm: 120, firstBeat: 0, at: 11)
+        deck.syncLeader = { master }
+        master.play()
+        deck.play()
+        XCTAssertEqual(deck.renderer.playhead / deck.sampleRate, 11, accuracy: 0.001)
+    }
+
     func testStemsCountAsAlteredUntilAllAreBackAtFullLevel() {
         let deck = makeDeck(0, bpm: 128, at: 5)
         XCTAssertFalse(deck.stemsAltered)

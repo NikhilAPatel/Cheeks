@@ -94,7 +94,8 @@ final class JogLiveView: LiveView {
         let loaded = deck.isLoaded
         u.loaded = loaded ? 1 : 0
         u.hasArt = artTexture != nil ? 1 : 0
-        u.artDim = artTexture != nil ? 0.62 : 0.8
+        // Dark enough to read the numbers on, on a busy cover.
+        u.artDim = artTexture != nil ? 0.42 : 0.8
         let frame = deck.heardFrame(hostTime: hostTime, secondsPerTick: renderer.secondsPerTick, outputLatency: deck.outputLatency)
         let position = frame / deck.sampleRate
         let turns = position / Self.secondsPerTurn

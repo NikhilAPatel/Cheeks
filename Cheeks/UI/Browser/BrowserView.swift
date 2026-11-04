@@ -94,7 +94,8 @@ struct BrowserView: View {
         // The best way on from what's playing, which isn't on the list: it can't come next after itself.
         let deck = referenceDeck
         let place = deck.map { SetOrder.Place(bpm: $0.effectiveBPM > 0 ? $0.effectiveBPM : nil, key: $0.effectiveKey) }
-        return SetOrder.order(list.filter { $0.id != deck?.track?.id }, from: place, bpm: \.bpm, key: \.key)
+        let onADeck = Set(dj.decks.compactMap { $0.track?.id })
+        return SetOrder.order(list.filter { $0.id != deck?.track?.id }, from: place, heard: { onADeck.contains($0.id) || dj.heardThisSession.contains($0.id) }, bpm: \.bpm, key: \.key)
     }
 
     private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {

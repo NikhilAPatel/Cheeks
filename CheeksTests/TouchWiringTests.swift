@@ -386,6 +386,103 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertTrue(window?.hitTest(CGPoint(x: 36, y: 544), with: nil) === cue)
     }
 
+    /// Round 12: PLAY pressed just after closing the browser landed on a pad going past, and set a hot cue, 4 times out of 5.
+    /// So anything a press can find from the first moment of the slide has to be what'll be there when it stops.
+    func testAPressDuringTheSlideLandsOnWhatsArriving() async throws {
+        _ = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        let settled = controls(in: window.bounds)
+        XCTAssertGreaterThan(settled.count, 40)
+        // The decks are in hosts of their own. The mixer isn't, and takes no touches while it's moving.
+        func isInADeck(_ view: UIView) -> Bool {
+            var hosts = 0
+            var next: UIView? = view
+            while let current = next {
+                if String(describing: type(of: current)).contains("HostingView") { hosts += 1 }
+                next = current.superview
+            }
+            return hosts >= 2
+        }
+        let deckControls = settled.filter { isInADeck($0.view) }
+        XCTAssertGreaterThan(deckControls.count, 20)
+        XCTAssertLessThan(deckControls.count, settled.count)
+        try await pressBrowse()
+
+        let key = try XCTUnwrap(window.hitTest(CGPoint(x: 112, y: 12), with: nil) as? TouchSurfaceView)
+        key.onDown?(.zero)
+        key.onUp?()
+        // For its first moment the decks are still on their way back into the window, and a press finds nothing, which is fine.
+        // What it mustn't find is some other control.
+        for (wait, decksThere) in [(20, false), (40, true), (80, true), (80, true), (80, true)] {
+            try await Task.sleep(for: .milliseconds(wait))
+            var missing = 0, wrong = 0
+            for control in settled {
+                let hit = window.hitTest(control.point, with: nil)
+                if hit === control.view { continue }
+                if hit is TouchSurfaceView { wrong += 1 } else if isInADeck(control.view) { missing += 1 }
+            }
+            print("SLIDEHITS: \(wait) ms further on, of \(settled.count): \(wrong) landed on another control, \(missing) of the decks' on nothing")
+            XCTAssertEqual(wrong, 0, "\(wait) ms further on")
+            if decksThere { XCTAssertEqual(missing, 0, "\(wait) ms further on") }
+        }
+        // And once it's all stopped, the mixer's back as well.
+        try await Task.sleep(for: .milliseconds(500))
+        for control in settled { XCTAssertTrue(window.hitTest(control.point, with: nil) === control.view) }
+        window.isHidden = true
+    }
+
+    /// The decks slide with UIKit and the mixer with SwiftUI, and they have to look like one thing moving.
+    func testTheDecksAndTheMixerSlideTogether() async throws {
+        _ = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        func find<T: UIView>(in view: UIView) -> [T] {
+            view.subviews.flatMap { [$0 as? T].compactMap { $0 } + find(in: $0) }
+        }
+        func showing(_ view: UIView) -> CGFloat {
+            guard let shown = view.layer.presentation(), let top = window.layer.presentation() else { return 0 }
+            return shown.convert(CGPoint.zero, to: top).x
+        }
+        // Below the top bar and the waveforms, which don't move.
+        let surfaces: [TouchSurfaceView] = find(in: window).filter { ($0 as UIView).convert(CGPoint.zero, to: window).y > window.bounds.height * 0.45 }
+        func place(_ view: UIView) -> CGFloat { view.convert(CGPoint.zero, to: window).x }
+        let width = window.bounds.width
+        // The crossfader's the widest thing in the middle, and any control at the far right is deck 2's.
+        let crossfader = try XCTUnwrap(surfaces.filter { place($0) > width * 0.3 && place($0) < width * 0.6 }.max { $0.bounds.width < $1.bounds.width })
+        let deck2 = try XCTUnwrap(surfaces.max { place($0) < place($1) })
+        let apart = place(deck2) - place(crossfader)
+        let key = try XCTUnwrap(window.hitTest(CGPoint(x: 112, y: 12), with: nil) as? TouchSurfaceView)
+        key.onDown?(.zero)
+        key.onUp?()
+        var mixer: [CGFloat] = [], gaps: [CGFloat] = []
+        // Not much longer than this, as the deck leaves the window once it's out of sight.
+        for _ in 0..<30 {
+            try await Task.sleep(for: .milliseconds(16))
+            mixer.append(showing(crossfader))
+            gaps.append(showing(deck2) - showing(crossfader) - apart)
+        }
+        print("SLIDETOGETHER: mixer \(mixer.map { Int($0) })")
+        print("SLIDETOGETHER: off by \(gaps.map { Int($0) })")
+        // Generous, as a busy Mac can put a frame between them. Without the delay it's 62.
+        XCTAssertLessThan(gaps.map(abs).max() ?? 0, 45, "They drift apart by this much on the way")
+        XCTAssertNotEqual(mixer[0], mixer[mixer.count - 1], accuracy: 20)
+        window.isHidden = true
+    }
+
+    /// Round 12: on the Duo, messages of over about 60 characters lost their ends at any size, and the end's what you act on.
+    func testALongMessageTakesASecondLine() async throws {
+        let (dj, _) = try await makeScreen()
+        func height(of message: String) -> CGFloat {
+            dj.say(message, .info)
+            let host = UIHostingController(rootView: StatusCapsule().environment(dj))
+            return host.sizeThatFits(in: CGSize(width: 300, height: 200)).height
+        }
+        let short = height(of: "Mix off.")
+        let long = height(of: "There's no loop to go back to yet. Press a loop size, or IN and OUT, and it goes round.")
+        XCTAssertEqual(short, 24, accuracy: 1, "It's the size of the keys beside it")
+        XCTAssertGreaterThan(long, 30, "Two lines, rather than an ellipsis")
+        window?.isHidden = true
+    }
+
     /// Leaving the window doesn't move a list. What round 10 saw was `testATouchAlongTheTopLeavesTheListAlone`.
     func testTheBrowsersListKeepsItsPlace() async throws {
         let (_, library) = try await makeScreen()

@@ -9,7 +9,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 - **CDJ-style CUE:** pressing while playing returns to the cue. Pressing while paused sets the cue, and holding previews from it.
 - **Tempo fader** with ±6 / ±10 / ±16 / WIDE ranges, a centre click, and finer control if you slide sideways off it.
 - **Key lock**, key shift of ±12 semitones, and **KEY SYNC**, which moves a deck to the nearest compatible key.
-- **BEAT SYNC** matches BPM (including half or double time) and snaps phase. MASTER chooses which deck leads. Both decks render on one sample clock, so a synced pair can't drift.
+- **BEAT SYNC** matches BPM (including half or double time) and snaps phase, and a deck started with it on starts in bar. MASTER chooses which deck leads. Both decks render on one sample clock, so a synced pair can't drift.
 - **Waveforms are drawn in real time scale**, so beats line up on screen when decks are matched.
 - Quantize, slip mode, reverse, beat jump, and manual and automatic loops.
 - **Tracks that change tempo work properly:** live-played tracks get a tempo map, from analysis or an imported library, and loops, jumps, quantize, sync and the beat lines all follow it. If a map's wrong, the BPM menu has "Use one steady tempo".
@@ -51,7 +51,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 
 **Library**
 - Automatic analysis of BPM, beat grid and tempo changes, key (Camelot), loudness and waveform on import.
-- **Phrase analysis:** each track's intro, verses, build-ups, choruses, breakdowns and outro, as a strip of colour on the waveforms. The bar counter counts within the section, so you can see how long's left in it.
+- **Phrase analysis:** each track's intro, verses, build-ups, choruses, breakdowns and outro, as a strip of colour on the waveforms, named from its stems once they're ready. The bar counter counts within the section, so you can see how long's left in it.
 - Fix the grid from a deck's BPM: ×2 / ÷2, ±0.1 BPM, shift by 10 ms, or set the downbeat at the playhead.
 - Browser with playlists, search, tap-to-sort columns, artwork, tiny waveforms, and **IN KEY** and **±6% BPM** filters. Compatible keys are highlighted.
 - Load with the deck buttons, by swiping a row, or by dragging it onto a deck. A playing deck refuses a new track.

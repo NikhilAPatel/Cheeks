@@ -668,6 +668,130 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(a.position, there + 1, accuracy: 1.5, "And nothing takes it back")
     }
 
+    /// Round 12, on a first-time user's first press: the track ran out waiting, and left silence with the next one sitting ready.
+    func testTheNextTrackStartsIfThisOneRunsOutWaitingForStems() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        b.trackMap = nil
+        b.stemStatus = .separating(nil)
+        b.fader = 0
+        dj.crossfader = -1
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ is waiting for the stems. If this track ends first, deck 2 starts.")
+        a.seek(to: a.duration - 2)
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 5)
+        XCTAssertFalse(a.isPlaying)
+        XCTAssertTrue(b.isPlaying, "The music carries on")
+        XCTAssertEqual(dj.statusMessage, "The stems didn't get there in time. Deck 2 just started.")
+        XCTAssertGreaterThan(b.fader, 0.4, "And can be heard")
+        XCTAssertEqual(dj.crossfader, 0)
+    }
+
+    func testStartingTheWaitingDeckYourselfCallsOffTheWait() throws {
+        let dj = try ready()
+        let b = dj.decks[1]
+        b.trackMap = nil
+        b.stemStatus = .separating(nil)
+        dj.autoDJ.press()
+        b.play()
+        dj.autoDJ.tick()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertTrue(b.isPlaying, "It's theirs, and stems arriving won't stop it")
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: you started deck 2 yourself.")
+    }
+
+    func testTheMessageMovesOnOnceTheStemsAreReady() async throws {
+        let dj = try ready()
+        let b = dj.decks[1]
+        let map = try XCTUnwrap(b.trackMap)
+        b.trackMap = nil
+        b.stemStatus = .separating(nil)
+        dj.autoDJ.press()
+        b.trackMap = map
+        b.stemStatus = .ready("AI")
+        dj.autoDJ.tick()
+        XCTAssertEqual(dj.autoDJ.phase, .planning)
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO…")
+        XCTAssertEqual(dj.statusMessage, "The stems are ready. Auto DJ is choosing a move.")
+    }
+
+    /// Too near the end for a move, and it's said so. Before, that was the last anyone heard of it.
+    func testWithNoWayInTheNextTrackStartsAtTheEnd() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        a.seek(to: a.duration - 6)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .waitingForTheEnd || dj.autoDJ.phase == .idle }, seconds: 3)
+        XCTAssertEqual(dj.statusMessage, "No clean way in from here. Deck 2 starts when this one ends.")
+        XCTAssertTrue(dj.autoDJ.isActive, "The key stays lit, as there's something still to come")
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO…")
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 8)
+        XCTAssertTrue(b.isPlaying)
+        XCTAssertEqual(dj.statusMessage, "No clean way in. Deck 2 just started.")
+    }
+
+    func testWithNoWayInTheKeyStillCallsItOff() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        a.seek(to: a.duration - 6)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .waitingForTheEnd || dj.autoDJ.phase == .idle }, seconds: 3)
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        _ = dj.renderOffline(frames: 44_100 * 8)
+        dj.tickForTesting()
+        XCTAssertFalse(b.isPlaying)
+    }
+
+    /// Round 12: "starting" came with the key still reading 3, as one went by the clock and the other by the move.
+    func testTheKeyCountsDownToTheMoveAndThenSaysItsStarting() async throws {
+        let dj = try ready(only: .loopDrop)
+        let auto: AutoDJ = dj.autoDJ
+        auto.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertEqual(auto.legend, "AUTO \(TransitionScore.leadBars)", "The clock's running, and the move's still to come")
+        XCTAssertFalse(dj.statusMessage?.contains("starting") == true, "\(dj.statusMessage ?? "")")
+        try await run(dj, until: { auto.barsToGo == 0 }, seconds: 10)
+        XCTAssertEqual(auto.legend, "AUTO")
+        XCTAssertEqual(dj.statusMessage, "Loop build starting. Touch a control to take it back.")
+    }
+
+    /// RELOOP took a deck back a minute and a half, to a loop nobody set.
+    func testAStoppedLoopBuildLeavesNoLoopToGoBackTo() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
+        a.exitLoop()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        let there = a.position
+        a.reloop()
+        XCTAssertEqual(a.position, there, accuracy: 1, "It stays where it is")
+        XCTAssertFalse(a.renderer.loopActive)
+        XCTAssertEqual(dj.statusMessage, "There's no loop to go back to yet. Press a loop size, or IN and OUT.")
+    }
+
+    func testALoopSomeoneStaysInIsStillTheirs() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
+        a.setLoop(beats: 8)
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertTrue(a.renderer.loopActive)
+        XCTAssertGreaterThan(a.renderer.loopEnd, a.renderer.loopStart)
+    }
+
+    func testAFinishedLoopBuildLeavesNoLoopBehind() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
+        try await run(dj, until: { dj.autoDJ.phase == .idle })
+        XCTAssertEqual(a.renderer.loopEnd, a.renderer.loopStart, "Nobody set that")
+    }
+
     func testRunningOutWhileWaitingForStemsSaysSo() throws {
         let dj = try ready()
         dj.decks[1].trackMap = nil

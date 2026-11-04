@@ -164,6 +164,9 @@ final class WhatsThisUITests: CheeksUITestCase {
         }
 
         print("UITEST: asked about \(asked.count) controls: \(asked.sorted().joined(separator: ", "))")
+        // Moved into a host of its own, the whole mixer went missing, and this walk still found nothing without a note.
+        XCTAssertTrue(asked.contains("Auto DJ"), "The mixer's not there to ask about")
+        XCTAssertTrue(asked.contains("Crossfader"), "The mixer's not there to ask about")
         print("UITEST: no note on \(missing)")
         XCTAssertEqual(missing, [], "No note on these")
         XCTAssertGreaterThan(asked.count, 30, "It should have found most of the screen")

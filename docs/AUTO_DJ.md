@@ -126,8 +126,8 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
 
 ## In the app
 
-- **`AUTO`** on the mixer. It needs one deck playing, the other loaded and stopped, and stems on both. It waits for stems that are still splitting.
-- **Press:** plans, auditions, then waits for the bar and counts down. Press again to call it off.
+- **`AUTO`** on the mixer. It needs one deck playing, the other loaded and stopped, and stems on both. It waits for stems that are still splitting. If the track runs out or fades away first, or it's too near the end for any move, the next track just starts, so the music doesn't stop.
+- **Press:** plans, auditions, then waits for the bar and counts down to when the move starts. Press again to call it off.
 - **Mid-move:** the knobs and stem levels follow the score, and touching one takes it back. At the end, the old deck goes back to neutral, and on the new deck what you took stays as you set it.
 - **Cutting it short:**
 

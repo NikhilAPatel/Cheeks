@@ -8,6 +8,15 @@ final class SetOrderTests: XCTestCase {
         var key: String?
     }
 
+    /// A mix's first choice was the track it had faded out 40 s before, as close in tempo as can be.
+    func testWhatsBeenHeardGoesLast() {
+        let songs = [Song(name: "just played", bpm: 124, key: "8A"), Song(name: "further off", bpm: 128, key: "9A"), Song(name: "far off", bpm: 131, key: "3B"), Song(name: "played before", bpm: 125, key: "8A")]
+        let heard: Set<String> = ["just played", "played before"]
+        let order = SetOrder.order(songs, from: SetOrder.Place(bpm: 124, key: "8A"), heard: { heard.contains($0.name) }, bpm: \.bpm, key: \.key).map(\.name)
+        XCTAssertEqual(Array(order.prefix(2)), ["further off", "far off"])
+        XCTAssertEqual(Set(order.suffix(2)), heard, "Still there, when there's nothing else")
+    }
+
     private func names(_ songs: [Song], from start: SetOrder.Place?) -> [String] {
         SetOrder.order(songs, from: start, bpm: \.bpm, key: \.key).map(\.name)
     }

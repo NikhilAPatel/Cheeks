@@ -459,3 +459,39 @@ The mixer moving between pages is weak evidence of a real muscle-memory trap. A 
 ### Screenshots
 
 All in `/Users/nikhil/Cheeks/docs/test-results-12/`: `fu-first-screen.png`, `fu-imported.png`, `fu-both-loaded.png`, `fu-help-auto-note.png`, `fu-decks-page.png`, `fu-hand-mix-done.png`, `fu-hand-mix-faders.png`, `fu-auto-pressed.png`, `fu-auto-stopped-silence.png`, `fu-auto-loop-build.png`, `fu-auto-done.png`, `fu-mix-pressed.png`.
+
+## What happened next
+
+**N1, N2 and N3 are fixed, and so is most of what looked wrong.**
+
+**Fixed, with a test I ran on the old code to see it fail**
+- **N2: a press during the slide.** The panels now slide with UIKit, which hit-tests by where a view's going, where SwiftUI moved them frame by frame. In a test that presses `BROWSE` and looks at what every control's touch finds during the slide, up to 54 of 106 found another control on the old code, and none do now. For about the first 40 ms a press finds nothing, as the decks are still coming back into the window. **The mixer takes no touches for its 0.45 s slide,** so a press aimed at it then is lost. I tried giving it the same slide, in a host of its own, and that took the whole mixer away from VoiceOver, which the gate caught. I never found out why, so it stays where it was. **My test can't press during the slide with a real touch, so FB1 is the one that counts.**
+- **N1: long messages** take a second line in the same place on the bar. It hangs a little over the overview, and goes when the message does.
+
+**Fixed, with a test of what it does**
+- **Section names, `CHORUS 91` and `CHORUS 1.1`.** Once stems are ready they name the sections, from where the kick, the bassline, the singing and the level change. The mix alone agreed with that on 71% of bars across 38 real tracks. I've read the results on 49 tracks and they look like arrangements, but nobody's checked them by ear.
+- **N3: `AUTO` ending in silence.** While it's waiting for stems, or has no way in, the next track starts when this one runs out or fades away, with its fader and the crossfader opened. It says so at the press, and when it happens. Too near the end for a move, it reads `AUTO…` and says the next track starts at the end, where it used to give up. Starting the waiting deck yourself during the wait calls it off, where stems arriving would have stopped that deck.
+- **`BEAT SYNC` and bars:** my decision is that bars should line up. A deck started with sync on goes back or on by up to 2 beats to start in bar, as nobody's heard it yet. It doesn't go back past the start of the track. A deck that's already playing still only moves to the nearest beat, as people may be hearing it.
+- **`NEXT` and `MIX`:** what's on a deck, or has been on air since the app opened, goes to the end of the order.
+- **`RELOOP` after a Loop build:** the score's loop goes when the move ends, unless someone's still in it.
+- **"starting":** the key now counts to when the move really starts, through the score's two bars of lead-in, and says "starting" at 0. Before, the two went by different clocks.
+- **`AUTO…` with "waiting for the stems" still up:** it now says the stems are ready and it's choosing a move.
+
+**Changed, with no test**
+- **A slide of over 5 pt on a lit FX pad** counts as a slide, not a tap. It was 8. **This needs a real finger:** too low and a sloppy tap won't turn an effect off.
+- **The jog's cover art** is darker behind the numbers (0.62 to 0.42).
+- **Notes:** `AUTO` explains `…`, `BEAT BLOCKS` says they're mirrored and red's the first beat, `BEAT SYNC` mentions bars, `BEAT JUMP` says the `JUMP` pads have 1 beat either way, `CUE` says one output like AirPods can only play the mix, and `WAVEFORM` says what `UP` and `DOWN` are.
+
+**Decided against**
+- **The 0.23 s on stopping the old deck:** it's two ticks and the stems' lag, and it's when someone's just stopped the only thing they could hear. Not worth moving a start out of the tick where it's safe.
+- **A saved loop's pad starting a stopped deck:** it's what `RELOOP` does too, and a pad that's pressed is asking for the sound.
+- **`BEAT JUMP`'s size going one way:** with bars lining up, there's much less need, and the note now points at the `JUMP` pads.
+- **`AUTO`'s look among `SPLIT` and `FILTER ↻`:** a colour would break "one blue for on", and most of what the first-time user lost there was reusing coordinates, by their own account.
+- **`MASTER` naming a deck with its fader down:** it's still the tempo everything follows.
+- **The `?` hint's few seconds,** the thumbs not naming what they rate, and the deck strip's titles: `?` stays on screen, the message beside the thumbs names the move, and the titles use the room there is.
+
+**Not done**
+- **EA is still blocked** on the Duo's restart, and the long UI suite didn't run on the Duo this time, as its recorder fills the disk while the screen moves. It ran on the iPad and the small iPhone, with a short suite on the Duo.
+- **Two `BROWSE` presses doing nothing:** I can't explain it and can't repeat it, so it's in the next task. It may have been N2.
+- **The Fault lines from `AnimationKit`:** the slide's changed, so the next round should count them again.
+- **The Files folder, the first keyboard's freeze and the import picker's first folder** still want a look on the phone.

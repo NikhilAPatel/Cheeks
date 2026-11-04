@@ -500,6 +500,20 @@ extension Deck {
         }
     }
 
+    /// Nobody's heard this deck yet, so it can start in bar with the one it's following and not just on the beat. A first-time
+    /// user's whole first mix was a beat out, with SYNC on and the marker green. A deck that's playing only ever moves to the
+    /// nearest beat, as people may be hearing it.
+    func alignBars(to master: Deck) {
+        guard beatFrames > 0, master.beatFrames > 0, master.effectiveBPM > 0 else { return }
+        let theirs = master.beatPosition(master.renderer.playhead) * effectiveBPM / master.effectiveBPM
+        var beats = (theirs - beatPosition(renderer.playhead)).truncatingRemainder(dividingBy: 4)
+        if beats >= 2 { beats -= 4 }
+        if beats < -2 { beats += 4 }
+        // Ahead of the very start there's nothing to play.
+        if renderer.playhead + beats * beatFrames < 0 { beats += 4 }
+        renderer.jump(by: beats * beatFrames)
+    }
+
     // MARK: Stems
 
     func toggleStem(_ stem: Stem) {
@@ -732,7 +746,7 @@ extension Deck {
                     self.applyStemGains()
                     self.stemWaveform = waves
                     self.stemStatus = .ready(label)
-                    if let map { self.applyTrackMap(map, mix: mix) }
+                    if let map { self.applyTrackMap(map) }
                 }
             } catch {
                 let wasCancelled = error is CancellationError
@@ -750,31 +764,23 @@ extension Deck {
 
     /// The stems show where the kicks really are. A grid from the first analysis can be 100 ms late, or have the
     /// wrong 1, so it's replaced, once. A grid someone set by hand or imported stays, and so does one on
-    /// a track with no steady kick to go by.
-    func applyTrackMap(_ map: TrackMap, mix: PCM16Stereo? = nil) {
+    /// a track with no steady kick to go by. The sections get named from the stems too, whoever set the grid.
+    func applyTrackMap(_ map: TrackMap) {
         trackMap = map
-        guard let track, track.gridSource == .analysis, map.isSteady else { return }
-        let id = track.id
-        // A small correction nobody needs to hear about. A big one moves what's on the screen, and maybe what's playing in sync.
-        if let before = track.bpm, abs(map.bpm / before - 1) > 0.005 {
-            onMessage?(String(format: "Deck %d's tempo corrected from its drums: %g BPM.", index + 1, (map.bpm * 100).rounded() / 100), .info)
-        }
-        updateTrack { t in
-            t.bpm = map.bpm
-            t.firstBeat = map.firstBar
-            t.tempoMarkers = nil
-            t.gridSource = .drums
-        }
-        // Phrases are counted in bars, so they have to be counted again.
-        guard let mix else { return }
-        let grid = BeatGrid(bpm: map.bpm, firstBeat: map.firstBar)
-        Task.detached(priority: .utility) { [weak self] in
-            let phrases = TrackAnalyzer.analyze(mix, knownGrid: grid).phrases
-            await MainActor.run {
-                guard let self, self.track?.id == id else { return }
-                self.updateTrack { $0.phrases = phrases }
+        if let track, track.gridSource == .analysis, map.isSteady {
+            // A small correction nobody needs to hear about. A big one moves what's on the screen, and maybe what's playing in sync.
+            if let before = track.bpm, abs(map.bpm / before - 1) > 0.005 {
+                onMessage?(String(format: "Deck %d's tempo corrected from its drums: %g BPM.", index + 1, (map.bpm * 100).rounded() / 100), .info)
+            }
+            updateTrack { t in
+                t.bpm = map.bpm
+                t.firstBeat = map.firstBar
+                t.tempoMarkers = nil
+                t.gridSource = .drums
             }
         }
+        let phrases = map.phrases(on: grid ?? BeatGrid(bpm: map.bpm, firstBeat: map.firstBar))
+        if phrases != track?.phrases { updateTrack { $0.phrases = phrases } }
     }
 
     // MARK: Beat grid editing

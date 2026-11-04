@@ -86,13 +86,36 @@ struct ContentView: View {
                 .frame(width: browser)
             }
             // Never out of sight when the browser opens, so its meters and knobs carry on.
-            MixerPanel()
-                .frame(width: mixerWidth)
-                // Without this, SwiftUI hands an animating position down to every leaf, and redraws them on each frame.
-                .geometryGroup()
-                .offset(x: showLibrary ? browser + 3 : deck + 3)
+            MixerOnItsWay(x: showLibrary ? browser + 3 : deck + 3, width: mixerWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+}
+
+/// The mixer, which moves when the browser opens. A host of its own would let it slide as the decks do, but nothing in one
+/// showed up for VoiceOver, and that's why it isn't in one. So while it's going across it takes no touches: it would get in the
+/// way of what's arriving under it, and a press aimed at it finds nothing for a moment rather than something else.
+private struct MixerOnItsWay: View {
+    let x: CGFloat
+    let width: CGFloat
+    @State private var isMoving = false
+    @State private var settling: Task<Void, Never>?
+
+    var body: some View {
+        MixerPanel()
+            .frame(width: width)
+            // Without this, SwiftUI hands an animating position down to every leaf, and redraws them on each frame.
+            .geometryGroup()
+            .offset(x: x)
+            .allowsHitTesting(!isMoving)
+            .onChange(of: x) {
+                isMoving = true
+                settling?.cancel()
+                settling = Task {
+                    try? await Task.sleep(for: .seconds(0.45))
+                    if !Task.isCancelled { isMoving = false }
+                }
+            }
     }
 }
 
@@ -105,6 +128,16 @@ extension EnvironmentValues {
     var isOffstage: Bool {
         get { self[IsOffstageKey.self] }
         set { self[IsOffstageKey.self] = newValue }
+    }
+}
+
+/// Panels slide with UIKit and not with SwiftUI, because of what a touch finds. UIKit goes by where a view's going, so a press
+/// lands on the control that's about to be there. SwiftUI moves a view frame by frame, and `PLAY` pressed just after closing
+/// the browser set a hot cue on the pad going past, 4 times out of 5. It's the same spring as `Theme.panel`, and the delay's what
+/// SwiftUI takes to start moving the mixer: without it they were 62 pt apart on the way. A touch doesn't wait for it.
+private func slide(_ view: UIView, to transform: CGAffineTransform) {
+    UIView.animate(springDuration: 0.38, bounce: 0.14, delay: 0.022, options: [.allowUserInteraction, .beginFromCurrentState]) {
+        view.transform = transform
     }
 }
 
@@ -125,8 +158,7 @@ struct Offstage<Content: View>: View {
     }
 
     var body: some View {
-        OffstageHost(isOffstage: isOffstage, content: content)
-            .offset(x: isOffstage ? x : 0, y: isOffstage ? y : 0)
+        OffstageHost(isOffstage: isOffstage, away: CGAffineTransform(translationX: x, y: y), content: content)
             .opacity(isOffstage ? 0 : 1)
             .allowsHitTesting(!isOffstage)
     }
@@ -135,6 +167,7 @@ struct Offstage<Content: View>: View {
 private final class OffstageController: UIViewController {
     let host: UIHostingController<AnyView>
     private var leaving: DispatchWorkItem?
+    private var hasBeenPlaced = false
 
     init(rootView: AnyView) {
         host = UIHostingController(rootView: rootView)
@@ -157,19 +190,33 @@ private final class OffstageController: UIViewController {
 
     private func attach() {
         guard host.view.superview == nil else { return }
-        host.view.frame = view.bounds
-        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(host.view)
+        placeHost()
     }
 
-    func update(isOffstage: Bool) {
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        placeHost()
+    }
+
+    /// Not its frame, which means nothing once it has a transform.
+    private func placeHost() {
+        host.view.bounds = view.bounds
+        host.view.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+    }
+
+    func update(isOffstage: Bool, away: CGAffineTransform) {
         leaving?.cancel()
         leaving = nil
-        guard isOffstage else {
-            attach()
-            return
+        let target = isOffstage ? away : .identity
+        if !isOffstage { attach() }
+        if !hasBeenPlaced {
+            hasBeenPlaced = true
+            host.view.transform = target
+        } else if host.view.transform != target {
+            slide(host.view, to: target)
         }
-        guard host.view.superview != nil else { return }
+        guard isOffstage, host.view.superview != nil else { return }
         // Once it's finished sliding. Built out of sight, this also gives a list time to make its first rows.
         let leave = DispatchWorkItem { [weak host] in host?.view.removeFromSuperview() }
         leaving = leave
@@ -179,6 +226,7 @@ private final class OffstageController: UIViewController {
 
 private struct OffstageHost<Content: View>: UIViewControllerRepresentable {
     let isOffstage: Bool
+    let away: CGAffineTransform
     let content: () -> Content
 
     func makeUIViewController(context: Context) -> OffstageController {
@@ -187,7 +235,7 @@ private struct OffstageHost<Content: View>: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: OffstageController, context: Context) {
         controller.host.rootView = rooted(context)
-        controller.update(isOffstage: isOffstage)
+        controller.update(isOffstage: isOffstage, away: away)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: OffstageController, context: Context) -> CGSize? {
@@ -374,7 +422,8 @@ struct TopBar: View {
             // On something with a size, because with no message showing the capsule has none.
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay { if !layout.isCompact { StatusCapsule() } }
+                // From the top, so a message on two lines hangs down rather than going off the screen.
+                .overlay(alignment: .top) { if !layout.isCompact { StatusCapsule().padding(.top, 1) } }
             AnalysisIndicator()
             if !layout.isCompact {
                 TimelineView(.everyMinute) { context in
@@ -537,8 +586,9 @@ struct StatusCapsule: View {
 
     private func capsule(_ text: String, symbol: String?, tint: Color) -> some View {
         row(text, symbol: symbol, tint: tint, touchOnly: false)
-            .background(Capsule().fill(.black))
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            // A capsule on one line. Two would make it a pill with text in its corners.
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.black))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.6), radius: 8, y: 3)
             // What's underneath still works. The keys' touches are in the copy over this.
             .allowsHitTesting(false)
@@ -553,7 +603,8 @@ struct StatusCapsule: View {
                 } else {
                     ProgressView().controlSize(.mini)
                 }
-                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.75)
+                // On the Duo a long one lost its end at any size, and the end's the part you act on: "The decks are…".
+                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             .opacity(touchOnly ? 0 : 1)
             if dj.undoAction != nil {
@@ -575,7 +626,8 @@ struct StatusCapsule: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, hasKeys ? 3 : 10)
-        .frame(height: 24)
+        .padding(.vertical, 2)
+        .frame(minHeight: 24)
         .accessibilityHidden(touchOnly)
     }
 

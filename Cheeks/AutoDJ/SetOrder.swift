@@ -49,6 +49,12 @@ enum SetOrder {
         return names.flatMap { from in names.map { keyFit(from: from, to: $0) } }
     }()
 
+    /// The same, with what's been heard already left until there's nothing else. A mix's first choice was the track it had
+    /// faded out 40 s before, which is as close in tempo as can be and read as a fault.
+    static func order<T>(_ items: [T], from start: Place?, heard: (T) -> Bool, bpm: (T) -> Double?, key: (T) -> String?) -> [T] {
+        order(items.filter { !heard($0) }, from: start, bpm: bpm, key: key) + order(items.filter(heard), from: start, bpm: bpm, key: key)
+    }
+
     /// The best way through a list, one track at a time, from here. With nowhere to start from, the first track stays first.
     static func order<T>(_ items: [T], from start: Place?, bpm: (T) -> Double?, key: (T) -> String?) -> [T] {
         let tempos = items.map(bpm), keys = items.map { keyNumber(key($0)) }
