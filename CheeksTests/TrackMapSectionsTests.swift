@@ -144,6 +144,20 @@ final class TrackMapSectionsTests: XCTestCase {
         XCTAssertEqual(deck.track?.phrases?.map(\.kind), [.intro, .chorus])
     }
 
+    /// Round 13, on a real track: 4:27 of `CHORUS`. Its kick, bass and level never move, and only the singer comes and goes.
+    func testAVeryLongRunNamesItsSungParts() {
+        check([Part(bars: 4), Part(bars: 12), Part(bars: 8, sung: 1), Part(bars: 24), Part(bars: 16, sung: 1), Part(bars: 40)],
+              [(.intro, 0), (.chorus, 16), (.verse, 24), (.chorus, 48), (.outro, 64)])
+    }
+
+    func testAVeryLongRunWithNobodySingingHasNothingToGoOn() {
+        check([Part(bars: 40), Part(bars: 40), Part(bars: 40)], [(.chorus, 0)])
+    }
+
+    func testARunThatIsntSoLongKeepsItsChorus() {
+        check([Part(bars: 32), Part(bars: 8, sung: 1), Part(bars: 16)], [(.chorus, 0)])
+    }
+
     /// A loose track keeps its grid, as its kicks are no use for one, but they still say where they stop.
     @MainActor
     func testStemsNameTheSectionsOfATrackWithALooseGrid() {

@@ -269,7 +269,7 @@ extension Deck {
 
     /// A manual or saved loop shows its own length on the key. The length you chose comes back when
     /// the loop ends, so one loop you set by hand doesn't change what the key does next.
-    private func showLength(ofLoopFrom start: Double, to end: Double) {
+    func showLength(ofLoopFrom start: Double, to end: Double) {
         guard beatFrames > 0 else { return }
         let length = beatPosition(end) - beatPosition(start)
         guard abs(length - loopBeats) > 0.0001 else { return }

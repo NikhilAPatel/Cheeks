@@ -94,6 +94,8 @@ struct PadTabs: View {
     /// All nine won't fit across a phone's deck, so the ones used most keep their tabs and the rest take turns on one.
     private static let everyday: [PadMode] = [.hotCue, .beatLoop, .roll, .stems, .fx]
     private static let others: [PadMode] = [.memory, .slicer, .beatJump, .sampler]
+    /// The sampler's four presses away the first time, and it shouldn't be every time.
+    @State private var lastOther: PadMode = Self.others[0]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -134,7 +136,8 @@ struct PadTabs: View {
         .overlay {
             TouchSurface(onDown: { _ in
                 Haptics.shared.toggle(true)
-                let next = Self.others[((current ?? -1) + 1) % Self.others.count]
+                let next = current.map { Self.others[($0 + 1) % Self.others.count] } ?? lastOther
+                lastOther = next
                 deck.padMode = next
                 WhatsThis.shared.note(next.rawValue.capitalized + " pads")
             })

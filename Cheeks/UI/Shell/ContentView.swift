@@ -62,11 +62,13 @@ struct ContentView: View {
 
     /// The decks, the mixer, and the browser that takes the decks' place. Everything stays built and only moves out of
     /// sight (`offstage`), as building a screenful of views again was nearly all of what opening the browser cost.
+    /// Deck 1, the mixer and deck 2 go right together, the same distance, and the browser comes in over deck 1. Deck 1 used to go
+    /// left, away from the mixer, and black opened between them before the browser got there: 381 pt on an iPad, like two doors.
     private func panels(width: CGFloat, mixerWidth: CGFloat) -> some View {
         let deck = (width - mixerWidth - 6) / 2
         let browser = width - mixerWidth - 3
         return ZStack(alignment: .leading) {
-            Offstage(showLibrary, x: -deck - 3) {
+            Offstage(showLibrary, x: deck + 3) {
                 DeckPanel(deck: dj.decks[0])
             }
             .frame(width: deck)
@@ -82,6 +84,8 @@ struct ContentView: View {
                         BrowserView(isOpen: showLibrary, keyboardHeight: keyboardHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                     }
+                    // It goes over deck 1, which shouldn't show between its parts or round its corners.
+                    .background(Theme.chassis)
                 }
                 .frame(width: browser)
             }
@@ -159,8 +163,8 @@ struct Offstage<Content: View>: View {
 
     var body: some View {
         OffstageHost(isOffstage: isOffstage, away: CGAffineTransform(translationX: x, y: y), content: content)
-            .opacity(isOffstage ? 0 : 1)
             .allowsHitTesting(!isOffstage)
+            .accessibilityHidden(isOffstage)
     }
 }
 
@@ -577,11 +581,16 @@ struct StatusCapsule: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.statusMessage)
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.savingRecordings)
         .task(id: dj.statusSerial) {
-            guard dj.statusMessage != nil else { return }
-            // One with keys stays around longer: you may need a moment to realise you want them.
-            try? await Task.sleep(for: .seconds(hasKeys ? 8 : 5))
+            guard let message = dj.statusMessage else { return }
+            try? await Task.sleep(for: .seconds(Self.secondsUp(message, hasKeys: hasKeys)))
             if !Task.isCancelled { dj.statusMessage = nil }
         }
+    }
+
+    /// One with keys stays around longer: you may need a moment to realise you want them. And one on two lines has to be
+    /// there long enough to read to its end, which is usually the part you act on.
+    static func secondsUp(_ message: String, hasKeys: Bool) -> Double {
+        max(hasKeys ? 8 : 5, Double(message.split(separator: " ").count) * 0.45)
     }
 
     private func capsule(_ text: String, symbol: String?, tint: Color) -> some View {

@@ -18,14 +18,21 @@ struct BrowserView: View {
     @State private var search = ""
     @AppStorage("browserSort") private var sort: SortKey = .dateAdded
     @AppStorage("browserAscending") private var ascending = false
+    /// All Tracks' sort, while a playlist's showing in its own order.
+    @AppStorage("browserAllSort") private var allSort: SortKey = .dateAdded
+    @AppStorage("browserAllAscending") private var allAscending = false
     @AppStorage("browserInKey") private var inKeyOnly = false
     @AppStorage("browserNearBPM") private var nearBPMOnly = false
     @AppStorage("browserNext") private var bestNext = false
+    /// What NEXT's order is going by, which catches up a moment after anything changes it.
+    @State private var nextFrom: NextFrom?
     @State private var importing = false
     @State private var importKind: ImportKind = .audio
     @State private var importMessage: String?
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
+    @State private var renamingPlaylist: Playlist?
+    @State private var renamedPlaylistName = ""
     @FocusState private var searchFocused: Bool
 
     enum Source: Hashable { case all, playlist(UUID) }
@@ -92,10 +99,39 @@ struct BrowserView: View {
         } }
         guard bestNext else { return list }
         // The best way on from what's playing, which isn't on the list: it can't come next after itself.
+        let from = nextFrom ?? nextFromNow
+        return SetOrder.order(list.filter { $0.id != from.track }, from: from.place, heard: { from.onADeck.contains($0.id) || from.heard.contains($0.id) }, bpm: \.bpm, key: \.key)
+    }
+
+    /// What decides NEXT's order. A load changes it, and straight away that moved the list under the next press, which landed on
+    /// another row. So the list keeps its order until this has settled for a couple of seconds.
+    private struct NextFrom: Equatable {
+        var place: SetOrder.Place?
+        var track: UUID?
+        var onADeck: Set<UUID>
+        var heard: Set<UUID>
+    }
+
+    private var nextFromNow: NextFrom {
         let deck = referenceDeck
-        let place = deck.map { SetOrder.Place(bpm: $0.effectiveBPM > 0 ? $0.effectiveBPM : nil, key: $0.effectiveKey) }
-        let onADeck = Set(dj.decks.compactMap { $0.track?.id })
-        return SetOrder.order(list.filter { $0.id != deck?.track?.id }, from: place, heard: { onADeck.contains($0.id) || dj.heardThisSession.contains($0.id) }, bpm: \.bpm, key: \.key)
+        // To a tenth, as a synced deck's tempo can wander in its last few places.
+        let place = deck.map { SetOrder.Place(bpm: $0.effectiveBPM > 0 ? ($0.effectiveBPM * 10).rounded() / 10 : nil, key: $0.effectiveKey) }
+        return NextFrom(place: place, track: deck?.track?.id, onADeck: Set(dj.decks.compactMap { $0.track?.id }), heard: dj.heardThisSession)
+    }
+
+    private func catchUpWithNext() async {
+        guard isOpen, bestNext else {
+            nextFrom = nil
+            return
+        }
+        let now = nextFromNow
+        guard let held = nextFrom else {
+            nextFrom = now
+            return
+        }
+        guard held != now else { return }
+        try? await Task.sleep(for: .seconds(2))
+        if !Task.isCancelled { nextFrom = now }
     }
 
     private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
@@ -143,6 +179,28 @@ struct BrowserView: View {
         } message: {
             Text(importMessage ?? "")
         }
+        .alert("Rename playlist", isPresented: Binding(get: { renamingPlaylist != nil }, set: { if !$0 { renamingPlaylist = nil } }),
+               presenting: renamingPlaylist) { playlist in
+            TextField("Name", text: $renamedPlaylistName)
+            Button("Rename") { library.rename(playlist, to: renamedPlaylistName.trimmingCharacters(in: .whitespaces)) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .task(id: isOpen && bestNext ? nextFromNow : nil) { await catchUpWithNext() }
+        // A playlist opens in the order it was built, which is the order MIX plays, whatever All Tracks was sorted by. A
+        // first-time user's built order had gone from view, with nothing to say why. All Tracks gets its own sort back.
+        .onChange(of: chosenPlaylist) { old, new in
+            if old.isEmpty {
+                allSort = sort
+                allAscending = ascending
+            }
+            if new.isEmpty {
+                sort = allSort
+                ascending = allAscending
+            } else {
+                sort = .dateAdded
+                ascending = false
+            }
+        }
         // It used to go away and come back empty. A search left behind would hide tracks the next time.
         .onChange(of: isOpen) { _, open in
             guard !open else { return }
@@ -187,10 +245,11 @@ struct BrowserView: View {
         if list.isEmpty {
             emptyState
         } else {
+            let rows = Row.rows(of: list, canRepeat: playlistID != nil)
             ScrollViewReader { proxy in
-                List(Array(list.enumerated()), id: \.element.id) { row, track in
-                    TrackRow(track: track, referenceDeck: referenceDeck, playlistID: playlistID)
-                        .listRowBackground(row % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
+                List(rows) { row in
+                    TrackRow(track: row.track, referenceDeck: referenceDeck, playlistID: playlistID)
+                        .listRowBackground(row.number % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
                 }
@@ -203,8 +262,32 @@ struct BrowserView: View {
                 .transaction { if isLong { $0.animation = nil } }
                 // A different list starts from its top. Now the list keeps its place, a search from far down opened part-way through its results.
                 .onChange(of: whatsListed) { _, _ in
-                    if let first = list.first { proxy.scrollTo(first.id, anchor: .top) }
+                    if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
                 }
+            }
+        }
+    }
+
+    /// A row of the list. History can have a track in it twice, so a track isn't enough to tell rows apart: SwiftUI said so in
+    /// the log, and its lists can misbehave with that.
+    struct Row: Identifiable {
+        struct ID: Hashable {
+            let track: UUID
+            let time: Int
+        }
+
+        let id: ID
+        let number: Int
+        let track: Track
+
+        static func rows(of list: [Track], canRepeat: Bool) -> [Row] {
+            // Only a playlist can repeat, and All Tracks can be thousands long.
+            guard canRepeat else { return list.enumerated().map { Row(id: ID(track: $1.id, time: 0), number: $0, track: $1) } }
+            var seen: [UUID: Int] = [:]
+            return list.enumerated().map { number, track in
+                let time = seen[track.id, default: 0]
+                seen[track.id] = time + 1
+                return Row(id: ID(track: track.id, time: time), number: number, track: track)
             }
         }
     }
@@ -250,6 +333,12 @@ struct BrowserView: View {
                     sidebarRow(playlist.name, icon: library.isHistory(playlist) ? "clock.arrow.circlepath" : "music.note.list",
                                count: playlist.trackIDs.count, tag: .playlist(playlist.id))
                         .contextMenu {
+                            if !library.isHistory(playlist) {
+                                Button("Rename Playlist", systemImage: "pencil") {
+                                    renamedPlaylistName = playlist.name
+                                    renamingPlaylist = playlist
+                                }
+                            }
                             Button("Delete Playlist", systemImage: "trash", role: .destructive) {
                                 if source == .playlist(playlist.id) { source = .all }
                                 library.deletePlaylist(playlist)
@@ -459,7 +548,7 @@ struct BrowserView: View {
                 ContentUnavailableView {
                     Label("No music yet", systemImage: "music.note.house")
                 } description: {
-                    Text((layout == .portrait ? "Tap the blue button above" : "Tap Import") + " to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder.")
+                    Text((layout == .portrait ? "Tap the blue button above" : "Tap Import") + " to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder. If Files opens on an empty folder, go back from there to find your music.")
                 }
             } else if !search.isEmpty {
                 ContentUnavailableView.search(text: search)

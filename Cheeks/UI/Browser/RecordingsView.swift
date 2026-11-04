@@ -11,13 +11,16 @@ struct RecordingsView: View {
     @State private var renaming: URL?
     @State private var newName = ""
     @State private var deleting: URL?
+    /// Where a finger's dragged the playback to, until it lets go.
+    @State private var scrubbing: TimeInterval?
 
     var body: some View {
         NavigationStack {
             List {
                 if recordings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "record.circle",
-                                           description: Text("Tap REC at the top of the screen to record your mix. Recordings also appear in the Files app under Segue DJ › Recordings, with a tracklist next to each one."))
+                                           description: Text((dj.isRecording ? "You're recording now, and it'll be here once you stop." : "Tap REC at the top of the screen to record your mix.")
+                                                             + " Recordings also appear in the Files app under Segue DJ › Recordings, with a tracklist next to each one."))
                 }
                 ForEach(recordings, id: \.self) { url in
                     row(url)
@@ -51,7 +54,7 @@ struct RecordingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
                 // Previews play straight to the main output, so they're off while a deck is playing.
-                let isPlaying = player.playing == url
+                let isPlaying = player.playing == url && !player.isPaused
                 Button { player.toggle(url) } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 28))
@@ -85,6 +88,7 @@ struct RecordingsView: View {
                 }
                 .buttonStyle(.borderless)
             }
+            if player.playing == url { playback }
             if expanded == url, let text = tracklist(url) {
                 Text(text)
                     .font(.system(.caption, design: .monospaced))
@@ -95,6 +99,20 @@ struct RecordingsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Where it's got to, and a way to move through it: a mix can be an hour long.
+    private var playback: some View {
+        HStack(spacing: 8) {
+            Text((scrubbing ?? player.position).clockString).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            Slider(value: Binding(get: { scrubbing ?? player.position }, set: { scrubbing = $0 }), in: 0...max(player.duration, 0.1)) { editing in
+                guard !editing, let scrubbing else { return }
+                player.seek(to: scrubbing)
+                self.scrubbing = nil
+            }
+            .accessibilityLabel("Position in the recording")
+            Text(player.duration.clockString).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
     }
 
     private var decksPlaying: Bool { dj.decks.contains { $0.isPlaying } }
@@ -163,14 +181,27 @@ struct RecordingsView: View {
 @MainActor
 @Observable
 final class RecordingPlayer {
+    /// What's playing or paused.
     private(set) var playing: URL?
+    private(set) var isPaused = false
+    private(set) var position: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
     @ObservationIgnored private let core = Core()
 
     init() {
         core.onFinished = { [weak self] url in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    if self?.playing == url { self?.playing = nil }
+                    if self?.playing == url { self?.stop() }
+                }
+            }
+        }
+        core.onProgress = { [weak self] url, position, duration in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.playing == url else { return }
+                    if self.position != position { self.position = position }
+                    if self.duration != duration { self.duration = duration }
                 }
             }
         }
@@ -178,9 +209,12 @@ final class RecordingPlayer {
 
     func toggle(_ url: URL) {
         if playing == url {
-            stop()
+            isPaused.toggle()
+            core.setPaused(isPaused)
         } else {
             playing = url
+            isPaused = false
+            position = 0
             core.play(url) { [weak self] started in
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
@@ -193,13 +227,23 @@ final class RecordingPlayer {
 
     func stop() {
         playing = nil
+        isPaused = false
+        position = 0
+        duration = 0
         core.stop()
+    }
+
+    func seek(to time: TimeInterval) {
+        position = time
+        core.seek(to: time)
     }
 
     private final class Core: NSObject, AVAudioPlayerDelegate {
         var onFinished: ((URL) -> Void)?
+        var onProgress: ((URL, TimeInterval, TimeInterval) -> Void)?
         private let queue = DispatchQueue(label: "com.nikhilpatel.seguedj.recording-player", qos: .userInitiated)
         private var player: AVAudioPlayer?
+        private var clock: DispatchSourceTimer?
 
         func play(_ url: URL, started: @escaping (Bool) -> Void) {
             queue.async { [self] in
@@ -207,14 +251,45 @@ final class RecordingPlayer {
                 player = try? AVAudioPlayer(contentsOf: url)
                 player?.delegate = self
                 started(player?.play() == true)
+                report()
+                startClock()
+            }
+        }
+
+        func setPaused(_ paused: Bool) {
+            queue.async { [self] in
+                if paused { player?.pause() } else { player?.play() }
+            }
+        }
+
+        func seek(to time: TimeInterval) {
+            queue.async { [self] in
+                player?.currentTime = time
+                report()
             }
         }
 
         func stop() {
             queue.async { [self] in
+                clock?.cancel()
+                clock = nil
                 player?.stop()
                 player = nil
             }
+        }
+
+        private func startClock() {
+            clock?.cancel()
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+            timer.setEventHandler { [weak self] in self?.report() }
+            timer.resume()
+            clock = timer
+        }
+
+        private func report() {
+            guard let player, let url = player.url else { return }
+            onProgress?(url, player.currentTime, player.duration)
         }
 
         func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {

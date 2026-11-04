@@ -22,6 +22,11 @@ extension TrackMap {
             big = zip(big, alone).map { $0 && !$1 }
         }
         big = withSmallerPartsOfLongRuns(big, sections: sections)
+        // Taking those out can leave a scrap on its own, too.
+        let leftAlone = sections.indices.map { i in
+            big[i] && sections[i].count < Self.shortestChorus && !(i > 0 && big[i - 1]) && !(i + 1 < big.count && big[i + 1])
+        }
+        if zip(big, leftAlone).contains(where: { $0 && !$1 }) { big = zip(big, leftAlone).map { $0 && !$1 } }
         if !big.contains(true) { big = big.map { _ in true } }
         let firstBig = big.firstIndex(of: true) ?? 0, lastBig = big.lastIndex(of: true) ?? sections.count - 1
 
@@ -37,6 +42,8 @@ extension TrackMap {
 
     /// A long stretch that's all the same to the kick and the bass, as rock is, and a master that loud barely moves in level.
     /// Its smaller parts are the ones with nobody singing in a stretch that's mostly sung, or clearly quieter than the rest of it.
+    /// Nothing runs for minutes as a chorus, so in a very long stretch any clearly sung section's enough to go on: a club
+    /// track whose kick, bass and level never moved read as one 4:27 `CHORUS`, with only its singer coming and going.
     private func withSmallerPartsOfLongRuns(_ big: [Bool], sections: [Range<Int>]) -> [Bool] {
         guard vocal.count >= barCount else { return big }
         var out = big
@@ -52,7 +59,7 @@ extension TrackMap {
             if j > i, run.count > Self.longRun {
                 let ordered = energy[run].sorted()
                 let loud = ordered[Int(Double(ordered.count) * 0.9)]
-                let sung = averageVocal(run) >= 0.5
+                let sung = averageVocal(run) >= 0.5 || (run.count > Self.veryLongRun && (i...j).contains { sections[$0].count >= Self.shortestChorus && averageVocal(sections[$0]) >= 0.5 })
                 for k in i...j where sections[k].count >= Self.shortestChorus {
                     if medianLevel(sections[k]) < loud - Self.withinARun || (sung && averageVocal(sections[k]) < 0.4) { out[k] = false }
                 }
@@ -70,6 +77,7 @@ extension TrackMap {
     private static let chorusWithin: Float = 4
     private static let shortestChorus = 8
     private static let longRun = 32
+    private static let veryLongRun = 96
     private static let withinARun: Float = 1.5
     /// A build-up longer than this is really a breakdown that happens to end in a chorus.
     private static let longestUp = 16

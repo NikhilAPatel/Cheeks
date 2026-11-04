@@ -26,6 +26,8 @@ struct TransitionScore {
     private(set) var steps: [CheeksAutoStep] = []
     /// When the move starts, in mix beats.
     let start: Double
+    /// When anyone would notice it's started, in mix beats. "Brake drop starting" came after the brake, going by `start`.
+    private(set) var firstHeard: Double
     /// When the move's over, in mix beats.
     private(set) var length: Double = 0
     /// Where a drop lands, in mix beats, for the audition to check.
@@ -45,6 +47,7 @@ struct TransitionScore {
         self.b = b
         framesPerBeat = a.map.barSeconds / 4 * AudioConfig.sampleRate / max(a.rate, 0.01)
         start = Double(Self.leadBars * 4)
+        firstHeard = start
         write()
         let deck = a.deck
         outgoingStops = steps.filter { $0.deck == deck && ($0.kind == Int32(CheeksAutoStop.rawValue) || $0.kind == Int32(CheeksAutoBrake.rawValue)) }.map(\.startBeat).min() ?? length
@@ -196,6 +199,7 @@ struct TransitionScore {
         let t = start
         landing = t
         handover = t
+        firstHeard = t - 2
         prime(entry: plan.entry, landing: t)
         effect(a, CheeksFXEcho, beats: 0.75, depth: 0.8, at: t - 2)
         fire(CheeksAutoCut, a, at: max(0, t - early(a)))
@@ -210,6 +214,7 @@ struct TransitionScore {
         let t = start
         landing = t
         handover = t
+        firstHeard = t - 4
         prime(entry: plan.entry, landing: t)
         fire(CheeksAutoBrake, a, at: t - 4, a: 4 * framesPerBeat)
         for s in Stem.allCases { stem(b, s, to: 1, at: t) }

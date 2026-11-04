@@ -46,7 +46,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 **Recording**
 - REC records the master mix. **Crash-safe:** it captures to a 24-bit file that can be recovered if the app is killed mid-set, then converts to AAC or WAV when you stop.
 - **Tracklist:** every track audible for 10+ seconds is logged with its timestamp, BPM and key, and saved next to the mix as a `.txt` and a `.cue` sheet.
-- **Recordings screen:** play, view the tracklist, share, rename and delete.
+- **Recordings screen:** play, pause and move through a mix, view the tracklist, share, rename and delete.
 - **History:** a "History <date>" playlist logs what you played each day, recording or not.
 
 **Library**
@@ -73,7 +73,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 
 Press `AUTO` with one deck playing and another loaded, and it mixes between them. It plans from what each stem is doing in every bar, renders its best options offline to reject any let-downs, waits for the right bar, and performs through the same controls you'd use. The knobs move on their own, and touching one takes it back. Moves: bass swap, loop build, echo throw, brake drop, vocal tease and vocal ride. See `docs/AUTO_DJ.md`.
 
-Press `MIX` in the browser and it does that through the whole list on screen, in the order it's showing: it loads each next track itself, gives each its time, and mixes into it without anyone touching anything. `NEXT` puts the list in the best order to play from what's on the deck, by tempo and key.
+Press `MIX` in the browser and it does that through the list on screen, in the order it's showing, going on from a track that's playing and coming back for what's above it: it loads each next track itself, gives each its time, and mixes into it without anyone touching anything. `NEXT` puts the list in the best order to play from what's on the deck, by tempo and key.
 
 After a move, the message at the top has a thumbs up and a thumbs down. They stay on your phone, and lean what it chooses towards what you like.
 

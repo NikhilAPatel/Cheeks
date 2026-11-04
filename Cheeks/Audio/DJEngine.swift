@@ -133,6 +133,10 @@ final class DJEngine {
         }
         autoDJ.isAskingForRating = { [weak self] in self?.rateAction != nil }
         autoDJ.crossfaderIsCentred = { [weak self] in self?.crossfader == 0 }
+        autoDJ.hasBeenHeard = { [weak self] in self?.heardThisSession.contains($0) == true }
+        autoDJ.openCrossfader = { [weak self] deck in self?.openCrossfader(for: deck) }
+        autoDJ.crossfaderIsAway = { [weak self] deck in (self?.crossfaderGain(for: deck) ?? 1) < 0.5 }
+        autoDJ.chosenColorFX = { [weak self] in self?.colorFX ?? .filter }
         autoDJ.askForRating = { [weak self] move, from, to in
             self?.rateAction = { [weak self] liked in
                 self?.autoDJ.ratings.add(TransitionRating(move: move, from: from, to: to, liked: liked, at: Date()))
@@ -265,6 +269,21 @@ final class DJEngine {
             return (a, b)
         case .scratch:
             return (x > 0.97 ? 0 : 1, x < 0.03 ? 0 : 1)
+        }
+    }
+
+    private func crossfaderGain(for deck: Deck) -> Float {
+        let (a, b) = crossfaderGains()
+        return deck.index == 0 ? a : b
+    }
+
+    /// Opens a crossfader that's all but shut on a deck, and gives back how to undo that. Nil if the deck can be heard already.
+    private func openCrossfader(for deck: Deck) -> (() -> Void)? {
+        guard crossfaderGain(for: deck) < 0.25 else { return nil }
+        let was = crossfader
+        crossfader = 0
+        return { [weak self] in
+            if let self, self.crossfader == 0 { self.crossfader = was }
         }
     }
 

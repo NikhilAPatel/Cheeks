@@ -39,6 +39,8 @@ final class AutoDJ {
         var keepsQuietAboutNext = false
         /// It's said that this is the last one.
         var saidItsTheLast = false
+        /// How many tracks it's got, said again with what's up next, which comes straight after and would take its place.
+        var opening: String?
     }
 
     /// How a move that's been cut short is wrapped up, once the audio core has let go of the controls.
@@ -59,7 +61,6 @@ final class AutoDJ {
             let tempo, tempoRange: Double
             let keyLock, syncOn: Bool
             let keyShift: Int
-            let colorFX: ColorEffect
             let filter, eqLow, eqMid, eqHigh: Float
 
             init(_ deck: Deck) {
@@ -68,7 +69,6 @@ final class AutoDJ {
                 keyLock = deck.keyLock
                 syncOn = deck.syncOn
                 keyShift = deck.keyShift
-                colorFX = deck.colorFX
                 filter = deck.filter
                 eqLow = deck.eqLow
                 eqMid = deck.eqMid
@@ -77,22 +77,19 @@ final class AutoDJ {
         }
 
         let before: Settings, after: Settings
-        let colorFXBefore: ColorEffect, colorFXAfter: ColorEffect
         let undoMixer: () -> Void
 
         /// Puts back whatever's still as getting ready left it. What someone's changed since is theirs.
-        func putBack(on deck: Deck, outgoing: Deck?) {
+        func putBack(on deck: Deck) {
             if deck.tempoRange == after.tempoRange { deck.tempoRange = before.tempoRange }
             if deck.keyLock == after.keyLock { deck.keyLock = before.keyLock }
             if deck.keyShift == after.keyShift { deck.keyShift = before.keyShift }
             if deck.tempo == after.tempo { deck.setTempo(before.tempo) }
-            if deck.colorFX == after.colorFX { deck.colorFX = before.colorFX }
             if deck.filter == after.filter { deck.filter = before.filter }
             if deck.eqLow == after.eqLow { deck.eqLow = before.eqLow }
             if deck.eqMid == after.eqMid { deck.eqMid = before.eqMid }
             if deck.eqHigh == after.eqHigh { deck.eqHigh = before.eqHigh }
             if deck.syncOn == after.syncOn { deck.syncOn = before.syncOn }
-            if let outgoing, outgoing.colorFX == colorFXAfter { outgoing.colorFX = colorFXBefore }
             undoMixer()
         }
     }
@@ -117,6 +114,14 @@ final class AutoDJ {
     @ObservationIgnored var isAskingForRating: () -> Bool = { false }
     /// A plan takes the crossfader to the middle, which it says if it moves it. It's been reported three rounds running as moving by itself.
     @ObservationIgnored var crossfaderIsCentred: () -> Bool = { true }
+    /// Whether a track's been on air since the app opened, so a mix doesn't go back for it.
+    @ObservationIgnored var hasBeenHeard: (UUID) -> Bool = { _ in false }
+    /// Opens a crossfader that's shut on this deck, and gives back how to undo that. Nil if the deck can be heard already.
+    @ObservationIgnored var openCrossfader: (Deck) -> (() -> Void)? = { _ in nil }
+    /// Whether the crossfader's turned well away from this deck.
+    @ObservationIgnored var crossfaderIsAway: (Deck) -> Bool = { _ in false }
+    /// What the FILTER key's set to, which the knobs go back to once a move's finished with them.
+    @ObservationIgnored var chosenColorFX: () -> ColorEffect = { .filter }
 
     @ObservationIgnored private let core: OpaquePointer
     @ObservationIgnored private let decks: [Deck]
@@ -143,9 +148,13 @@ final class AutoDJ {
     @ObservationIgnored private var ticksEnding = 0
     @ObservationIgnored private var plannedA: UUID?
     @ObservationIgnored private var plannedB: UUID?
-    /// Where a track has nothing left to hear, once it's near enough the end to look.
+    /// Where a track has nothing left to hear.
     @ObservationIgnored private var silentFrom: (track: UUID, frame: Double)?
     @ObservationIgnored private var saidItsStarting = false
+    /// It's said a control someone took is theirs, which only needs saying once a move.
+    @ObservationIgnored private var saidItsYours = false
+    /// Undoes opening a crossfader that was shut on the playing deck, if nothing comes of it.
+    @ObservationIgnored private var earlyCrossfader: (() -> Void)?
 
     init(core: OpaquePointer, decks: [Deck], say: @escaping (String, StatusKind) -> Void, prepareMixer: @escaping (Deck) -> (() -> Void)) {
         self.core = core
@@ -154,7 +163,10 @@ final class AutoDJ {
         self.prepareMixer = prepareMixer
         for deck in decks {
             let index = Int32(deck.index)
-            deck.onManualControl = { kind, control in cheeks_engine_auto_release(core, index, Int32(kind.rawValue), Int32(control)) }
+            deck.onManualControl = { [weak self, weak deck] kind, control in
+                cheeks_engine_auto_release(core, index, Int32(kind.rawValue), Int32(control))
+                if let self, let deck { self.noticeTaken(deck, kind, control) }
+            }
             deck.onMovedByHand = { [weak self, weak deck] in
                 if let self, let deck { self.noticeMoved(deck) }
             }
@@ -200,6 +212,7 @@ final class AutoDJ {
         switch phase {
         case .idle:
             if wasSet {
+                undoEarlyCrossfader()
                 say("Mix off. The track playing just carries on.", .info)
             } else {
                 begin()
@@ -223,7 +236,7 @@ final class AutoDJ {
     // MARK: Mixing through a list
 
     /// Mixes through these tracks in order. If a deck's playing, it carries on from that, and from that track's place
-    /// in the list if it's on it. Otherwise it starts from the top.
+    /// in the list if it's on it, and then comes back for what's above it. Otherwise it starts from the top.
     func startSet(named name: String, tracks: [UUID]) {
         let playing = decks.filter(\.isPlaying)
         guard playing.count <= 1 else {
@@ -233,9 +246,14 @@ final class AutoDJ {
         }
         var queue = tracks
         if let air = playing.first {
-            if let id = air.track?.id, let here = queue.firstIndex(of: id) { queue.removeFirst(here + 1) }
+            if let id = air.track?.id, let here = queue.firstIndex(of: id) {
+                // The note says the whole list, and from row 4 of 5 a first-time user got two tracks and then nothing.
+                // What's been played already doesn't come round again.
+                let above = queue[..<here].filter { !hasBeenHeard($0) }
+                queue = (Array(queue[(here + 1)...]) + above).filter { $0 != id }
+            }
             guard !queue.isEmpty else {
-                say("There's nothing after this track in \(name).", .refused)
+                say("There's nothing left in \(name) to mix into.", .refused)
                 return
             }
         } else {
@@ -246,18 +264,21 @@ final class AutoDJ {
         }
         if phase != .idle { cancel() }
         askedForStems = []
+        let count = Format.count(queue.count, "track")
         if let air = playing.first {
             getReadyToLeave(air)
-            mixSet = MixSet(name: name, queue: queue, onAir: air.index)
-            say("Mixing through \(name).", .info)
+            let opening = "\(letItBeHeard(air))Mixing through \(name), \(count) to go."
+            mixSet = MixSet(name: name, queue: queue, onAir: air.index, opening: opening)
+            say(opening, .info)
         } else {
-            mixSet = MixSet(name: name, queue: queue, onAir: decks[0].index, needsStart: true)
+            let opening = "Mixing through \(name), \(count)."
+            mixSet = MixSet(name: name, queue: queue, onAir: decks[0].index, needsStart: true, opening: opening)
             guard loadNext(onto: decks[0]) != nil else {
                 mixSet = nil
                 say("None of the tracks in \(name) can be loaded.", .refused)
                 return
             }
-            say("Mixing through \(name).", .info)
+            say(opening, .info)
         }
     }
 
@@ -265,6 +286,8 @@ final class AutoDJ {
     private func loadNext(onto deck: Deck) -> UUID? {
         while let id = mixSet?.queue.first {
             mixSet?.queue.removeFirst()
+            // What's there already stays as it is. Loading it again started its split over, and undid a tempo someone had set.
+            if deck.loadError == nil, deck.isLoading ? deck.loadingTrack?.id == id : deck.track?.id == id { return id }
             if loadTrack?(id, deck) != nil { return id }
         }
         return nil
@@ -272,6 +295,7 @@ final class AutoDJ {
 
     private func endSet(_ message: String, _ kind: StatusKind = .info) {
         mixSet = nil
+        earlyCrossfader = nil
         say(message, kind)
     }
 
@@ -284,6 +308,8 @@ final class AutoDJ {
         if set.needsStart {
             if air.isLoading { return }
             if air.isLoaded, air.loadError == nil {
+                // Its fader can be down, or the crossfader away from it, and a mix doesn't start in silence.
+                _ = prepareMixer(air)
                 air.play()
                 mixSet?.needsStart = false
             } else if loadNext(onto: air) == nil {
@@ -303,8 +329,11 @@ final class AutoDJ {
                 mixSet?.next = id
                 let title = waiting.loadingTrack?.title ?? waiting.track?.title
                 // The deck shows what's next anyway, and this comes straight after a move, while it's asking about that.
-                if let title, !isAskingForRating(), !set.keepsQuietAboutNext { say("Up next: \(title).", .info) }
+                if let title, !isAskingForRating(), !set.keepsQuietAboutNext {
+                    say("\(set.opening.map { $0 + " " } ?? "")Up next: \(title).", .info)
+                }
                 mixSet?.keepsQuietAboutNext = false
+                mixSet?.opening = nil
             } else if !set.saidItsTheLast {
                 mixSet?.saidItsTheLast = true
                 if !isAskingForRating() { say("That's the last track in \(set.name). The mix ends with it.", .info) }
@@ -425,19 +454,16 @@ final class AutoDJ {
 
     /// Whether a track on air has got to where it's faded away, so the next one needn't sit through the silence.
     private func hasNothingLeftToHear(_ deck: Deck) -> Bool {
-        let look = Int(Self.tailToSearch * AudioConfig.sampleRate)
-        guard deck.renderer.frameCount > 0, Double(deck.renderer.frameCount) - deck.renderer.playhead < Double(look), let id = deck.track?.id else { return false }
+        guard deck.renderer.frameCount > 0, let id = deck.track?.id else { return false }
         if silentFrom?.track != id {
             // Stems are stored at half level, so the same sound is half the size in one.
-            let last = deck.renderer.stemSources?.map { $0.lastSound(withinLast: look, above: Self.silence / 2) }.max()
-                ?? deck.renderer.mixSource?.lastSound(withinLast: look, above: Self.silence)
+            let last = deck.renderer.stemSources?.map { $0.lastSound(above: Self.silence / 2) }.max()
+                ?? deck.renderer.mixSource?.lastSound(above: Self.silence)
             silentFrom = (id, last.map(Double.init) ?? .infinity)
         }
         return deck.renderer.playhead >= silentFrom?.frame ?? .infinity
     }
 
-    /// How far from the end of a track a fade into silence is looked for.
-    private static let tailToSearch = 30.0
     /// -50 dB, as a 16-bit sample. A fade below this isn't worth waiting for.
     private static let silence: Int16 = 104
 
@@ -473,7 +499,20 @@ final class AutoDJ {
             return
         }
         phase = .waitingForStems
-        say("Auto DJ is waiting for the stems. If this track ends first, deck \(to.index + 1) starts.", .info)
+        say("\(letItBeHeard(from))Auto DJ is waiting for the stems. If this track ends first, deck \(to.index + 1) starts.", .info)
+    }
+
+    /// A deck playing with the crossfader shut on it can't be heard. With no move to open it yet, that was a silent master for as
+    /// long as the split took, up to 100 s, with the key lit and the deck's own meter full. Gives back what to say if it opens it.
+    private func letItBeHeard(_ deck: Deck) -> String {
+        guard let undo = openCrossfader(deck) else { return "" }
+        earlyCrossfader = undo
+        return "Crossfader to the middle. "
+    }
+
+    private func undoEarlyCrossfader() {
+        earlyCrossfader?()
+        earlyCrossfader = nil
     }
 
     /// A deck about to be mixed out of can't be held in a loop, or it'd never get to its moment. And pressing the key again
@@ -525,7 +564,7 @@ final class AutoDJ {
         guard let score else {
             guard mixSet != nil else {
                 // Too near the end, as a rule. Someone's pressed the key, and the music carries on all the same.
-                if let incoming { say("No clean way in from here. Deck \(incoming.index + 1) starts when this one ends.", .info) }
+                if let outgoing, let incoming { say("\(letItBeHeard(outgoing))No clean way in from here. Deck \(incoming.index + 1) starts when this one ends.", .info) }
                 phase = .waitingForTheEnd
                 return
             }
@@ -578,7 +617,8 @@ final class AutoDJ {
         // A mix can be minutes from its next move, so there's no point saying so yet.
         let crossfader = movesCrossfader ? " Crossfader to the middle, to hear both." : ""
         if mixSet == nil {
-            say("\(score.plan.move.title) in \(barsToGo) bars.\(crossfader)", .info)
+            // About, as the key's counting and this stays up for a few bars.
+            say("\(score.plan.move.title) in about \(barsToGo) bars.\(crossfader)", .info)
         } else if movesCrossfader {
             say("Crossfader to the middle, ready for what's next.", .info)
         }
@@ -587,12 +627,10 @@ final class AutoDJ {
     /// Puts the incoming deck where the score expects it.
     private func prepare(_ deck: Deck, for score: TransitionScore) {
         let before = Prepared.Settings(deck)
-        let colorFXBefore = outgoing?.colorFX ?? .filter
         deck.pause()
         deck.syncOn = false
         deck.renderer.setLoop(start: deck.renderer.loopStart, end: deck.renderer.loopEnd, active: false)
         deck.clearFX()
-        deck.colorFX = .filter
         deck.filter = 0
         deck.eqLow = 0
         deck.eqMid = 0
@@ -603,8 +641,7 @@ final class AutoDJ {
         if abs(tempo) > deck.tempoRange { deck.tempoRange = [6, 10, 16, 100].first { $0 >= abs(tempo) } ?? 100 }
         // Stems and the grid go by what the map found, and the tempo's relative to what the deck thinks its BPM is.
         deck.setTempo(deck.bpm > 0 ? (score.b.map.bpm * score.b.rate / deck.bpm - 1) * 100 : tempo)
-        outgoing?.colorFX = .filter
-        prepared = Prepared(before: before, after: Prepared.Settings(deck), colorFXBefore: colorFXBefore, colorFXAfter: .filter, undoMixer: prepareMixer(deck))
+        prepared = Prepared(before: before, after: Prepared.Settings(deck), undoMixer: prepareMixer(deck))
     }
 
     private func updateBarsToGo() {
@@ -672,6 +709,7 @@ final class AutoDJ {
             if cheeks_engine_auto_running(core) {
                 coreIsRunning = true
                 phase = .running(move)
+                lendKnobsToTheScore()
                 countIn(move)
             } else if let score, let outgoing {
                 let number = outgoing.index + 1
@@ -718,12 +756,18 @@ final class AutoDJ {
         }
     }
 
+    /// The score sweeps a filter, so a knob it's turning has to say FILTER, but only from now on. A plan comes minutes ahead in a
+    /// mix, and in all that time someone turning a knob labelled FILTER would have been expecting DUB, or the other way round.
+    private func lendKnobsToTheScore() {
+        for lane in lanes where lane.kind == CheeksAutoFilter && lane.deck.colorFX != .filter { lane.deck.colorFX = .filter }
+    }
+
     /// The clock starts a couple of bars ahead of the move, to get the new deck going. Round 12 saw "starting" come with the
     /// key still counting, as that went by the clock and the count by the move. Both go by the move now: it's when knobs move
     /// and a loop appears, and without this nothing says why.
     private func countIn(_ move: TransitionMove) {
         guard let score, !saidItsStarting else { return }
-        let left = max(0, Int(((score.start - cheeks_engine_auto_beat(core)) / 4).rounded(.up)))
+        let left = max(0, Int(((score.firstHeard - cheeks_engine_auto_beat(core)) / 4).rounded(.up)))
         if left != barsToGo { barsToGo = left }
         guard left == 0 else { return }
         saidItsStarting = true
@@ -743,9 +787,10 @@ final class AutoDJ {
         say("Deck \(new.index + 1) is on.", .info)
     }
 
-    /// A loop that ends before this frame, with the deck in it or on its way to it, means the deck will never get there.
+    /// A loop that ends before this frame, with the deck in it or on its way to it, means the deck will never get there. A
+    /// held roll or slice isn't one, as it's over when it's let go: it said the mix was waiting for a loop nobody had set.
     private func isHeldBack(_ deck: Deck, before frame: Double) -> Bool {
-        deck.renderer.loopActive && deck.renderer.loopEnd <= frame && deck.renderer.playhead < deck.renderer.loopEnd
+        deck.borrowedLoop == nil && deck.renderer.loopActive && deck.renderer.loopEnd <= frame && deck.renderer.playhead < deck.renderer.loopEnd
     }
 
     /// Moves what's on screen with what the score's doing, so the knobs turn by themselves.
@@ -779,6 +824,14 @@ final class AutoDJ {
             mixSet = nil
             endEarly(.oldStops(startNew: true), message)
         }
+    }
+
+    /// "Touch a control to take it back", and then nothing said it had. A knob calls this on every step it's turned.
+    private func noticeTaken(_ deck: Deck, _ kind: CheeksAutoKind, _ control: Int) {
+        guard case .running = phase, ending == nil, !saidItsYours,
+              lanes.contains(where: { $0.deck === deck && $0.kind == kind && $0.index == control }) else { return }
+        saidItsYours = true
+        if !isAskingForRating() { say("That's yours now. Auto DJ carries on with the rest.", .info) }
     }
 
     /// Sending the old deck somewhere else means taking it, or the score's loop would take it straight back, with no word.
@@ -827,10 +880,14 @@ final class AutoDJ {
         forgetTheScoresLoop(outgoing)
         cheeks_engine_auto_stop(core)
         let number = incoming.index + 1
+        // It's theirs, but it can leave the new deck turned down or off, with nothing to say why.
+        let away = crossfaderIsAway(incoming) ? " The crossfader's still turned away from it." : ""
         if mixSet != nil { handOver(to: incoming) }
         reset()
         Haptics.shared.confirm()
-        say("\(title) done. Deck \(number) is on.", .done)
+        // The question's what says what the thumbs beside it are for.
+        let question = move != nil && askForRating != nil ? " More like that?" : ""
+        say("\(title) done. Deck \(number) is on.\(away)\(question)", .done)
         if let move { askForRating?(move, from, to) }
     }
 
@@ -848,7 +905,11 @@ final class AutoDJ {
             followControls()
             cheeks_deck_restore_source(outgoing.renderer.handle)
             outgoing.restoreFXChain()
+            // With the filter still swept, FILTER's what the knob is doing. Otherwise it goes back to what the key says.
+            if outgoing.filter == 0 { giveKnobBack(outgoing) }
             outgoing.applyFilter()
+            // The key beside it said 4, its old length, and RELOOP then came back as the 16 beats it really was.
+            if outgoing.renderer.loopActive { outgoing.showLength(ofLoopFrom: outgoing.renderer.loopStart, to: outgoing.renderer.loopEnd) }
             // Nobody's heard the new deck yet, so there's no reason for it to be left quiet or at another tempo.
             if !incoming.renderer.isPlaying {
                 clearAfterMove(incoming, isOld: false)
@@ -896,13 +957,22 @@ final class AutoDJ {
             }
         }
         for band in 0..<3 where isFree(CheeksAutoEQ, band) { deck.followAuto(CheeksAutoEQ, index: band, value: 1) }
-        if isFree(CheeksAutoFilter, 0) { deck.followAuto(CheeksAutoFilter, index: 0, value: 0) }
+        if isFree(CheeksAutoFilter, 0) {
+            deck.followAuto(CheeksAutoFilter, index: 0, value: 0)
+            giveKnobBack(deck)
+        }
         for stem in Stem.allCases where isFree(CheeksAutoStem, stem.rawValue) { deck.followAuto(CheeksAutoStem, index: stem.rawValue, value: 1) }
         deck.applyFilter()
     }
 
+    /// The knobs read FILTER from then on while the key still said DUB, and the key's next press skipped what it said.
+    private func giveKnobBack(_ deck: Deck) {
+        let chosen = chosenColorFX()
+        if deck.colorFX != chosen { deck.colorFX = chosen }
+    }
+
     private func putBackPrepared() {
-        if let incoming { prepared?.putBack(on: incoming, outgoing: outgoing) }
+        if let incoming { prepared?.putBack(on: incoming) }
         prepared = nil
     }
 
@@ -912,6 +982,7 @@ final class AutoDJ {
         planning = nil
         cheeks_engine_auto_stop(core)
         putBackPrepared()
+        undoEarlyCrossfader()
         reset()
     }
 
@@ -935,6 +1006,8 @@ final class AutoDJ {
         leaveFrom = 0
         prepared = nil
         saidItsStarting = false
+        saidItsYours = false
+        earlyCrossfader = nil
         ending = nil
     }
 }

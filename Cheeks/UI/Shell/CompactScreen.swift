@@ -65,6 +65,8 @@ struct CompactScreen: View {
                             BrowserView(isOpen: showLibrary, keyboardHeight: keyboardHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 .padding(.horizontal, 3)
+                                // The decks are still under it, until they leave the window.
+                                .background(Theme.chassis)
                         }
                     }
                 }

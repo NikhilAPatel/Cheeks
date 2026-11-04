@@ -288,6 +288,12 @@ final class Library {
         save()
     }
 
+    func rename(_ playlist: Playlist, to name: String) {
+        guard !name.isEmpty, let i = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
+        playlists[i].name = name
+        save()
+    }
+
     func deletePlaylist(_ playlist: Playlist) {
         playlists.removeAll { $0.id == playlist.id }
         save()

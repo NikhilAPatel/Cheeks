@@ -468,6 +468,56 @@ final class TouchWiringTests: XCTestCase {
         window.isHidden = true
     }
 
+    /// Round 13: deck 1 went left as the mixer went right, and the browser hadn't got there yet, so black opened between them:
+    /// 381 pt on the iPad, like a pair of doors. The panels' own timing has nothing to do with this one.
+    func testNoGapOpensBesideTheMixerWhenTheBrowserOpensOrCloses() async throws {
+        _ = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        func find<T: UIView>(in view: UIView) -> [T] {
+            view.subviews.flatMap { [$0 as? T].compactMap { $0 } + find(in: $0) }
+        }
+        func showing(_ view: UIView) -> CGRect? {
+            guard let shown = view.layer.presentation(), let top = window.layer.presentation() else { return nil }
+            return shown.convert(shown.bounds, to: top)
+        }
+        // What slides, each in a controller of its own.
+        func panels() -> [UIView] {
+            find(in: window).filter { view in
+                guard let owner = view.superview?.next else { return false }
+                return String(describing: type(of: owner)).contains("OffstageController")
+            }
+        }
+        let surfaces: [TouchSurfaceView] = find(in: window).filter { ($0 as UIView).convert(CGPoint.zero, to: window).y > window.bounds.height * 0.45 }
+        func place(_ view: UIView) -> CGFloat { view.convert(CGPoint.zero, to: window).x }
+        let width = window.bounds.width
+        let crossfader = try XCTUnwrap(surfaces.filter { place($0) > width * 0.3 && place($0) < width * 0.6 }.max { $0.bounds.width < $1.bounds.width })
+        // How far the crossfader sits in from the mixer's left edge, which starts just past deck 1's right edge.
+        let deck1Right = try XCTUnwrap(panels().filter { $0.convert($0.bounds, to: window).minX < 10 }.map { $0.convert($0.bounds, to: window).maxX }.first)
+        let inset = place(crossfader) - deck1Right
+        // Until the browser's built, which comes a moment after launch, the first press has nothing to slide in.
+        try await Task.sleep(for: .seconds(1.8))
+
+        for way in ["opening", "closing"] {
+            let key = try XCTUnwrap(window.hitTest(CGPoint(x: 112, y: 12), with: nil) as? TouchSurfaceView)
+            key.onDown?(.zero)
+            key.onUp?()
+            var gaps: [CGFloat] = []
+            for _ in 0..<28 {
+                try await Task.sleep(for: .milliseconds(16))
+                guard let mixer = showing(crossfader) else { continue }
+                // Whatever's reaching furthest towards the mixer, from the left of it.
+                let edge = panels().compactMap(showing).filter { $0.minX < mixer.minX - inset - 40 }.map(\.maxX).max() ?? 0
+                gaps.append(mixer.minX - inset - edge)
+            }
+            print("NOGAP: \(way) \(gaps.map { Int($0) })")
+            // The mixer only moves when the main thread gets a turn, which can leave it behind for a frame, most of all on the
+            // first slide after launch. Before, it was every frame in the middle of the slide.
+            XCTAssertLessThanOrEqual(gaps.filter { $0 > 60 }.count, 2, "Black between the panels, \(way): \(gaps.map { Int($0) })")
+            try await Task.sleep(for: .milliseconds(900))
+        }
+        window.isHidden = true
+    }
+
     /// Round 12: on the Duo, messages of over about 60 characters lost their ends at any size, and the end's what you act on.
     func testALongMessageTakesASecondLine() async throws {
         let (dj, _) = try await makeScreen()

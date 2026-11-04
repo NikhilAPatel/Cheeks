@@ -61,7 +61,7 @@ That's six takes, mostly from one pair, so these are early signs.
 
 ## Mixing through a list
 
-`MIX` in the browser takes the list on screen, in the order it's showing. It carries on from a track that's already playing, or starts from the top. It differs from a press of `AUTO` in three ways:
+`MIX` in the browser takes the list on screen, in the order it's showing. It carries on from a track that's already playing, and comes back for what's above it that hasn't been on air, or starts from the top. It differs from a press of `AUTO` in three ways:
 
 - **It gives each track its time.** Someone pressing `AUTO` wants it soon, but a mix starts looking to leave once a track's last big section is under way, or 60% of the way through one that never lets up (`TransitionPlanner.setExit`). If no plan passes from there, it looks 16 bars further back each time, but no further than a third of the way in.
 - **It keeps the moves varied.** The last four moves count against playing them again. It leaves out the brake drop, which the owner found way too jarring, as nobody's there to take it back.

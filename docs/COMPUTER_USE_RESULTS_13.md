@@ -522,3 +522,52 @@ Close behind:
 - Make `NEXT`'s note match its result.
 - Fix the slice message during a mix.
 - Give a recording's playback a time and a way to move through it.
+
+## What happened next
+
+**N4 to N8 are fixed, and so is most of what looked wrong.** All on the code tested below: unit 416 tests (8 skipped) with no failures, iPad 25 UI tests (4 skipped) with no failures, small iPhone layouts 2 and `?`'s walk 5 with no failures and no control lacking a note, and a short suite of 4 on the Duo. **The long UI suite didn't run on the Duo,** because of its recorder.
+
+**Fixed, with a test I ran on the old code to see it fail**
+- **N5: the gap in the slide.** The frames showed what it was: not timing, but where things go. Deck 1 went left while the mixer went right, with the browser not there yet, and both panels half see-through from their fades. Deck 1, the mixer and deck 2 now go right together, the same distance, and the browser comes in over deck 1, with no fade. On video on the iPad, with two tracks playing and Debug on this Mac, the widest black in 5 slides in a row was 173, 10, 21, 41 and 19 pt. The 173 was the first slide after launch, for 4 frames at 120 a second: the mixer still moves with SwiftUI, on the main thread, and got left behind for about 33 ms. The test sees the same, about 200 pt once on the first slide and under 30 after that. I haven't found what's holding the main thread on that first one, and a phone in Release may not show it. With deck 1 put back to going left, the test's closing slide has up to 234 pt, over 10 frames, and it fails.
+- **N6: `MIX` from part-way down.** It goes on from the row that's playing and comes back for what's above it that hasn't been on air, and the note says so. The first message says how many tracks that is.
+- **N7: silence while waiting.** A crossfader shut on the playing deck opens at the press, says so, and goes back if it's called off. A mix started with nothing playing opens the fader and crossfader for its first track, which it didn't before. What's already on a deck isn't loaded again, so a split carries on and a tempo stays.
+- **N4: going quiet long before the end.** It looks back through the whole track now, from the end, so it costs only as long as the silence is.
+- **N8: the `FILTER` knobs.** A score takes them when its clock starts, not when it's planned, and only on a deck it sweeps a filter on. They go back to what the key says when it's over. A knob someone took, or that's still swept when the decks are handed back, stays on `FILTER`, as that's what it's doing.
+- **`RELOOP` after a hand-back:** you weren't wrong that it looked like a 4, but the loop was the 16 beats. It's the key that was out of date. It now shows the loop's real length.
+- **"Brake drop starting"** comes as the brake starts, and an Echo throw's as the echo does.
+- **A held slice during a mix** doesn't count as a loop holding the deck back, so the plan stays and there's no word about a loop. If it's held past the move's moment, the move's lost and a mix plans again.
+- **"Touch a control to take it back"** now says "That's yours now. Auto DJ carries on with the rest.", once a move, for a control the move's using. A crossfader left away from the new deck is said at the end.
+- **The numbers in the first message:** they never disagreed, as the message was simply going out of date while the key counted. It says "in about" now.
+
+**Fixed, with a test of what it does**
+- **A list with a track twice** has a row identity for each time it's there. That was the SwiftUI lines in History.
+- **Long messages stay up longer:** 0.45 s a word, and never under 5 s. I can't explain 2.5 s from the code, so it's in the next task.
+- **Renaming a playlist:** press and hold it in the sidebar.
+- **A recording's playback** has a time, a length and a slider. Pausing used to stop it and start again from the top, and now it holds its place.
+- **Section names:** nothing's a chorus for 3 minutes. In a run of over 96 bars, any clearly sung section's enough to split it on, so Houston reads `INTRO`, `CHORUS` 0:22, `VERSE` 0:38, `CHORUS` 1:46, `VERSE` 2:09, `CHORUS` 2:55, `VERSE` 3:18, `CHORUS` 3:56, `OUTRO` 4:26. Of 38 tracks, that changed Houston and one other, which also lost a 4-bar scrap of `CHORUS`. **Nobody's checked these by ear,** and two instrumentals still have over 3 minutes of `CHORUS`, with nothing in them to go on.
+
+**Changed, with no test**
+- **`NEXT` holds its order for 2 s after a load,** so a second press lands where it was aimed. It orders straight away when it's turned on and when the browser opens.
+- **A playlist opens in the order it was built,** and All Tracks gets its own sort back.
+- **`MORE` on a phone** goes back to the last page it was on, so the sampler's only four presses away once.
+- **The thumbs** come with "More like that?", which says what they're for.
+- **Notes:** `MIX`, `AUTO`, `NEXT`, `WAVEFORM` (its colours), the `FILTER` knob (where its key is on a phone), `PLAYLISTS` (how to add to one), `IMPORT` and `REC`.
+- **The empty library, and `IMPORT`'s note,** say to go back if Files opens on an empty folder. The app can't choose where it opens on a first run, other than its own folder.
+- **The Recordings sheet** doesn't say to tap `REC` while it's recording.
+
+**Decided against**
+- **Asking before `MIX` replaces a stopped deck's track:** the note says it loads as it goes, and a dialog in the middle of a mix is worse. What's next on the list isn't replaced now, which was the common case.
+- **"The stems are ready…" being up for 0.6 s:** it's there for when choosing takes longer, as on a slower phone, and something better replacing it soon is fine.
+- **Which move you get changing from press to press:** that's choosing against what's been played lately, on purpose.
+- **`SYNC` to a far tempo:** it did what was asked, and the range going to ±16 shows it. A warning on every far sync would be noise.
+- **`MASTER` meaning three things on a phone:** those are the words every DJ uses for each of them, and each note's right.
+- **The grid menu being reachable mid-mix:** it takes a press on the BPM, and then a choice in a menu.
+- **The 1 pt at a pad's bottom edge:** that's the screen's edge.
+
+**Not done**
+- **The mixer can fall behind the panels on the first slide after launch,** as above, and by a few tens of points on later ones. Moving it with them would need it in a host of its own, and that made it vanish for VoiceOver last time, for a reason I never found.
+- **A playlist can't be reordered,** and tracks can only be added one at a time. Both are real gaps for building a set. They're features, so they wait behind bugs and speed.
+- **What's on a recording's share sheet** still isn't named. Still small.
+- **FA is still blocked** on the Duo's restart.
+- **The Files folder, the first keyboard's freeze and the import picker's first folder** still want a look on the phone. So does whether the slide's stall happens there.
+
