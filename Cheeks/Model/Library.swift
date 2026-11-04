@@ -102,7 +102,7 @@ final class Library {
     /// Copies a file picked in the Files app into the library and queues it for analysis.
     /// What came of an import, for saying so: it can be a while before a track shows up, and nothing happening looks like failing.
     enum ImportOutcome {
-        case added(UUID), alreadyThere, failed
+        case added(UUID), alreadyThere(UUID), failed
     }
 
     @discardableResult
@@ -110,9 +110,9 @@ final class Library {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
-        if isAlreadyImported(source) {
+        if let known = trackAlreadyImported(source) {
             if move { try? FileManager.default.removeItem(at: source) } // don't re-process it every launch
-            return .alreadyThere
+            return .alreadyThere(known)
         }
 
         // A track restored from a backup, or whose file went missing, gets its audio back.
@@ -143,10 +143,10 @@ final class Library {
     }
 
     /// Same original name and byte size as a track we already have.
-    private func isAlreadyImported(_ source: URL) -> Bool {
+    private func trackAlreadyImported(_ source: URL) -> UUID? {
         let name = source.lastPathComponent
-        guard let size = Self.fileSize(source) else { return false }
-        return tracks.contains { $0.originalFileName == name && Self.fileSize(url(for: $0)) == size }
+        guard let size = Self.fileSize(source) else { return nil }
+        return tracks.first { $0.originalFileName == name && Self.fileSize(url(for: $0)) == size }?.id
     }
 
     private static func fileSize(_ url: URL) -> Int? {

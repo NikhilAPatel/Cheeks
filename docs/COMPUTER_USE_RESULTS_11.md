@@ -506,3 +506,36 @@ I couldn't get a press inside a load: my quickest was load, `BROWSE`, `PLAY` in 
 ### What I didn't get to
 
 `SLIP`, scratching and the jog ring, `ROLL` and `SLICER` in use, the sampler and `SET`, playlists, DJ library import, sharing a recording, the FILTER knob's other effects, headphone routing and `SPLIT`, halving a running loop, reading the whole "What everything does" list, or whether a rating changes what Auto DJ does later. I also never saw the "done" message at the end of the side-on move. The Duo and other screen sizes weren't part of this run.
+
+## What happened next
+
+**Confirmed by this round, and only by this round:** the list keeps its place, and nothing moves behind the file picker. My tests couldn't show the first at all, and only showed the second by sending a made-up keyboard notification.
+
+**Fixed, with a test that fails without the fix**
+- **LR3: `EXIT` during a Loop build.** It's the score's next loop that took the deck back. Pressing any loop control on the old deck of a Loop build, before the new track lands, now hands the decks back and says so: "Auto DJ stopped: deck 1's loop was changed. The decks are yours." Other moves don't loop the old deck, so there it's just a loop. Without the fix the test failed as round 11 saw: the deck back in the loop.
+- **A search from a scrolled list** now starts at its first result, and so does any other change to what's listed: a filter, a sort, `NEXT` or another playlist. It opened 1,224 pt down without the fix, in a test that reproduced it.
+- **DD9:** tracks you already have now go into the playlist you're importing into, and it says so.
+
+**Fixed, with a test of what it says**
+- **`RELOOP` with no loop, `DEL` then an empty pad, and `SYNC` with nothing to sync to** each say why now.
+- **The top bar** no longer names an empty deck as master when the other has a track on it.
+- **`MIX` on a list's last track** reads `MIX` and not `MIX…`, and says it's the last.
+- **A crossfader a plan moves** says so, after three rounds of it moving by itself with no word.
+- **Stopping the new deck after the handover** names both decks, and that deck goes back to its own speed.
+- **Calling off a Loop build** says if the old deck's still looping, which on a phone's jog page only the shading showed.
+
+**Notes**
+- **DC3:** in the mixer's sheet the note now goes below the controls, there's only one of it, and it doesn't outlive the sheet. I haven't seen this on a phone: it's in the next retest.
+- **DC6:** every move has a note now, as do the thumbs. An empty search says so. `?`'s own note says keys that move between pages still work. `LIM` says `TRIM` is under `MIXER` on a phone, and that with two full tracks it's normal now and then. `MIX` says it's the quickest way to an automatic mix, and how it differs from `AUTO`. `NEXT` no longer says "tempo first", as with nothing close in tempo the key decides. The key column says what the letter means. FX pads say up to three.
+- **The hint** doesn't show if you've already pressed `?`.
+
+**Decided against**
+- **`SPACE` taking the top LED red** on 16 of 25 samples on a loud loop. `LIM` was on 4 of 37, the level's about what it was dry, and more room would turn the track down further as the knob turns. Nobody's heard it, so it stays until someone has.
+- **Words with two jobs** (`MASTER`, `KEY`, `CUE`, `OUT`, `FILTER`, `ROLL`): they follow what DJ gear calls them, and `?` now separates them.
+- **Stopping a deck to start `AUTO`:** it's how the move knows what's coming in.
+
+**Not done**
+- **DA is still blocked** on the Duo's restart.
+- **The Files folder, the first keyboard's freeze and the import picker's first folder** still want a look on the phone.
+- **Long sections:** Houston's "CHORUS 1.1" at 0:00 and Severe Tire Damage's "CHORUS 91" look unlikely, and I can't check by ear. Phrase analysis has never been tuned on real music. It's the next thing to look at when there's a list of right answers to check against.
+

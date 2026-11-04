@@ -15,6 +15,8 @@ final class WhatsThis {
     private(set) var shown = Explanations.opening
     /// Where the last touch was, as a fraction of the window. The note goes where that wasn't.
     private(set) var touch = CGPoint(x: 0.25, y: 0.75)
+    /// The mixer's sheet has a note of its own, in the room below its controls. The screen's would show as well, on a phone's side.
+    private(set) var isInSheet = false
 
     init() {
         // Coming back to a screen that won't respond, hours later, would look broken.
@@ -43,6 +45,14 @@ final class WhatsThis {
         guard isOn else { return }
         shown = Explanations.named(name) ?? Explanation(title: name.uppercased(), text: Explanations.missing)
         announce()
+    }
+
+    func sheetOpened() { isInSheet = true }
+
+    /// What it was saying was about something that's gone.
+    func sheetClosed() {
+        isInSheet = false
+        shown = Explanations.opening
     }
 
     private func announce() {
@@ -112,7 +122,10 @@ struct WhatsThisKey: View {
 
     var body: some View {
         let help = WhatsThis.shared
-        Key(color: Theme.accent, lit: help.isOn, feel: .toggle, accessibilityName: "What does this do?", actsDuringHelp: true, onPress: { help.toggle() }) {
+        Key(color: Theme.accent, lit: help.isOn, feel: .toggle, accessibilityName: "What does this do?", actsDuringHelp: true, onPress: {
+            hintShown = true
+            help.toggle()
+        }) {
             Text("?").font(Theme.silk(11))
         }
         .onChange(of: dj.decks.contains { $0.isLoaded }) { _, loaded in
@@ -127,17 +140,20 @@ struct WhatsThisKey: View {
 /// What's just been asked about. Touches go straight through it. It sits where the finger wasn't, and on a wide screen it
 /// keeps to one side, which also keeps it off a Duo's crease.
 struct WhatsThisNote: View {
+    /// A sheet's controls are along its top, so its note goes below them, wherever the finger was.
+    var inSheet = false
+
     var body: some View {
         let help = WhatsThis.shared
         ZStack {
-            if help.isOn {
+            if help.isOn, inSheet || !help.isInSheet {
                 GeometryReader { geo in
                     let wide = geo.size.width > geo.size.height
                     note(help.shown)
-                        .frame(width: wide ? min(440, geo.size.width * 0.46) : geo.size.width - 16)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment(wide: wide, touch: help.touch))
-                        .padding(.horizontal, wide ? 8 : 0)
-                        .padding(.top, 30)
+                        .frame(width: inSheet ? geo.size.width - 16 : wide ? min(440, geo.size.width * 0.46) : geo.size.width - 16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: inSheet ? .bottom : alignment(wide: wide, touch: help.touch))
+                        .padding(.horizontal, !inSheet && wide ? 8 : 0)
+                        .padding(.top, inSheet ? 0 : 30)
                         .padding(.bottom, 14)
                 }
                 .transition(.opacity)
@@ -183,6 +199,7 @@ struct ControlsGuide: View {
 
     var body: some View {
         List {
+            if sections.isEmpty { ContentUnavailableView.search(text: search) }
             ForEach(sections, id: \.title) { section in
                 Section(section.title) {
                     ForEach(section.entries) { entry in

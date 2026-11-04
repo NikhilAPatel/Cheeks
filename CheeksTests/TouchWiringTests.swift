@@ -420,6 +420,30 @@ final class TouchWiringTests: XCTestCase {
         for list in lists { XCTAssertFalse(list.scrollsToTop, "That's what takes it to the top") }
     }
 
+    /// Round 11: now the list keeps its place, a search typed from far down it opened part-way through its results.
+    func testASearchStartsFromTheTopOfItsResults() async throws {
+        let (_, library) = try await makeScreen()
+        library.tracks = (1...155).map { Track(id: UUID(), title: "Track \($0)", artist: "", fileName: "none", duration: 200, bpm: 120, key: "8A", dateAdded: .distantPast) }
+        try await pressBrowse()
+        func find<T: UIView>(in view: UIView) -> [T] {
+            view.subviews.flatMap { [$0 as? T].compactMap { $0 } + find(in: $0) }
+        }
+        func list() throws -> UICollectionView {
+            let lists: [UICollectionView] = find(in: try XCTUnwrap(window))
+            return try XCTUnwrap(lists.max { $0.contentSize.height < $1.contentSize.height })
+        }
+        try list().setContentOffset(CGPoint(x: 0, y: 3000), animated: false)
+        try await settle(300)
+        let fields: [UITextField] = find(in: try XCTUnwrap(window))
+        let field = try XCTUnwrap(fields.first)
+        field.text = "Track 1"
+        field.sendActions(for: .editingChanged)
+        try await settle(800)
+        print("SEARCHTOP: \(try list().contentOffset.y) of \(try list().contentSize.height)")
+        XCTAssertLessThan(try list().contentSize.height, 7000, "The search did narrow it")
+        XCTAssertLessThan(try list().contentOffset.y, 5, "From the first match")
+    }
+
     /// Round 10: behind the file picker, the browser's list disappeared and the strip of decks jumped up the screen. A keyboard
     /// that isn't the browser's own search has no business moving it.
     func testAKeyboardThatIsntTheSearchsLeavesTheBrowserAlone() async throws {

@@ -85,6 +85,18 @@ final class LoadingTests: XCTestCase {
         XCTAssertEqual(deck.keyShift, 0)
     }
 
+    /// Round 11: a track you already have still goes in the playlist you're importing into, so an import has to say which it is.
+    func testImportingAKnownTrackSaysWhichOneItIs() throws {
+        let (_, library) = makeDeck()
+        let source = FileManager.default.temporaryDirectory.appending(path: "Known \(UUID().uuidString).wav")
+        try Data(count: 4096).write(to: source)
+        files.append(source)
+        guard case .added(let id) = library.importFile(at: source) else { return XCTFail("It's new") }
+        files.append(LibraryFiles.musicDirectory.appending(path: "\(id.uuidString).wav"))
+        guard case .alreadyThere(let again) = library.importFile(at: source) else { return XCTFail("It's known now") }
+        XCTAssertEqual(again, id)
+    }
+
     func testALoadWithNoPressStaysStopped() async throws {
         let (deck, library) = makeDeck()
         deck.load(try makeTrack(in: library))

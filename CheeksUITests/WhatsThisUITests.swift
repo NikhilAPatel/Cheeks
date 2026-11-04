@@ -103,7 +103,7 @@ final class WhatsThisUITests: CheeksUITestCase {
         let wasOn = next.isSelected
         press(next)
         usleep(300_000)
-        XCTAssertTrue(note.label.contains("best order"), note.label)
+        XCTAssertTrue(note.label.contains("good order"), note.label)
         XCTAssertEqual(next.isSelected, wasOn, "Asking about NEXT doesn't reorder the list")
         screenshot("whats-this-browser")
         press(button("Browser"))

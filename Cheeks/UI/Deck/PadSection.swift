@@ -364,7 +364,7 @@ struct MemoryPad: View {
                 }
             }
         } else {
-            Pad(color: Theme.textTertiary, dimmed: true, accessibilityName: "Empty", help: "Memory pad", onPress: {}) { Color.clear }
+            Pad(color: Theme.textTertiary, dimmed: true, accessibilityName: "Empty", help: "Memory pad", onPress: deck.pressEmptyMemoryPad) { Color.clear }
         }
     }
 

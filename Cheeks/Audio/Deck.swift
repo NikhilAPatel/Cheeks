@@ -137,6 +137,8 @@ final class Deck {
     var onManualControl: ((CheeksAutoKind, Int) -> Void)?
     /// Someone's sent the deck somewhere: a seek, a hot cue or a beat jump.
     var onMovedByHand: (() -> Void)?
+    /// Someone's pressed one of the loop controls, which a score's loops would otherwise take straight back.
+    var onLoopChangedByHand: (() -> Void)?
     /// True while Auto DJ is moving the controls, which isn't someone taking them.
     private var followingAuto = false
 

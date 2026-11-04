@@ -153,15 +153,20 @@ struct BrowserView: View {
     /// Importing while looking at a playlist puts them in it. It used to go on saying the playlist was empty, and looked as if it had failed.
     private func sayWhatCameOf(_ outcomes: [Library.ImportOutcome]) {
         let added = outcomes.compactMap { if case .added(let id) = $0 { id } else { nil } }
-        let thereAlready = outcomes.filter { if case .alreadyThere = $0 { true } else { false } }.count
+        let thereAlready = outcomes.compactMap { if case .alreadyThere(let id) = $0 { id } else { nil } }
+        // A track you've already got still goes in the playlist you're importing into: that's what was asked for.
         if let playlistID, !library.playlists.contains(where: { $0.id == playlistID && library.isHistory($0) }) {
-            added.forEach { library.add($0, to: playlistID) }
+            (added + thereAlready).forEach { library.add($0, to: playlistID) }
+            if added.isEmpty, !thereAlready.isEmpty {
+                dj.say("Added \(Format.count(thereAlready.count, "track")) you already had to this playlist.", .done)
+                return
+            }
         }
         if !added.isEmpty {
-            let also = thereAlready > 0 ? " \(Format.count(thereAlready, "track")) already in your library." : ""
+            let also = !thereAlready.isEmpty ? " \(Format.count(thereAlready.count, "track")) already in your library." : ""
             dj.say("Added \(Format.count(added.count, "track")).\(also)", .done)
-        } else if thereAlready > 0 {
-            dj.say(thereAlready == 1 ? "That track's already in your library." : "Those tracks are already in your library.", .info)
+        } else if !thereAlready.isEmpty {
+            dj.say(thereAlready.count == 1 ? "That track's already in your library." : "Those tracks are already in your library.", .info)
         } else {
             dj.say("That file couldn't be imported.", .problem)
         }
@@ -181,20 +186,31 @@ struct BrowserView: View {
         if list.isEmpty {
             emptyState
         } else {
-            List(Array(list.enumerated()), id: \.element.id) { row, track in
-                TrackRow(track: track, referenceDeck: referenceDeck, playlistID: playlistID)
-                    .listRowBackground(row % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
-                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                    .listRowSeparator(.hidden)
+            ScrollViewReader { proxy in
+                List(Array(list.enumerated()), id: \.element.id) { row, track in
+                    TrackRow(track: track, referenceDeck: referenceDeck, playlistID: playlistID)
+                        .listRowBackground(row % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                        .listRowSeparator(.hidden)
+                }
+                .listStyle(.plain)
+                .environment(\.defaultMinListRowHeight, 36)
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.immediately)
+                .background(StaysWhereItIs())
+                .animation(isLong ? nil : Theme.panel, value: isLong ? [] : list.map(\.id))
+                .transaction { if isLong { $0.animation = nil } }
+                // A different list starts from its top. Now the list keeps its place, a search from far down opened part-way through its results.
+                .onChange(of: whatsListed) { _, _ in
+                    if let first = list.first { proxy.scrollTo(first.id, anchor: .top) }
+                }
             }
-            .listStyle(.plain)
-            .environment(\.defaultMinListRowHeight, 36)
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.immediately)
-            .background(StaysWhereItIs())
-            .animation(isLong ? nil : Theme.panel, value: isLong ? [] : list.map(\.id))
-            .transaction { if isLong { $0.animation = nil } }
         }
+    }
+
+    /// What decides which tracks are on the list, and in what order.
+    private var whatsListed: [String] {
+        [chosenPlaylist, search, sort.rawValue, "\(ascending)", "\(inKeyOnly)", "\(nearBPMOnly)", "\(bestNext)"]
     }
 
     private func importDJLibrary(_ url: URL) {

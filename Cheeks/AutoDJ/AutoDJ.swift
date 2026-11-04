@@ -37,6 +37,8 @@ final class AutoDJ {
         var keepsQuietAboutNext = false
         /// Where the track on air has nothing left to hear, once it's near enough the end to look.
         var silentFrom: Double?
+        /// It's said that this is the last one.
+        var saidItsTheLast = false
     }
 
     /// How a move that's been cut short is wrapped up, once the audio core has let go of the controls.
@@ -113,6 +115,8 @@ final class AutoDJ {
     @ObservationIgnored var leavesOut = Set<TransitionMove>()
     /// Whether that's still on screen, where a passing message would take its place.
     @ObservationIgnored var isAskingForRating: () -> Bool = { false }
+    /// A plan takes the crossfader to the middle, which it says if it moves it. It's been reported three rounds running as moving by itself.
+    @ObservationIgnored var crossfaderIsCentred: () -> Bool = { true }
 
     @ObservationIgnored private let core: OpaquePointer
     @ObservationIgnored private let decks: [Deck]
@@ -151,6 +155,9 @@ final class AutoDJ {
             deck.onMovedByHand = { [weak self, weak deck] in
                 if let self, let deck { self.noticeMoved(deck) }
             }
+            deck.onLoopChangedByHand = { [weak self, weak deck] in
+                if let self, let deck { self.noticeLoopChanged(deck) }
+            }
         }
     }
 
@@ -161,7 +168,11 @@ final class AutoDJ {
         let name = mixSet == nil ? "AUTO" : "MIX"
         switch phase {
         // A mix with no plan yet is waiting for something, like a loop to end, and shouldn't look as if it's just sitting there.
-        case .idle: return mixSet == nil ? name : stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
+        case .idle:
+            guard let mixSet else { return name }
+            // The last track on the list has nothing to wait for, and "MIX…" read as if it was still thinking.
+            if mixSet.next == nil, mixSet.queue.isEmpty, !mixSet.needsStart { return name }
+            return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
         case .running: return name
         // "AUTO…" read like a clipped label for nearly 4 minutes, with nothing tying it to the percentage on the deck.
         case .waitingForStems: return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
@@ -198,7 +209,9 @@ final class AutoDJ {
             if let incoming, cheeks_engine_auto_beat(core) >= score?.handover ?? .infinity {
                 endEarly(.oldStops(startNew: false), "\(stopped) Deck \(incoming.index + 1) is on.")
             } else {
-                endEarly(.decksAreYours, "\(stopped) The decks are yours.")
+                // On a phone's jog page there's no EXIT to show it, and only the shading says so.
+                let looping = outgoing?.renderer.loopActive == true ? " Deck \((outgoing?.index ?? 0) + 1) is still looping." : ""
+                endEarly(.decksAreYours, "\(stopped) The decks are yours.\(looping)")
             }
         }
     }
@@ -288,6 +301,9 @@ final class AutoDJ {
                 // The deck shows what's next anyway, and this comes straight after a move, while it's asking about that.
                 if let title, !isAskingForRating(), !set.keepsQuietAboutNext { say("Up next: \(title).", .info) }
                 mixSet?.keepsQuietAboutNext = false
+            } else if !set.saidItsTheLast {
+                mixSet?.saidItsTheLast = true
+                if !isAskingForRating() { say("That's the last track in \(set.name). The mix ends with it.", .info) }
             }
             return
         }
@@ -497,6 +513,7 @@ final class AutoDJ {
             _ = planIfReady()
             return
         }
+        let movesCrossfader = !crossfaderIsCentred()
         prepare(incoming, for: score)
         let steps = score.steps
         let loaded = steps.withUnsafeBufferPointer {
@@ -522,7 +539,12 @@ final class AutoDJ {
         phase = .armed(score.plan.move)
         updateBarsToGo()
         // A mix can be minutes from its next move, so there's no point saying so yet.
-        if mixSet == nil { say("\(score.plan.move.title) in \(barsToGo) bars.", .info) }
+        let crossfader = movesCrossfader ? " Crossfader to the middle, to hear both." : ""
+        if mixSet == nil {
+            say("\(score.plan.move.title) in \(barsToGo) bars.\(crossfader)", .info)
+        } else if movesCrossfader {
+            say("Crossfader to the middle, ready for what's next.", .info)
+        }
     }
 
     /// Puts the incoming deck where the score expects it.
@@ -699,7 +721,7 @@ final class AutoDJ {
             if oldIsOnAir, outgoing.renderer.isPlaying {
                 endEarly(.oldCarriesOn, "\(stopped) Deck \(outgoing.index + 1) carries on.")
             } else {
-                endEarly(.oldStops(startNew: false), stopped)
+                endEarly(.oldStops(startNew: false), "\(stopped) Deck \(outgoing.index + 1) has stopped too.")
             }
         } else if !outgoing.renderer.isPlaying, oldIsOnAir, beat < score.outgoingStops {
             // Nobody's left to wait for, so what was coming comes now. Past the handover it's only what the score was doing anyway.
@@ -714,6 +736,15 @@ final class AutoDJ {
     private func noticeMoved(_ deck: Deck) {
         guard case .running = phase, ending == nil, deck === outgoing, let score, cheeks_engine_auto_beat(core) < score.handover else { return }
         let message = "\(stoppedBy): deck \(deck.index + 1) was moved. The decks are yours."
+        mixSet = nil
+        endEarly(.decksAreYours, message)
+    }
+
+    /// Leaving a Loop build's loop looked as if it had worked, until the score's next loop took the deck back with no word.
+    /// Only that move's score loops the old deck, so anywhere else it's between someone and their own loop.
+    private func noticeLoopChanged(_ deck: Deck) {
+        guard case .running(.loopDrop) = phase, ending == nil, deck === outgoing, let score, cheeks_engine_auto_beat(core) < score.handover else { return }
+        let message = "\(stoppedBy): deck \(deck.index + 1)'s loop was changed. The decks are yours."
         mixSet = nil
         endEarly(.decksAreYours, message)
     }
@@ -779,6 +810,11 @@ final class AutoDJ {
                 incoming.play()
             }
             clearAfterMove(incoming, isOld: false)
+            // Stopped by hand, it can't still be at the move's speed.
+            if !incoming.renderer.isPlaying {
+                incoming.setTempo(0)
+                incoming.keyShift = 0
+            }
         }
     }
 

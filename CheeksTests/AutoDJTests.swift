@@ -497,7 +497,7 @@ final class AutoDJTests: XCTestCase {
         XCTAssertFalse(a.isPlaying)
         XCTAssertFalse(b.isPlaying)
         XCTAssertNotEqual(dj.statusKind, .done)
-        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 2 was stopped.")
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 2 was stopped. Deck 1 has stopped too.")
         XCTAssertClean(a)
         XCTAssertClean(b)
     }
@@ -610,6 +610,46 @@ final class AutoDJTests: XCTestCase {
         dj.autoDJ.startSet(named: "All", tracks: [UUID(), UUID()])
         XCTAssertNil(dj.autoDJ.mixSet)
         XCTAssertEqual(dj.statusMessage, "A mix carries on from one playing deck. Stop the other.")
+    }
+
+    func testTheLastTrackOfAMixDoesntReadAsWaiting() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        b.track = nil
+        b.trackMap = nil
+        dj.autoDJ.startSet(named: "Set", tracks: [try XCTUnwrap(a.track?.id), UUID()])
+        XCTAssertNotNil(dj.autoDJ.mixSet)
+        for _ in 0..<3 { dj.tickForTesting() }
+        XCTAssertEqual(dj.autoDJ.legend, "MIX", "Nothing's left to plan for")
+        XCTAssertEqual(dj.statusMessage, "That's the last track in Set. The mix ends with it.")
+    }
+
+    func testACrossfaderAPlanMovesSaysSo() async throws {
+        let dj = try ready(only: .echoDrop)
+        dj.crossfader = -1
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        XCTAssertEqual(dj.crossfader, 0)
+        XCTAssertTrue(dj.statusMessage?.hasSuffix("Crossfader to the middle, to hear both.") == true, dj.statusMessage ?? "nothing")
+    }
+
+    /// Round 11: EXIT during a Loop build looked as if it had worked, and the score's next loop took the deck back with no word.
+    func testLeavingTheScoresLoopHandsTheDecksBack() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
+        a.exitLoop()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: deck 1's loop was changed. The decks are yours.")
+        XCTAssertTrue(a.isPlaying)
+        XCTAssertFalse(a.renderer.loopActive)
+        XCTAssertFalse(b.renderer.isPlaying, "Nobody's heard it")
+        let there = a.position
+        _ = dj.renderOffline(frames: 44_100 * 20)
+        dj.tickForTesting()
+        XCTAssertEqual(a.position, there + 20, accuracy: 1.5, "And nothing takes it back")
+        XCTAssertFalse(a.renderer.loopActive)
     }
 
     func testMovingTheOldDeckDuringAMoveHandsItBack() async throws {

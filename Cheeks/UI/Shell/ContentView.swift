@@ -461,11 +461,13 @@ private struct MasterTempo: View {
 
 /// How hard the audio engine is working, as a pro app would show it. It only appears when it matters.
 private struct AnalysisIndicator: View {
+    @Environment(DJEngine.self) private var dj
     @Environment(Library.self) private var library
     @Environment(\.screenLayout) private var layout
 
     var body: some View {
-        if let analyzing = library.analyzing, let track = library.track(analyzing) {
+        // It gives way to a message, which it was squeezing: "Added 1 track. 1 track al…".
+        if dj.statusMessage == nil, let analyzing = library.analyzing, let track = library.track(analyzing) {
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini)
                 // Upright, there's only room left for "A…".

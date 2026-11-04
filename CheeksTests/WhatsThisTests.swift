@@ -13,6 +13,24 @@ final class WhatsThisTests: XCTestCase {
         }
     }
 
+    /// The app announces these by name.
+    func testEveryMoveHasANote() {
+        for move in TransitionMove.allCases {
+            XCTAssertNotNil(Explanations.named(move.title.uppercased()), move.title)
+        }
+    }
+
+    func testAMixersSheetKeepsOneNoteOnScreen() {
+        let help = WhatsThis()
+        help.toggle()
+        help.sheetOpened()
+        XCTAssertTrue(help.isInSheet)
+        help.note("SLIP")
+        help.sheetClosed()
+        XCTAssertFalse(help.isInSheet)
+        XCTAssertEqual(help.shown, Explanations.opening, "What it said was about something that's gone")
+    }
+
     /// Everything a first-time user couldn't work out by looking, in hands-on round 9.
     func testWhatRoundNineCouldntWorkOutHasANote() {
         let asked = ["Q", "SLIP", "KEY", "KEY SYNC", "MASTER", "Master volume", "BEAT JUMP", "Jump size", "Mem pads", "Slicer pads", "Roll pads", "Jump pads",

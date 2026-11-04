@@ -22,7 +22,7 @@ enum Explanations {
 
     static let opening = Explanation(
         title: "?",
-        text: "Touch anything to see what it does. While this is lit, touching a control only explains it, so the music won't change. Press ? again when you're done.",
+        text: "Touch anything to see what it does. While this is lit, the music won't change: controls only explain themselves, and only keys that move between pages still work. Press ? again when you're done.",
         names: ["What does this do?"])
 
     static func named(_ name: String) -> Explanation? { byName[name] }
@@ -83,7 +83,7 @@ enum Explanations {
             Explanation(title: "SLICER PADS", text: "The bar you're in, cut into eight. Hold a pad to play that slice. Let go and the track's back in time.", names: ["Slicer pads"]),
             Explanation(title: "JUMP PADS", text: "Back on the top row and forward on the bottom, by 1, 4, 16 or 32 beats.", names: ["Jump pads"]),
             Explanation(title: "STEMS PADS", text: "The track split into vocals, instruments, bass and drums, so you can mute any of them or play just one. The split takes a while the first time, and is kept for next time.", names: ["Stems pads"]),
-            Explanation(title: "FX PADS", text: "Twelve effects that stay on the beat. Tap to leave one on, or hold it. While holding, slide up and down for how strong and left and right for how long. A blue dot on the tab means one's still on.", names: ["Fx pads"]),
+            Explanation(title: "FX PADS", text: "Twelve effects that stay on the beat, up to three at once. Tap to leave one on, or hold it. While holding, slide up and down for how strong, left and right for how long. A blue dot on the tab means one's on.", names: ["Fx pads"]),
             Explanation(title: "SAMPLE PADS", text: "Eight sounds to play over the mix. Press SET and then a pad to put your own on it: a file, a deck's loop, or a recording of the mix.", names: ["Sample pads"]),
             Explanation(title: "DEL", text: "Press this and then a pad to remove that cue or loop. You get an Undo.", names: ["DEL"]),
         ]),
@@ -156,17 +156,26 @@ enum Explanations {
             Explanation(title: "SPLIT", text: "For a splitter cable with speakers on one side and headphones on the other: the mix in the left ear and your cue in the right.", names: ["SPLIT"]),
             Explanation(title: "AUTO", text: "Mixes from the playing deck into the other by itself, once stems are split, moving the controls you can see. A number means bars to go, a % the stems. Touch a control to take it back, or press AUTO to call it off.", names: ["Auto DJ"]),
             Explanation(title: "MIXER", text: "The mixer controls with no room here: TRIM, MASTER, the headphone controls, SPLIT and the FILTER knob's effects.", names: ["More mixer controls"]),
-            Explanation(title: "LIM", text: "Lights when the mix is so loud that the limiter's holding it back. If it stays on, turn TRIM down.", names: ["LIM"]),
+            Explanation(title: "LIM", text: "Lights when the mix is so loud that the limiter's holding it back. With two full tracks that's normal now and then. If it stays on, turn TRIM down: on a phone, that's under MIXER.", names: ["LIM"]),
             Explanation(title: "METERS", text: "How loud things are: deck 1, the mix left and right, and deck 2. Red means too hot.", names: ["Meters"]),
+        ]),
+        Section(title: "Auto DJ's moves", entries: [
+            Explanation(title: "BASS SWAP", text: "A long blend. The new track's drums creep in under the old one, everything stops for one beat, and the new track lands whole on the downbeat."),
+            Explanation(title: "LOOP BUILD", text: "The old track folds into smaller and smaller loops as it rises, stops for one beat, and the new track's drop lands."),
+            Explanation(title: "ECHO THROW", text: "The old track's last beats go into an echo, it cuts, and the new track lands under the repeats. When nothing else works, it's an echo out, with the new track starting afterwards."),
+            Explanation(title: "BRAKE DROP", text: "The old track slows to a stop like a turntable switched off, and the new one slams in. It's for tracks nothing else can join."),
+            Explanation(title: "VOCAL TEASE", text: "The new track's vocal rides over the old track's instrumental for 8 bars, and then the new track's drop lands."),
+            Explanation(title: "VOCAL RIDE", text: "On a downbeat the whole track changes under the singer. The old vocal carries on over the new track's instrumental, and then goes up an echo."),
+            Explanation(title: "THUMBS UP / DOWN", text: "After a move, say whether you liked it. Auto DJ leans towards what you like, though it never rules a move out. Ratings stay on your device."),
         ]),
         Section(title: "Browser", entries: [
             Explanation(title: "IN KEY", text: "Shows only tracks in a key that goes with the deck that's leading.", names: ["In key filter"]),
             Explanation(title: "±6% BPM", text: "Shows only tracks within 6% of the leading deck's tempo, which can be matched without sounding wrong.", names: ["BPM filter"]),
-            Explanation(title: "NEXT", text: "Puts the list in the best order to play from what's on the deck: by tempo first, and then key. The track on the deck drops off the list while it's on.", names: ["Best next first"]),
-            Explanation(title: "MIX", text: "Mixes through the list on screen by itself, in the order it's showing, loading each track onto the stopped deck as it goes. Press it again to stop.", names: ["Mix through this list", "Stop the mix"]),
+            Explanation(title: "NEXT", text: "Puts the list in a good order to play from the leading deck, by how close the tempo is and how well the key goes. That deck's own track drops off the list while it's on.", names: ["Best next first"]),
+            Explanation(title: "MIX", text: "Auto DJ through the whole list on screen, in the order it's showing, loading each track as it goes. It's the quickest way to an automatic mix. AUTO on the mixer does just one move. Press it again to stop.", names: ["Mix through this list", "Stop the mix"]),
             Explanation(title: "IMPORT", text: "Adds music from the Files app, or a library exported from your DJ software.", names: ["IMPORT"]),
             Explanation(title: "PLAYLISTS", text: "Chooses which list you're looking at, and makes new ones.", names: ["Playlists"]),
-            Explanation(title: "KEY", text: "The track's key, as a number and a letter. Numbers next to each other, or the same number, go together. It lights up when it goes with the deck that's leading.", names: ["Track key"]),
+            Explanation(title: "KEY", text: "The track's key: A is minor and B is major. The same number, or numbers next to each other, go together. It lights up when it goes with the deck that's leading.", names: ["Track key"]),
             Explanation(title: "1 / 2", text: "Loads this track onto that deck. A playing deck won't take one, so stop it first.", names: ["Load on deck"]),
             Explanation(title: "PREVIEW", text: "Touch a track's small waveform to hear it: in the cue ear with SPLIT on, or quietly on the main output without.", names: ["Preview", "Stop preview"]),
         ]),

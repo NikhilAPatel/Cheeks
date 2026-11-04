@@ -149,6 +149,31 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(deck.loopBeats, 32)
     }
 
+    /// Round 11: both of these did nothing and said nothing, where OUT in the same state explains itself.
+    func testRELOOPWithNoLoopSaysSo() {
+        let deck = makeDeck()
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.reloop()
+        XCTAssertFalse(deck.loopActive)
+        XCTAssertEqual(said, "There's no loop to go back to yet. Press a loop size, or IN and OUT.")
+    }
+
+    func testDELThenAnEmptyPadSaysSo() {
+        let deck = makeDeck()
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.shift = true
+        deck.hotCue(3)
+        XCTAssertFalse(deck.shift)
+        XCTAssertEqual(said, "There's no cue on that pad to delete.")
+        said = nil
+        deck.shift = true
+        deck.pressEmptyMemoryPad()
+        XCTAssertFalse(deck.shift)
+        XCTAssertEqual(said, "There's nothing on that pad to delete.")
+    }
+
     /// Round 10: with no IN, the loop started wherever the last one had, or the top of the track, and once read 1.3e+02.
     func testOUTWithNoINSaysSoAndSetsNothing() {
         let deck = makeDeck()

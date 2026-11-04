@@ -127,6 +127,7 @@ final class DJEngine {
             return track.title
         }
         autoDJ.isAskingForRating = { [weak self] in self?.rateAction != nil }
+        autoDJ.crossfaderIsCentred = { [weak self] in self?.crossfader == 0 }
         autoDJ.askForRating = { [weak self] move, from, to in
             self?.rateAction = { [weak self] liked in
                 self?.autoDJ.ratings.add(TransitionRating(move: move, from: from, to: to, liked: liked, at: Date()))
@@ -408,6 +409,8 @@ final class DJEngine {
     private func updateMaster() {
         let current = decks[masterIndex]
         if current.isPlaying && current.isLoaded { return }
+        // The top bar read "MASTER 2 –" for an empty deck, with a track on deck 1.
+        if !current.isLoaded, !current.isPlaying, let loaded = decks.first(where: { $0.isLoaded }) { masterIndex = loaded.index }
         if let playing = decks.first(where: { $0.isPlaying && $0.isLoaded && !$0.syncOn }) ?? decks.first(where: { $0.isPlaying && $0.isLoaded }) {
             masterIndex = playing.index
             playing.syncOn = false
@@ -419,6 +422,10 @@ final class DJEngine {
             deck.syncOn = false
         } else {
             let leader = master(for: deck)
+            guard leader.isLoaded else {
+                say("There's nothing to sync to yet: the other deck's empty.", .refused)
+                return
+            }
             // Syncing the master means following the other deck, so that one has to lead.
             if masterIndex == deck.index { masterIndex = leader.index }
             deck.sync(to: leader)

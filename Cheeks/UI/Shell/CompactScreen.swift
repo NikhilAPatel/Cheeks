@@ -349,7 +349,9 @@ struct MixerMoreSheet: View {
         }
         .padding(16)
         // Over the sheet as well: the one on the screen's underneath it.
-        .overlay { WhatsThisNote() }
+        .overlay { WhatsThisNote(inSheet: true) }
+        .onAppear { WhatsThis.shared.sheetOpened() }
+        .onDisappear { WhatsThis.shared.sheetClosed() }
         .presentationDetents([.medium])
         .background(Theme.chassis)
         .preferredColorScheme(.dark)

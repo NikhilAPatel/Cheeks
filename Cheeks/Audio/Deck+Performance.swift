@@ -9,7 +9,10 @@ extension Deck {
         guard isLoaded else { return }
         if shift {
             shift = false
-            guard let removed = track?.hotCues[slot] else { return }
+            guard let removed = track?.hotCues[slot] else {
+                onMessage?("There's no cue on that pad to delete.", .refused)
+                return
+            }
             let info = track?.hotCueInfo[slot]
             updateTrack { t in
                 t.hotCues[slot] = nil
@@ -166,6 +169,13 @@ extension Deck {
     }
 
     /// A pad on the MEM page: calls up what's saved there, or deletes it after DEL.
+    /// `DEL` going out with nothing said looks as if it's broken.
+    func pressEmptyMemoryPad() {
+        guard shift else { return }
+        shift = false
+        onMessage?("There's nothing on that pad to delete.", .refused)
+    }
+
     func pressMemory(_ item: MemoryItem) {
         if shift {
             shift = false
@@ -204,6 +214,7 @@ extension Deck {
     }
 
     func setLoop(beats: Double, resizeExisting: Bool = true) {
+        onLoopChangedByHand?()
         guard isLoaded, beatFrames > 0 else { return }
         let start: Double
         let waiting = isLoopAhead
@@ -229,6 +240,7 @@ extension Deck {
 
     func loopIn() {
         guard isLoaded else { return }
+        onLoopChangedByHand?()
         let start = snap(renderer.playhead)
         renderer.setLoop(start: start, end: start, active: false)
         loopActive = false
@@ -247,6 +259,7 @@ extension Deck {
             onMessage?("A loop needs some length: play on from IN, then press OUT.", .refused)
             return
         }
+        onLoopChangedByHand?()
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true
@@ -265,6 +278,7 @@ extension Deck {
     }
 
     func exitLoop() {
+        onLoopChangedByHand?()
         renderer.loopActive = false
         loopActive = false
         if slipMode { renderer.releaseSlip() }
@@ -272,7 +286,11 @@ extension Deck {
 
     func reloop() {
         endMomentaryPads()
-        guard renderer.loopEnd > renderer.loopStart else { return }
+        guard renderer.loopEnd > renderer.loopStart else {
+            onMessage?("There's no loop to go back to yet. Press a loop size, or IN and OUT.", .refused)
+            return
+        }
+        onLoopChangedByHand?()
         renderer.playhead = renderer.loopStart
         renderer.loopActive = true
         loopActive = true
