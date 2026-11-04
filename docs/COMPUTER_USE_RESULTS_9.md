@@ -377,6 +377,6 @@ With the browser open, for comparison:
 - **H2:** the first time on the `FX` page, it says the pads slide.
 
 **Not done yet**
-- **What needs explaining (FU4).** Many controls still rely on someone knowing DJ gear. It needs a proper think about where help should go.
+- **What needs explaining (FU4).** Many controls still rely on someone knowing DJ gear. It needs a proper think about where help should go. Done next, after this list: `?` on the top bar, and touching a control says what it does (`UI/Shell/WhatsThis.swift`), with the same notes in Settings. Every control FU4 named has one. Nobody who doesn't know DJ gear has read them yet.
 - **The file picker's blank 3 to 8 s** is the system's. Whether what's behind it still shifts is in the next round.
 - **BC4,** one missed "Echo throw done" that couldn't be forced.

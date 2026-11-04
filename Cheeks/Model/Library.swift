@@ -100,13 +100,19 @@ final class Library {
     }
 
     /// Copies a file picked in the Files app into the library and queues it for analysis.
-    func importFile(at source: URL, move: Bool = false) {
+    /// What came of an import, for saying so: it can be a while before a track shows up, and nothing happening looks like failing.
+    enum ImportOutcome {
+        case added(UUID), alreadyThere, failed
+    }
+
+    @discardableResult
+    func importFile(at source: URL, move: Bool = false) -> ImportOutcome {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
         if isAlreadyImported(source) {
             if move { try? FileManager.default.removeItem(at: source) } // don't re-process it every launch
-            return
+            return .alreadyThere
         }
 
         // A track restored from a backup, or whose file went missing, gets its audio back.
@@ -121,18 +127,19 @@ final class Library {
                 try FileManager.default.copyItem(at: source, to: destination)
             }
         } catch {
-            return
+            return .failed
         }
         if waiting != nil {
             update(id) { $0.fileName = fileName }
             missingFiles.remove(id)
-            return
+            return .added(id)
         }
         let title = source.deletingPathExtension().lastPathComponent
         tracks.append(Track(id: id, title: title, artist: "", fileName: fileName, originalFileName: source.lastPathComponent))
         save()
         Task { await loadMetadata(id) }
         enqueueAnalysis(id)
+        return .added(id)
     }
 
     /// Same original name and byte size as a track we already have.
@@ -260,9 +267,12 @@ final class Library {
 
     // MARK: Playlists
 
-    func createPlaylist(named name: String) {
-        playlists.append(Playlist(id: UUID(), name: name))
+    @discardableResult
+    func createPlaylist(named name: String) -> UUID {
+        let id = UUID()
+        playlists.append(Playlist(id: id, name: name))
         save()
+        return id
     }
 
     func add(_ trackID: UUID, to playlistID: UUID) {

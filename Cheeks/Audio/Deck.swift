@@ -457,6 +457,9 @@ final class Deck {
         stemLevels = [1, 1, 1, 1]
         stemsBeforeSolo = nil
         keyShift = 0
+        // Everyone meets a new track at its own speed. What the last one was at means nothing to it, and a move used to leave
+        // a number on the fader that nobody had chosen: Exhilarate read 166.02 on a stopped deck.
+        setTempo(0)
         autoGainDB = Self.autoGain(for: track?.loudness)
         onMixChange?()
         Task { [weak self] in

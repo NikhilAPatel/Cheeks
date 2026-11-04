@@ -14,6 +14,8 @@ struct Knob: View {
     var color: Color = Theme.accent
     var size: CGFloat = 38
     var scale: KnobScale = .bipolar
+    /// What `?` looks it up by, if that isn't its label.
+    var help: String? = nil
     /// Announced by VoiceOver in place of the raw number.
     var accessibilityUnit: String = ""
 
@@ -67,8 +69,10 @@ struct Knob: View {
                     .padding(.top, 0.5)
             }
         }
+        .whatsThis(help ?? label)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label.isEmpty ? "Level" : label.capitalized)
+        .accessibilityHint(Explanations.named(help ?? label)?.text ?? "")
         .accessibilityValue(accessibilityDescription)
         .accessibilityAdjustableAction { direction in
             let step = span / 20

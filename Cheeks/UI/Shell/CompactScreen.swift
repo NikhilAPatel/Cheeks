@@ -62,9 +62,8 @@ struct CompactScreen: View {
                     }
                     if browserBuilt || showLibrary {
                         Offstage(!showLibrary, y: geo.size.height) {
-                            BrowserView(isOpen: showLibrary)
+                            BrowserView(isOpen: showLibrary, keyboardHeight: keyboardHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                .padding(.bottom, keyboardHeight)
                                 .padding(.horizontal, 3)
                         }
                     }
@@ -152,16 +151,19 @@ struct CompactDeck: View {
 
     /// It's the second thing anyone needs, so the pads page keeps it. The jog page has it among its keys.
     private var syncKey: some View {
-        Key("SYNC", lit: deck.syncOn, size: 8, feel: .toggle, accessibilityName: "Beat sync, deck \(deck.index + 1)", onPress: { dj.toggleSync(deck) })
-            .frame(width: 38)
+        Key("SYNC", lit: deck.syncOn, size: 8, feel: .toggle, accessibilityName: "Beat sync, deck \(deck.index + 1)", help: "SYNC", onPress: { dj.toggleSync(deck) })
+            .frame(width: keyWidth)
             .needsATrack(on: deck)
     }
 
     /// Swaps the pads for the jog and the keys beside it.
     private var pageKey: some View {
-        Key(showJog ? "PADS" : "JOG", lit: showJog, size: 8, feel: .toggle, accessibilityName: showJog ? "Show pads, deck \(deck.index + 1)" : "Show jog, deck \(deck.index + 1)", onPress: { showJog.toggle() })
-            .frame(width: 38)
+        Key(showJog ? "PADS" : "JOG", lit: showJog, size: 8, feel: .toggle, accessibilityName: showJog ? "Show pads, deck \(deck.index + 1)" : "Show jog, deck \(deck.index + 1)", help: "Deck page", actsDuringHelp: true, onPress: { showJog.toggle() })
+            .frame(width: keyWidth)
     }
+
+    /// On its side, what these give up goes to the track's title.
+    private var keyWidth: CGFloat { keysSideBySide ? 38 : 32 }
 
     @ViewBuilder
     private var page: some View {
@@ -229,7 +231,8 @@ struct CompactMixer: View {
     private var centre: some View {
         VStack(spacing: 3) {
             AutoKey().frame(height: 22)
-            Key("MORE", color: Theme.accent, size: 7, accessibilityName: "More mixer controls", onPress: { showMore = true })
+            // Not "MORE": the pad tabs have one of those, which does something else.
+        Key("MIXER", color: Theme.accent, size: 7, accessibilityName: "More mixer controls", actsDuringHelp: true, onPress: { showMore = true })
                 .frame(height: 22)
             LimiterLight()
             CentreMeters().frame(maxHeight: .infinity)
@@ -251,7 +254,7 @@ private struct CompactStripTall: View {
             }
             HStack(spacing: 2) {
                 Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-                Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize)
+                Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
             }
             CueChannelKey(deck: deck).frame(height: 18)
             ChannelFader(value: $deck.fader, label: "Channel \(deck.index + 1) fader")
@@ -275,7 +278,7 @@ private struct CompactStripWide: View {
                 }
                 HStack(spacing: 2) {
                     Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-                    Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize)
+                    Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
                 }
             }
             if deck.index == 0 { faderColumn }
@@ -292,10 +295,11 @@ private struct CompactStripWide: View {
 }
 
 private struct CueChannelKey: View {
+    @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
 
     var body: some View {
-        Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", onPress: { deck.headphoneCue.toggle() }) {
+        Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", help: "Cue channel", onPress: { dj.toggleCue(deck) }) {
             Image(systemName: "headphones").font(.system(size: 8, weight: .bold))
         }
     }
@@ -319,9 +323,9 @@ struct MixerMoreSheet: View {
                     .foregroundStyle(Theme.accent)
             }
             HStack(alignment: .top, spacing: 18) {
-                Knob(value: $one.trim, label: "TRIM 1", color: Theme.textPrimary, size: 40)
-                Knob(value: $two.trim, label: "TRIM 2", color: Theme.textPrimary, size: 40)
-                Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "MASTER", color: Theme.textPrimary, size: 40, scale: .unipolar)
+                Knob(value: $one.trim, label: "TRIM 1", color: Theme.textPrimary, size: 40, help: "TRIM")
+                Knob(value: $two.trim, label: "TRIM 2", color: Theme.textPrimary, size: 40, help: "TRIM")
+                Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "MASTER", color: Theme.textPrimary, size: 40, scale: .unipolar, help: "Master volume")
                 Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE/MST", color: Theme.textPrimary, size: 40, scale: .unipolar)
                 Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "LEVEL", color: Theme.textPrimary, size: 40, scale: .unipolar)
             }
@@ -329,7 +333,7 @@ struct MixerMoreSheet: View {
                 Key("SPLIT", lit: dj.splitCue, size: 9, feel: .toggle, onPress: { dj.splitCue.toggle() })
                     .frame(width: 110)
                 Key(color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter,
-                    feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", onPress: {
+                    feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", help: "Color effect", onPress: {
                     let all = ColorEffect.allCases
                     dj.colorFX = all[((all.firstIndex(of: dj.colorFX) ?? 0) + 1) % all.count]
                 }) {
@@ -344,6 +348,8 @@ struct MixerMoreSheet: View {
             Spacer(minLength: 0)
         }
         .padding(16)
+        // Over the sheet as well: the one on the screen's underneath it.
+        .overlay { WhatsThisNote() }
         .presentationDetents([.medium])
         .background(Theme.chassis)
         .preferredColorScheme(.dark)

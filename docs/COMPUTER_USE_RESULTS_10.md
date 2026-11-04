@@ -578,3 +578,44 @@ The capsule fits the first half of the sentence, and the second half is the part
 - Inside the Segue DJ folder in the Files app. My taps on it didn't open it, and I can't say whether that was the tool. `fu-files-app-on-my-iphone.png`
 - Whether deleted tracks keep their cues.
 - Anything about sound or haptics, as agreed.
+
+## What happened next
+
+**Not a bug**
+- **LR2: the bass swap's 0.43 s of silence is deliberate.** `writeBassSwap` has "the air": everything stops for one beat, and the new track lands whole on the downbeat. It was added because the owner heard the bass swap as "a normal crossfade" and loved that beat in the loop build, and `TransitionScore.breath` is what lets the audition pass it. The measurement was right: about a beat at 125, exactly where the score puts it. Round 9's 0.42 s was the same thing, so that part of LR1 was never a fault either, though the rest of LR1 was. Nobody's asked the owner about it since it went in, so the question is still whether they like it in a bass swap.
+
+**Fixed, with a test that fails without the fix**
+- **CA4: the list going to the top.** It's iOS's gesture for tapping the top of the screen, which sends a list to its top, and the top bar's keys are all up there. `scrollsToTop` is now off on the browser's lists. The tester's probe settled it, on the Duo and on the small iPhone upright: a press on a blank part of the top bar jumped the list with the browser still open, and by the time the browser left the window the list had already moved. `UI/Browser/BrowserView.swift`, `StaysWhereItIs`.
+  - **I told the owner this was fixed before round 10, and it wasn't.** I'd tested a deck's page surviving, and not the list. Then a first fix, saving the list's place as it left the window, passed its UI test, and that test passed with the fix off as well. A UI test's press doesn't set off this gesture, so it couldn't see the bug at all. That fix and its test have gone.
+  - The test now looks at the property itself, so it proves the gesture's off, not that a finger leaves the list alone. Only a touch through the tester's tool has shown this, so it's in the next retest.
+- **The tempo a move leaves.** A new track now starts at its own speed, as it already did with its key, and an old deck that's stopped goes back to 0.
+- **Silence with `PLAY` lit after a stopped move.** Stopping the old deck now brings in the new one, which was left running with its stems down, and says so.
+- **`OUT` with no `IN`** now says to press `IN` first, and a loop's length can't come out as `1.3e+02`. `IN` then `OUT` on the same spot says it needs some length.
+- **A capsule's time** now starts again when the same words are said again.
+- **CA8: a keyboard that isn't the browser's own search** no longer moves the browser. The test fails without the fix, but it sends the notification itself. That the picker sends one is my reading of how the screen breaks, as neither the iPad Air nor iPhone 17 shows it, so the Duo has to confirm it.
+
+**Fixed, and looked at**
+- **CC13:** `SPACE` and `DUB` on the dark side and `NOISE` at both ends make more room, easing across so nothing clicks. On the two test tracks the limiter's now 0.2 dB at worst at any knob position, where it was up to 1.3, and `LIM` lights at 0.5. Levels stay within about 2.6 dB of dry. Skylander is louder than either, and nobody's heard this.
+- **CC3:** on a phone's side the deck's time is smaller and its keys narrower, so a title gets about 70 pt in place of 30, and breaks between words: "Midnight / Drive (Ex…". From the snapshots.
+- **Capsules on a phone's side** now hang below the top bar at full width, as they do upright, so the second half isn't lost.
+- **`AUTO…`** now says how far the stems have got: `AUTO 42%`, and `MIX 42%`. A move starting says so, with how to take it back.
+- **`AUTO` with "Prepare stems on load" off** now asks for the stems, and a track already split gets them straight back, where it used to say the track didn't have any.
+- **`MIX`'s refusal** no longer says "the one you want next", which the list decides: "A mix carries on from one playing deck. Stop the other."
+- **Deleting a track** asks first, and refuses while a deck's playing it.
+- **Import** says what came of it, including tracks already in the library, and goes into the playlist on screen. A new playlist opens. `Add to Playlist` and `Re-analyse` say so.
+- **An empty deck:** `Q`, `KEY` and the stem pads are no longer lit.
+- **Smaller things:** the mixer's sheet key reads `MIXER`, as `MORE` meant two things. Upright, the empty browser says "the blue button" and not "Import". A phone's sidebar drops its icons, so "All Tracks" fits. The sampler sheet only mentions grabbing a loop when one can be grabbed.
+
+**FU4: what needs explaining**
+- **`?` on the top bar.** While it's lit, touching a control explains it and doesn't press it. The music carries on, and what moves between pages still works, so every page can be asked about. Settings has the same notes as a list, and they're VoiceOver's hints too. A UI test walks every button on every page on the iPad Air and iPhone 17: 126 and 125 controls, none without a note, and the deck never started. Each note was checked against the code. Nobody who doesn't know DJ gear has read them. `UI/Shell/WhatsThis.swift`, `Explanations.swift`.
+- **A deck's headphone `CUE` can't be heard without `SPLIT`,** which I found writing the notes: the output's all mix without it. It now says so when it lights.
+
+**Not done**
+- **CB2: the Files folder won't open.** Files says "Cannot find source for location" for the app's container, and I haven't found why. It might only be the simulator's Files, so it wants a look on the phone.
+- **A mix's plan lost after a loop,** seen once. I couldn't see why from the code: the same plan should pass again. `OUT` with no `IN` can no longer start that sequence. If it comes back with a loop made properly, it'll need logging of what the audition rejected.
+- **The first keyboard's freeze,** 1,663 and 810 ms. It may be the system's own, so it wants measuring on the phone.
+- **The import picker opening on "Folder is Empty".** It's the system's picker, and a phone will have other places to open on, so it wants a look there too.
+- **A press during the logo is lost.** The main thread isn't free yet.
+- **`REC` with nothing loaded saves a silent mix.** Harmless, and left.
+
+**Blocked until someone presses Open:** CB5, the Duo half of CB6 and CA1's video, with the Duo's stuck recorder running until it's restarted. Next round's task runs them first.

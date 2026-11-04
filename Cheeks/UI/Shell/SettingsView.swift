@@ -18,6 +18,13 @@ struct SettingsView: View {
         @Bindable var dj = dj
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink("What everything does") { ControlsGuide() }
+                } header: {
+                    Text("Help")
+                } footer: {
+                    Text("Every control, explained. On the decks, press ? and touch a control to see just that one.")
+                }
                 Section("Mixing") {
                     Picker("Crossfader curve", selection: $dj.crossfaderCurve) {
                         ForEach(CrossfaderCurve.allCases) { Text($0.rawValue.capitalized).tag($0) }

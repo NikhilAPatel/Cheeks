@@ -161,11 +161,22 @@ final class AutoDJ {
         let name = mixSet == nil ? "AUTO" : "MIX"
         switch phase {
         // A mix with no plan yet is waiting for something, like a loop to end, and shouldn't look as if it's just sitting there.
-        case .idle: return mixSet == nil ? name : "\(name)…"
+        case .idle: return mixSet == nil ? name : stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
         case .running: return name
-        case .waitingForStems, .planning: return "\(name)…"
+        // "AUTO…" read like a clipped label for nearly 4 minutes, with nothing tying it to the percentage on the deck.
+        case .waitingForStems: return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
+        case .planning: return "\(name)…"
         case .armed: return "\(name) \(barsToGo)"
         }
+    }
+
+    /// How far along the stems are that it's waiting for: the deck with furthest to go.
+    private var stemsPercent: Int? {
+        let waitingOn = decks.compactMap { deck -> Double? in
+            guard deck.trackMap == nil, case .separating(let progress) = deck.stemStatus else { return nil }
+            return progress ?? 0
+        }
+        return waitingOn.min().map { Int($0 * 100) }
     }
 
     func press() {
@@ -199,7 +210,8 @@ final class AutoDJ {
     func startSet(named name: String, tracks: [UUID]) {
         let playing = decks.filter(\.isPlaying)
         guard playing.count <= 1 else {
-            say("Auto DJ brings in a stopped deck. Stop the one you want next.", .refused)
+            // Not "the one you want next": the list decides that, and the stopped deck's track makes way for it.
+            say("A mix carries on from one playing deck. Stop the other.", .refused)
             return
         }
         var queue = tracks
@@ -398,6 +410,10 @@ final class AutoDJ {
         outgoing = from
         incoming = to
         if planIfReady() { return }
+        // With "Prepare stems on load" off nobody's asked for them yet, and pressing this is asking. A track that's been split gets them straight back.
+        if StemSeparation.hasModel {
+            for deck in [from, to] where deck.trackMap == nil && !deck.stemsAreOnTheWay { deck.prepareStems() }
+        }
         // A track that isn't splitting and has no map is never going to get one.
         guard [from, to].allSatisfy({ $0.trackMap != nil || $0.stemsAreOnTheWay }) else {
             say("Auto DJ needs stems, and this track doesn't have them.", .refused)
@@ -597,6 +613,10 @@ final class AutoDJ {
             if cheeks_engine_auto_running(core) {
                 coreIsRunning = true
                 phase = .running(move)
+                // Knobs move and a loop appears, and without this nothing says why.
+                if !isAskingForRating() {
+                    say(mixSet == nil ? "\(move.title) starting. Touch a control to take it back." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
+                }
             } else if let score, let outgoing {
                 let number = outgoing.index + 1
                 if !outgoing.isPlaying {
@@ -633,9 +653,22 @@ final class AutoDJ {
                 ticksEnding += 1
                 if !cheeks_engine_auto_running(core) || ticksEnding > 15 { finish() }
             }
-        case .idle, .planning:
+        case .idle:
+            bringInWhatsLeftAfterAStoppedMove()
+        case .planning:
             break
         }
+    }
+
+    /// A move stopped part-way leaves the new deck running with its stems down. Stopping the old deck then leaves nothing to
+    /// hear, with PLAY lit and the meters dark: 8 s of silence in round 10, until someone pressed something. Nobody stops the
+    /// only deck they can hear to listen to that, and a stopped deck during a move brings the new one in the same way.
+    private func bringInWhatsLeftAfterAStoppedMove() {
+        guard let old = leftBehind.first(where: { $0.wasOld })?.deck, let new = leftBehind.first(where: { !$0.wasOld })?.deck,
+              !old.renderer.isPlaying, new.renderer.isPlaying else { return }
+        clearAfterMove(new, isOld: false)
+        leftBehind.removeAll { $0.deck === new }
+        say("Deck \(new.index + 1) is on.", .info)
     }
 
     /// A loop that ends before this frame, with the deck in it or on its way to it, means the deck will never get there.
@@ -762,6 +795,11 @@ final class AutoDJ {
             deck.renderer.setLoop(start: deck.renderer.loopStart, end: deck.renderer.loopEnd, active: false)
             if playing { deck.restoreFXChain() } else { deck.clearFX() }
             if !playing, deck.reverse { deck.reverse = false }
+            // Stopped, it's on its way out, and these were only ever the move's. A deck still playing has them because that's how it sounds.
+            if !playing {
+                deck.setTempo(0)
+                deck.keyShift = 0
+            }
         }
         for band in 0..<3 where isFree(CheeksAutoEQ, band) { deck.followAuto(CheeksAutoEQ, index: band, value: 1) }
         if isFree(CheeksAutoFilter, 0) { deck.followAuto(CheeksAutoFilter, index: 0, value: 0) }

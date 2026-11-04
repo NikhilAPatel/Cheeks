@@ -237,8 +237,16 @@ extension Deck {
 
     func loopOut() {
         guard isLoaded else { return }
+        // With no IN, the loop would start wherever the last one did, or the top of the track: 25 beats, or 130.
+        guard loopInSet || loopActive else {
+            onMessage?("Press IN first, to mark where the loop starts.", .refused)
+            return
+        }
         let end = snap(renderer.playhead)
-        guard end > renderer.loopStart + sampleRate * 0.01 else { return }
+        guard end > renderer.loopStart + sampleRate * 0.01 else {
+            onMessage?("A loop needs some length: play on from IN, then press OUT.", .refused)
+            return
+        }
         if slipMode && !renderer.slipEngaged { renderer.engageSlip() }
         renderer.setLoop(start: renderer.loopStart, end: end, active: true)
         loopActive = true

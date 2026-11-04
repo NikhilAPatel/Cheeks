@@ -63,6 +63,7 @@ A professional DJ app for iPhone and iPad. You perform entirely on the screen, w
 **The small things**
 - Haptics designed per control. Keys that move like keys, pads that flare when struck.
 - Now Playing on the Lock Screen and in Control Center, with the track's artwork.
+- **`?` explains anything:** press it and touch a control to see what it does, without doing it. The music carries on. Settings has the same notes as a list.
 - Status messages in a capsule at the top of the screen, with Undo where it matters.
 - A refused action shakes its head. Knobs and faders spring home on a double-tap.
 - The hardware wakes up: rings sweep on and meters run up and back at launch.

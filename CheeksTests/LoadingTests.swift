@@ -73,6 +73,18 @@ final class LoadingTests: XCTestCase {
         XCTAssertFalse(deck.startsWhenLoaded)
     }
 
+    /// Round 10: a track read 166.02 on a stopped deck, from a tempo left by the last one, which nobody had chosen.
+    func testANewTrackStartsAtItsOwnSpeed() async throws {
+        let (deck, library) = makeDeck()
+        deck.setTempo(-2.34)
+        deck.keyShift = 1
+        let track = try makeTrack(in: library)
+        deck.load(track)
+        try await finishLoading(deck)
+        XCTAssertEqual(deck.tempo, 0)
+        XCTAssertEqual(deck.keyShift, 0)
+    }
+
     func testALoadWithNoPressStaysStopped() async throws {
         let (deck, library) = makeDeck()
         deck.load(try makeTrack(in: library))

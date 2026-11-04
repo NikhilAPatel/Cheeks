@@ -41,6 +41,7 @@ struct ContentView: View {
         // The whole screen: nothing below here moves when the keyboard comes up, and the space by
         // the home indicator is too useful to leave empty. The indicator hides itself, and swipes
         // from that edge are deferred, so the first one doesn't leave the app.
+        .overlay { WhatsThisNote() }
         .ignoresSafeArea(.all, edges: .bottom)
         .background(Theme.chassis.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -78,10 +79,8 @@ struct ContentView: View {
                 Offstage(!showLibrary, x: -browser - 3) {
                     VStack(spacing: 3) {
                         MiniDecks()
-                        BrowserView(isOpen: showLibrary)
+                        BrowserView(isOpen: showLibrary, keyboardHeight: keyboardHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            // Only the list makes way for the keyboard; the mixer stays put.
-                            .padding(.bottom, keyboardHeight)
                     }
                 }
                 .frame(width: browser)
@@ -210,11 +209,11 @@ struct WaveformPanel: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            OverviewWaveform(deck: dj.decks[0]).frame(height: overviewHeight)
-            ScrollingWaveform(deck: dj.decks[0]).frame(height: waveHeight)
-            PhaseStrip(decks: dj.decks, positions: { dj.positions }).frame(height: phaseHeight)
-            ScrollingWaveform(deck: dj.decks[1]).frame(height: waveHeight)
-            OverviewWaveform(deck: dj.decks[1]).frame(height: overviewHeight)
+            OverviewWaveform(deck: dj.decks[0]).frame(height: overviewHeight).whatsThis("Overview")
+            ScrollingWaveform(deck: dj.decks[0]).frame(height: waveHeight).whatsThis("Waveform")
+            PhaseStrip(decks: dj.decks, positions: { dj.positions }).frame(height: phaseHeight).whatsThis("Phase strip")
+            ScrollingWaveform(deck: dj.decks[1]).frame(height: waveHeight).whatsThis("Waveform")
+            OverviewWaveform(deck: dj.decks[1]).frame(height: overviewHeight).whatsThis("Overview")
         }
         .background(Color.black)
         .displayWell(cornerRadius: 5)
@@ -349,7 +348,7 @@ struct TopBar: View {
                 .padding(.horizontal, 3)
             }
 
-            Key(color: Theme.accent, lit: showLibrary, feel: .toggle, accessibilityName: "Browser", onPress: { showLibrary.toggle() }) {
+            Key(color: Theme.accent, lit: showLibrary, feel: .toggle, accessibilityName: "Browser", actsDuringHelp: true, onPress: { showLibrary.toggle() }) {
                 HStack(spacing: 3) {
                     Image(systemName: "music.note.list").font(.system(size: 9, weight: .semibold))
                     Text("BROWSE").font(Theme.silk(8.5))
@@ -375,7 +374,7 @@ struct TopBar: View {
             // On something with a size, because with no message showing the capsule has none.
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay { if layout != .portrait { StatusCapsule() } }
+                .overlay { if !layout.isCompact { StatusCapsule() } }
             AnalysisIndicator()
             if !layout.isCompact {
                 TimelineView(.everyMinute) { context in
@@ -384,6 +383,8 @@ struct TopBar: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
             }
+            WhatsThisKey()
+                .frame(width: 26, height: 20)
             Key(color: Theme.accent, accessibilityName: "Settings", onPress: { showSettings = true }) {
                 Image(systemName: "gearshape.fill").font(.system(size: 9))
             }
@@ -393,9 +394,10 @@ struct TopBar: View {
         }
         .padding(.horizontal, 6)
         .frame(height: 26)
-        // Held upright there's no room for a message in the bar, so it hangs just below it for its few seconds.
+        // On a phone there's no room for a message in the bar, so it hangs just below it for its few seconds. On its side it
+        // used to stay in the bar, and lost its second half, which is usually the part you act on.
         .overlay(alignment: .top) {
-            if layout == .portrait { StatusCapsule().padding(.horizontal, 6).offset(y: 28) }
+            if layout.isCompact { StatusCapsule().padding(.horizontal, 6).offset(y: 28) }
         }
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }
@@ -453,6 +455,7 @@ private struct MasterTempo: View {
                 .frame(minWidth: 44, alignment: .leading)
         }
         .opacity(master.isLoaded ? 1 : 0.5)
+        .whatsThis("Master tempo")
     }
 }
 
@@ -522,7 +525,7 @@ struct StatusCapsule: View {
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.statusMessage)
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.savingRecordings)
-        .task(id: dj.statusMessage) {
+        .task(id: dj.statusSerial) {
             guard dj.statusMessage != nil else { return }
             // One with keys stays around longer: you may need a moment to realise you want them.
             try? await Task.sleep(for: .seconds(hasKeys ? 8 : 5))

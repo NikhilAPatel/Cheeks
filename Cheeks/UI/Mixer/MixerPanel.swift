@@ -31,7 +31,7 @@ struct MixerPanel: View {
     private func centreColumn(knob: CGFloat) -> some View {
         @Bindable var dj = dj
         VStack(spacing: 3) {
-            Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "MASTER", color: Theme.textPrimary, size: min(40, knob * 0.92), scale: .unipolar)
+            Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "MASTER", color: Theme.textPrimary, size: min(40, knob * 0.92), scale: .unipolar, help: "Master volume")
             Rectangle().fill(Theme.silk).frame(height: 0.5).padding(.horizontal, 4).padding(.vertical, 1)
             Image(systemName: "headphones").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.legend)
             Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE/MST", color: Theme.textPrimary, size: 30, scale: .unipolar)
@@ -40,7 +40,7 @@ struct MixerPanel: View {
                 .frame(height: 20)
                 .padding(.top, 1)
             Key(color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter,
-                feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", onPress: {
+                feel: .toggle, accessibilityName: "Color effect, \(dj.colorFX.rawValue.capitalized)", help: "Color effect", onPress: {
                 let all = ColorEffect.allCases
                 dj.colorFX = all[((all.firstIndex(of: dj.colorFX) ?? 0) + 1) % all.count]
             }) {
@@ -92,6 +92,7 @@ struct LimiterLight: View {
             Circle().fill(working ? Theme.danger : Theme.danger.opacity(0.14)).frame(width: 4, height: 4)
             Text("LIM").silk(7, color: working ? Theme.danger : Theme.textTertiary)
         }
+        .whatsThis("LIM")
     }
 }
 
@@ -106,10 +107,12 @@ struct CentreMeters: View {
             LEDMeter(bars: 2) { [dj.masterLevel, dj.masterLevelRight] }.frame(width: 14)
             LEDMeter { [decks[1].level] }.frame(width: 6)
         }
+        .whatsThis("Meters")
     }
 }
 
 struct ChannelStrip: View {
+    @Environment(DJEngine.self) private var dj
     @Bindable var deck: Deck
     var knobSize: CGFloat
 
@@ -119,8 +122,8 @@ struct ChannelStrip: View {
             Knob(value: $deck.eqHigh, label: "HI", size: knobSize)
             Knob(value: $deck.eqMid, label: "MID", size: knobSize)
             Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-            Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize)
-            Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", onPress: { deck.headphoneCue.toggle() }) {
+            Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
+            Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", help: "Cue channel", onPress: { dj.toggleCue(deck) }) {
                 HStack(spacing: 2) {
                     Image(systemName: "headphones").font(.system(size: 8, weight: .bold))
                     Text("CUE").font(Theme.silk(8.5))

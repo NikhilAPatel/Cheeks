@@ -149,6 +149,36 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(deck.loopBeats, 32)
     }
 
+    /// Round 10: with no IN, the loop started wherever the last one had, or the top of the track, and once read 1.3e+02.
+    func testOUTWithNoINSaysSoAndSetsNothing() {
+        let deck = makeDeck()
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.seek(to: 14)
+        _ = deck.renderer.renderOffline(frames: 256)
+        deck.loopOut()
+        XCTAssertFalse(deck.loopActive)
+        XCTAssertEqual(said, "Press IN first, to mark where the loop starts.")
+    }
+
+    func testOUTOnTheSameSpotAsINSaysItNeedsLength() {
+        let deck = makeDeck()
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.loopIn()
+        deck.loopOut()
+        XCTAssertFalse(deck.loopActive)
+        XCTAssertEqual(said, "A loop needs some length: play on from IN, then press OUT.")
+    }
+
+    func testABeatCountNeverComesOutInScientificNotation() {
+        XCTAssertEqual(Format.beats(130.4), "130")
+        XCTAssertEqual(Format.beats(25), "25")
+        XCTAssertEqual(Format.beats(4), "4")
+        XCTAssertEqual(Format.beats(2.7), "2.7")
+        XCTAssertEqual(Format.beats(0.5), "1/2")
+    }
+
     func testPressingINIsRememberedUntilOUT() {
         let deck = makeDeck()
         deck.loopIn()

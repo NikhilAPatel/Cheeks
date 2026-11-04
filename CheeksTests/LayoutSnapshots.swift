@@ -97,6 +97,10 @@ final class LayoutSnapshots: XCTestCase {
         library.tracks = Self.libraryFixture
         try await snapAll("jog", ContentView(opensBrowserWhenEmpty: false).environment(\.compactDeckStartsOnJog, true))
         try await snapAll("mixer-more", MixerMoreSheet())
+        WhatsThis.shared.toggle()
+        WhatsThis.shared.explain("SLIP", at: CGPoint(x: 0.1, y: 0.6))
+        try await snapAll("whats-this", ContentView(opensBrowserWhenEmpty: false))
+        WhatsThis.shared.toggle()
         try await snapAll("browser", ContentView(showLibrary: true))
         library.tracks = saved
         try await snapAll("recordings", RecordingsView())

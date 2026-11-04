@@ -69,12 +69,16 @@ final class DJEngine {
     /// A new message clears any Undo or rating offered with the last one, which it'd no longer apply to.
     var statusMessage: String? {
         didSet {
+            statusSerial &+= 1
             statusKind = .done
             undoAction = nil
             rateAction = nil
         }
     }
     private(set) var statusKind: StatusKind = .done
+    /// Counts messages, so the same words said again stay up for their full time. Pressing a dim control every 5 s, one
+    /// press in two looked ignored, as the message went just as the next one said the same thing.
+    private(set) var statusSerial = 0
     /// Set alongside a message when what just happened can be taken back.
     var undoAction: (@MainActor () -> Void)?
     /// Set alongside a message when Auto DJ's just finished a move, to say what you thought of it.
@@ -287,6 +291,13 @@ final class DJEngine {
             cheeks_engine_set_channel(core, Int32(deck.index), trim, fader, deck.headphoneCue ? cueLevel : 0)
         }
         cheeks_engine_set_master(core, masterVolume, headphoneVolume, programInCue, splitCue)
+    }
+
+    /// The cue only reaches anyone with SPLIT on, as without it the output's all the mix. A key that lights and changes
+    /// nothing you can hear looks broken, so it says so.
+    func toggleCue(_ deck: Deck) {
+        deck.headphoneCue.toggle()
+        if deck.headphoneCue, !splitCue { say("You'll hear the cue with SPLIT on and a splitter cable.", .info) }
     }
 
     // MARK: Loading

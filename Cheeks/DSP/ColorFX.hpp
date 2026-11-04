@@ -78,7 +78,9 @@ private:
             }
             echoWrite = (echoWrite + 1) & kEchoMask;
             // Room for what's being added, or a loud track goes straight into the limiter. The tail keeps its level once the knob's back.
-            const float room = 1 - 0.4f * echoSend;
+            // The dark side's repeats are all bass, so they need more. It eases across, as the knob can pass the centre with the send still up.
+            echoRoom += ((dark ? 0.5f : 0.4f) - echoRoom) * 0.003f;
+            const float room = 1 - echoRoom * echoSend;
             left[i] = (left[i] + wet[0]) * room;
             right[i] = (right[i] + wet[1]) * room;
             loudest = std::max(loudest, std::max(std::abs(wet[0]), std::abs(wet[1])));
@@ -120,8 +122,9 @@ private:
             spaceLow[1] += (wetR - spaceLow[1]) * 0.02f;
             wetL -= spaceLow[0] * thinning;
             wetR -= spaceLow[1] * thinning;
-            // Room for what's being added, or a loud track goes straight into the limiter.
-            const float room = 1 - 0.4f * spaceSend * spaceSend;
+            // Room for what's being added, or a loud track goes straight into the limiter. The dark side keeps its lows, so it needs more.
+            spaceRoom += ((dark ? 0.5f : 0.4f) - spaceRoom) * 0.003f;
+            const float room = 1 - spaceRoom * spaceSend * spaceSend;
             left[i] = (left[i] + wetL) * room;
             right[i] = (right[i] + wetR) * room;
             loudest = std::max(loudest, std::max(std::abs(wetL), std::abs(wetR)));
@@ -160,8 +163,10 @@ private:
         float low, band, high;
         noiseFilter.process(white, low, band, high);
         const float shaped = (dark ? low : high) * a * a * 0.32f;
-        l += shaped;
-        r += shaped;
+        // Room for it, as with the others.
+        const float room = 1 - 0.25f * a * a;
+        l = l * room + shaped;
+        r = r * room + shaped;
     }
 
     inline void crush(float &l, float &r, float a) {
@@ -214,7 +219,7 @@ private:
     int echoWrite = 0;
     double echoDelay = 22050;
     bool lastDark = false;
-    float echoSend = 0;
+    float echoSend = 0, echoRoom = 0.4f, spaceRoom = 0.4f;
     float echoFeedback = 0.55f;
     bool echoIdle = true;
 

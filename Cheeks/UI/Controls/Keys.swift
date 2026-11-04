@@ -94,6 +94,10 @@ struct Key<Label: View>: View {
     var accessibilityName: String = ""
     /// How far past its edges a key takes a touch, for one too small to hit easily.
     var touchMargin: CGFloat = 0
+    /// What `?` looks it up by, where the accessibility name changes or isn't enough.
+    var help: String? = nil
+    /// It moves between pages rather than changing the mix, so it goes on working under `?`, and says what it did.
+    var actsDuringHelp = false
     /// Called when a disabled key is pressed, to say why, and in place of the plain buzz.
     var onRefused: (@MainActor () -> Void)?
     var onPress: @MainActor () -> Void
@@ -117,6 +121,7 @@ struct Key<Label: View>: View {
             .animation(.linear(duration: 0.32), value: refused)
             .overlay {
                 TouchSurface(onDown: { _ in
+                    if actsDuringHelp { WhatsThis.shared.note(helpName) }
                     guard isEnabled else {
                         refused += 1
                         if let onRefused { onRefused() } else { Haptics.shared.deny() }
@@ -130,16 +135,20 @@ struct Key<Label: View>: View {
                 .padding(-touchMargin)
             }
             .modifier(LetsGo(released: released))
+            .whatsThis(actsDuringHelp ? nil : helpName, margin: touchMargin)
             // Otherwise the glow's margin counts towards the key's frame for VoiceOver.
             .contentShape(.accessibility, Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityName)
+            .accessibilityHint(Explanations.named(helpName)?.text ?? "")
             .accessibilityAddTraits(lit ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction {
                 onPress()
                 onRelease()
             }
     }
+
+    private var helpName: String { help ?? accessibilityName }
 
     private func released() {
         guard hold.down else { return }
@@ -157,9 +166,9 @@ struct Key<Label: View>: View {
 
 extension Key where Label == KeyLegend {
     init(_ title: String, color: Color = Theme.accent, lit: Bool = false, size: CGFloat = 9.5, feel: KeyFeel = .key,
-         isEnabled: Bool = true, accessibilityName: String? = nil, touchMargin: CGFloat = 0, onRefused: (@MainActor () -> Void)? = nil,
-         onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
-        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, touchMargin: touchMargin, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
+         isEnabled: Bool = true, accessibilityName: String? = nil, touchMargin: CGFloat = 0, help: String? = nil, actsDuringHelp: Bool = false,
+         onRefused: (@MainActor () -> Void)? = nil, onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
+        self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, touchMargin: touchMargin, help: help, actsDuringHelp: actsDuringHelp, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
             KeyLegend(title: title, size: size)
         }
     }
@@ -221,6 +230,8 @@ struct Pad<Label: View>: View {
     var lit = false
     var dimmed = false
     var accessibilityName: String = ""
+    /// What `?` looks it up by, as a pad's name is often its cue's name or its size.
+    var help: String? = nil
     var onPress: @MainActor () -> Void
     var onRelease: @MainActor () -> Void = {}
     var onDrag: (@MainActor (CGSize) -> Void)?
@@ -249,9 +260,11 @@ struct Pad<Label: View>: View {
             }, onUp: released)
         }
         .modifier(LetsGo(released: released))
+        .whatsThis(help ?? accessibilityName)
         .contentShape(.accessibility, Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
+        .accessibilityHint(Explanations.named(help ?? accessibilityName)?.text ?? "")
         .accessibilityAddTraits(lit ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction {
             onPress()
@@ -345,8 +358,10 @@ struct TransportButton<Label: View>: View {
         }
         // Opening the browser takes the decks away, with a finger still on it perhaps.
         .modifier(LetsGo(released: released))
+        .whatsThis(accessibilityName)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityName)
+        .accessibilityHint(Explanations.named(accessibilityName)?.text ?? "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction {
             onPress()

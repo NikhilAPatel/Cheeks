@@ -63,7 +63,8 @@ private struct NeedsATrack: ViewModifier {
         content
             .opacity(isEmpty ? 0.45 : 1)
             .overlay {
-                if isEmpty {
+                // Under `?`, what's under this can say what it's for.
+                if isEmpty, !WhatsThis.shared.isOn {
                     TouchSurface(onDown: { _ in dj.say("There's no track on deck \(deck.index + 1) yet. Load one from the browser.", .refused) })
                 }
             }
@@ -119,7 +120,7 @@ struct TempoSection: View {
 
     var body: some View {
         VStack(spacing: 3) {
-            Key(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))", size: 8.5, onPress: {
+            Key(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))", size: 8.5, help: "Tempo range", onPress: {
                 let ranges: [Double] = [6, 10, 16, 100]
                 deck.tempoRange = ranges[((ranges.firstIndex(of: deck.tempoRange) ?? 0) + 1) % ranges.count]
             })
@@ -130,6 +131,7 @@ struct TempoSection: View {
                 .foregroundStyle(deck.tempoRatioPercent == 0 ? Theme.textTertiary : Theme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .whatsThis("Tempo percent")
         }
     }
 }
@@ -184,12 +186,13 @@ struct DeckKeys: View {
     @ViewBuilder
     private var switches: some View {
         HStack(spacing: 3) {
-            Key("Q", lit: deck.quantize, feel: .toggle, onPress: { deck.quantize.toggle() })
+            // A deck with nothing on it has nothing lit, like hardware that's off.
+            Key("Q", lit: deck.quantize && deck.isLoaded, feel: .toggle, onPress: { deck.quantize.toggle() })
             Key("SLIP", lit: deck.slipMode, size: 8.5, feel: .toggle, onPress: { deck.slipMode.toggle() })
         }
         .frame(height: 24)
         HStack(spacing: 3) {
-            Key("KEY", lit: deck.keyLock, size: 8.5, feel: .toggle, onPress: { deck.keyLock.toggle() })
+            Key("KEY", lit: deck.keyLock && deck.isLoaded, size: 8.5, feel: .toggle, onPress: { deck.keyLock.toggle() })
             Key("REV", color: Theme.danger, lit: deck.reverse, size: 8.5, feel: .toggle, onPress: { deck.reverse.toggle() })
         }
         .frame(height: 24)
@@ -198,7 +201,7 @@ struct DeckKeys: View {
     /// Beat jump: tap the number to change how far.
     private var jumpSection: some View {
         VStack(spacing: 2) {
-            Text("BEAT JUMP").silk(7.5, color: Theme.textTertiary)
+            Text("BEAT JUMP").silk(7.5, color: Theme.textTertiary).whatsThis("BEAT JUMP")
             HStack(spacing: 2) {
                 Key(color: Theme.accent, accessibilityName: "Jump back", onPress: { deck.beatJump(-deck.jumpBeats) }) {
                     Image(systemName: "backward.end.fill").font(.system(size: 8))
@@ -233,6 +236,7 @@ struct DeckKeys: View {
                     .frame(width: 20)
                     .contentTransition(.numericText())
                     .animation(Theme.press, value: deck.keyShift)
+                    .whatsThis("Key shift")
                 Key(color: Theme.accent, accessibilityName: "Key up", onPress: { deck.keyShift = min(12, deck.keyShift + 1) }) {
                     Image(systemName: "plus").font(.system(size: 9, weight: .bold))
                 }
@@ -261,8 +265,10 @@ struct JogSection: View {
                 }
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
+        .whatsThis("Jog wheel")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Jog wheel")
+        .accessibilityHint(Explanations.named("Jog wheel")?.text ?? "")
     }
 }
 
@@ -319,12 +325,16 @@ struct JogReadout: View {
 /// The screen at the top of a deck: artwork, title and artist, key, BPM and time.
 struct DeckHeader: View {
     @Environment(\.openBrowser) private var openBrowser
+    @Environment(\.screenLayout) private var layout
     @Bindable var deck: Deck
     /// Short of room above the browser: the title gets two lines, in place of the artist.
     var compact = false
     /// A phone's deck has no room for the artwork.
     var showsArt = true
     @State private var showCueList = false
+
+    /// A phone on its side has little room here, and a title got broken mid-word: "Skyl / an…". The title's what you read.
+    private var tight: Bool { layout == .landscape }
 
     /// The track on its way if there is one, so the old title doesn't sit there through the load.
     private var shownTrack: Track? { deck.loadingTrack ?? deck.track }
@@ -351,8 +361,9 @@ struct DeckHeader: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            gridMenu
-            times
+            .whatsThis("Track details")
+            gridMenu.whatsThis("Beat grid")
+            times.whatsThis("Time")
         }
         .padding(.horizontal, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -360,7 +371,7 @@ struct DeckHeader: View {
         // An empty deck's screen is a shortcut to the music.
         .contentShape(Rectangle())
         .onTapGesture {
-            guard deck.track == nil else { return }
+            guard deck.track == nil, !WhatsThis.shared.isOn else { return }
             Haptics.shared.key()
             openBrowser()
         }
@@ -429,7 +440,7 @@ struct DeckHeader: View {
             .frame(width: 42, alignment: .trailing)
             .contentShape(Rectangle())
         }
-        .disabled(!deck.isLoaded)
+        .disabled(!deck.isLoaded || WhatsThis.shared.isOn)
         .simultaneousGesture(TapGesture().onEnded { Haptics.shared.key() })
         .accessibilityLabel("Beat grid")
         .accessibilityValue(deck.isLoaded && deck.bpm > 0 ? String(format: "%.2f BPM", deck.effectiveBPM) : "No track")
@@ -441,13 +452,13 @@ struct DeckHeader: View {
             let remaining = deck.duration - deck.position
             VStack(alignment: .trailing, spacing: 0) {
                 Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "–")
-                    .font(Theme.digits(18))
+                    .font(Theme.digits(tight ? 12.5 : 18))
                     .foregroundStyle(deck.isLoaded && remaining < 30 ? Theme.danger : Theme.textPrimary)
                 Text(deck.isLoaded ? Format.tenths(deck.position) : " ")
-                    .font(Theme.digits(9.5))
+                    .font(Theme.digits(tight ? 8.5 : 9.5))
                     .foregroundStyle(Theme.textTertiary)
             }
-            .frame(width: 66, alignment: .trailing)
+            .frame(width: tight ? 46 : 66, alignment: .trailing)
         }
     }
 }
@@ -519,6 +530,8 @@ enum Format {
     }
 
     static func beats(_ beats: Double) -> String {
+        // %g turns a long loop into "1.3e+02".
+        if beats >= 10 { return "\(Int(beats.rounded()))" }
         if beats >= 1 { return beats == beats.rounded() ? "\(Int(beats))" : String(format: "%.2g", beats) }
         if abs(beats - 0.75) < 0.0001 { return "3/4" }
         return "1/\(Int((1 / beats).rounded()))"

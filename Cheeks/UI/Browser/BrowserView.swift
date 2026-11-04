@@ -9,6 +9,9 @@ struct BrowserView: View {
     @Environment(DJEngine.self) private var dj
     /// It stays built while the decks are showing, and has no reason to follow them or sort anything until it's back.
     var isOpen = true
+    /// Only the list makes way for a keyboard, and only for its own search's. The file picker's search counts as a
+    /// keyboard too, and it used to push the whole browser out of shape behind the picker.
+    var keyboardHeight: CGFloat = 0
     @State private var lastList = LastList()
     // How the list is showing is worth keeping: the browser closes every time someone goes back to the decks.
     @AppStorage("browserPlaylist") private var chosenPlaylist = ""
@@ -112,13 +115,14 @@ struct BrowserView: View {
             }
         }
         .background(Color(white: 0.06))
+        .padding(.bottom, searchFocused ? keyboardHeight : 0)
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: importKind == .audio ? [.audio] : [.xml],
                       allowsMultipleSelection: importKind == .audio) { result in
             guard case .success(let urls) = result else { return }
             switch importKind {
             case .audio:
-                for url in urls { library.importFile(at: url) }
+                sayWhatCameOf(urls.map { library.importFile(at: $0) })
             case .djLibrary:
                 if let url = urls.first { importDJLibrary(url) }
             }
@@ -127,7 +131,8 @@ struct BrowserView: View {
             TextField("Name", text: $newPlaylistName)
             Button("Create") {
                 let name = newPlaylistName.trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty { library.createPlaylist(named: name) }
+                // Straight into it, or nothing on the screen says anything happened.
+                if !name.isEmpty { source = .playlist(library.createPlaylist(named: name)) }
                 newPlaylistName = ""
             }
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -142,6 +147,23 @@ struct BrowserView: View {
             guard !open else { return }
             search = ""
             searchFocused = false
+        }
+    }
+
+    /// Importing while looking at a playlist puts them in it. It used to go on saying the playlist was empty, and looked as if it had failed.
+    private func sayWhatCameOf(_ outcomes: [Library.ImportOutcome]) {
+        let added = outcomes.compactMap { if case .added(let id) = $0 { id } else { nil } }
+        let thereAlready = outcomes.filter { if case .alreadyThere = $0 { true } else { false } }.count
+        if let playlistID, !library.playlists.contains(where: { $0.id == playlistID && library.isHistory($0) }) {
+            added.forEach { library.add($0, to: playlistID) }
+        }
+        if !added.isEmpty {
+            let also = thereAlready > 0 ? " \(Format.count(thereAlready, "track")) already in your library." : ""
+            dj.say("Added \(Format.count(added.count, "track")).\(also)", .done)
+        } else if thereAlready > 0 {
+            dj.say(thereAlready == 1 ? "That track's already in your library." : "Those tracks are already in your library.", .info)
+        } else {
+            dj.say("That file couldn't be imported.", .problem)
         }
     }
 
@@ -169,6 +191,7 @@ struct BrowserView: View {
             .environment(\.defaultMinListRowHeight, 36)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.immediately)
+            .background(StaysWhereItIs())
             .animation(isLong ? nil : Theme.panel, value: isLong ? [] : list.map(\.id))
             .transaction { if isLong { $0.animation = nil } }
         }
@@ -241,8 +264,11 @@ struct BrowserView: View {
             source = tag
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 10)).frame(width: 14)
-                    .foregroundStyle(source == tag ? Color.white : Theme.textSecondary)
+                // On a phone's narrow sidebar, the name matters more: it read "All Tr…".
+                if !layout.isCompact {
+                    Image(systemName: icon).font(.system(size: 10)).frame(width: 14)
+                        .foregroundStyle(source == tag ? Color.white : Theme.textSecondary)
+                }
                 Text(title).lineLimit(1)
                 Spacer(minLength: 2)
                 Text("\(count)").font(Theme.digits(10)).foregroundStyle(Theme.textTertiary)
@@ -278,19 +304,21 @@ struct BrowserView: View {
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.black))
             .animation(.easeOut(duration: 0.12), value: search.isEmpty)
 
-            filterKey(layout == .portrait ? "KEY" : "IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil)
-            filterKey(layout == .portrait ? "±6%" : "±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0)
-            filterKey("NEXT", isOn: $bestNext, enabled: true, accessibilityName: "Best next first")
+            filterKey(layout == .portrait ? "KEY" : "IN KEY", isOn: $inKeyOnly, enabled: referenceDeck?.effectiveKey != nil, help: "In key filter")
+            filterKey(layout == .portrait ? "±6%" : "±6% BPM", isOn: $nearBPMOnly, enabled: (referenceDeck?.effectiveBPM ?? 0) > 0, help: "BPM filter")
+            filterKey("NEXT", isOn: $bestNext, enabled: true, accessibilityName: "Best next first", help: "Best next first")
             mixKey
 
             if layout == .portrait { sourceMenu }
 
             Menu {
                 Button("Music files…", systemImage: "music.note") {
+                    searchFocused = false
                     importKind = .audio
                     importing = true
                 }
                 Button("DJ library (XML)…", systemImage: "doc.text") {
+                    searchFocused = false
                     importKind = .djLibrary
                     importing = true
                 }
@@ -304,12 +332,14 @@ struct BrowserView: View {
                 .frame(height: 24)
                 .background(KeyFace(color: Theme.accent, lit: true))
             }
+            .disabled(WhatsThis.shared.isOn)
+            .whatsThis("IMPORT")
         }
         .padding(5)
     }
 
-    private func filterKey(_ title: String, isOn: Binding<Bool>, enabled: Bool, accessibilityName: String? = nil) -> some View {
-        Key(title, lit: isOn.wrappedValue && enabled, size: 8.5, feel: .toggle, isEnabled: enabled, accessibilityName: accessibilityName ?? title, onPress: {
+    private func filterKey(_ title: String, isOn: Binding<Bool>, enabled: Bool, accessibilityName: String? = nil, help: String) -> some View {
+        Key(title, lit: isOn.wrappedValue && enabled, size: 8.5, feel: .toggle, isEnabled: enabled, accessibilityName: accessibilityName ?? title, help: help, onPress: {
             withAnimation(Theme.panel) { isOn.wrappedValue.toggle() }
         })
         .frame(width: layout == .portrait ? 36 : 56, height: 24)
@@ -348,6 +378,8 @@ struct BrowserView: View {
                 .frame(width: 30, height: 24)
                 .background(KeyFace(color: Theme.accent, lit: source != .all))
         }
+        .disabled(WhatsThis.shared.isOn)
+        .whatsThis("Playlists")
         .accessibilityLabel("Playlists")
     }
 
@@ -410,7 +442,7 @@ struct BrowserView: View {
                 ContentUnavailableView {
                     Label("No music yet", systemImage: "music.note.house")
                 } description: {
-                    Text("Tap Import to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder.")
+                    Text((layout == .portrait ? "Tap the blue button above" : "Tap Import") + " to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder.")
                 }
             } else if !search.isEmpty {
                 ContentUnavailableView.search(text: search)
@@ -434,6 +466,7 @@ struct TrackRow: View {
     let referenceDeck: Deck?
     let playlistID: UUID?
     @Environment(\.screenLayout) private var layout
+    @State private var askingToDelete = false
 
     var body: some View {
         let compatible = referenceDeck?.track?.id != track.id && Camelot.isCompatible(track.key, referenceDeck?.effectiveKey)
@@ -483,7 +516,7 @@ struct TrackRow: View {
             }
             HStack(spacing: 3) {
                 ForEach(dj.decks, id: \.index) { deck in
-                    Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying,
+                    Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying, help: "Load on deck",
                         onRefused: { dj.refuseLoad(onto: deck) }, onPress: {
                         _ = dj.load(track, onto: deck)
                     })
@@ -520,15 +553,34 @@ struct TrackRow: View {
             if !addable.isEmpty {
                 Menu("Add to Playlist", systemImage: "text.badge.plus") {
                     ForEach(addable) { playlist in
-                        Button(playlist.name) { library.add(track.id, to: playlist.id) }
+                        Button(playlist.name) {
+                            library.add(track.id, to: playlist.id)
+                            dj.say("Added to \(playlist.name).", .done)
+                        }
                     }
                 }
             }
             if let playlistID {
                 Button("Remove from Playlist", systemImage: "minus.circle") { library.remove(track.id, from: playlistID) }
             }
-            Button("Re-analyse", systemImage: "waveform.badge.magnifyingglass") { library.reanalyze(track) }
-            Button("Delete from Library", systemImage: "trash", role: .destructive) { library.delete(track) }
+            Button("Re-analyse", systemImage: "waveform.badge.magnifyingglass") {
+                library.reanalyze(track)
+                dj.say("Analysing \(track.title) again.", .info)
+            }
+            Button("Delete from Library", systemImage: "trash", role: .destructive) {
+                // It went at once, file and all, with the deck still playing it and no way back.
+                if let deck = dj.decks.first(where: { $0.isPlaying && $0.track?.id == track.id }) {
+                    dj.say("Deck \(deck.index + 1) is playing this. Stop it first.", .refused)
+                } else {
+                    askingToDelete = true
+                }
+            }
+        }
+        .alert("Delete \(track.title)?", isPresented: $askingToDelete) {
+            Button("Delete", role: .destructive) { library.delete(track) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes its file from Segue DJ, along with its cues, loops and stems.")
         }
     }
 
@@ -539,6 +591,36 @@ struct TrackRow: View {
             .frame(width: 30, height: 16)
             .background(RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(compatible ? Theme.keyColor(track.key) : Color.clear))
+            .whatsThis("Track key")
+    }
+}
+
+/// Touching the top of the screen is iOS's way of sending a list back to its top, and that's where `BROWSE`, `REC` and the
+/// rest are. So a press up there lost your place in the list: 6 of 6 in hands-on round 10, on the Duo and on a small phone
+/// held upright. A UI test's press doesn't do it, so they couldn't see it. SwiftUI has no way to turn it off, so this finds
+/// the list from a view beside it.
+private struct StaysWhereItIs: UIViewRepresentable {
+    func makeUIView(context: Context) -> Marker { Marker() }
+    func updateUIView(_ view: Marker, context: Context) {}
+
+    final class Marker: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else { return }
+            // Next time round, as the list goes in alongside this.
+            DispatchQueue.main.async { [weak self] in
+                guard let window = self?.window else { return }
+                Self.leaveAlone(in: window)
+            }
+        }
+
+        private static func leaveAlone(in view: UIView) {
+            if let list = view as? UICollectionView {
+                list.scrollsToTop = false
+            } else {
+                view.subviews.forEach(leaveAlone)
+            }
+        }
     }
 }
 
@@ -593,9 +675,11 @@ struct TrackPreview: View {
         // Tap the waveform to audition the track: in the cue ear with a split cable, or quietly on the main output without one.
         .contentShape(Rectangle())
         .onTapGesture {
+            guard !WhatsThis.shared.isOn else { return }
             Haptics.shared.toggle(!previewing)
             dj.togglePreview(track)
         }
+        .whatsThis("Preview")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(previewing ? "Stop preview" : "Preview")
         .accessibilityAddTraits(.isButton)

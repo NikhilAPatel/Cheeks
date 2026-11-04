@@ -386,6 +386,64 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertTrue(window?.hitTest(CGPoint(x: 36, y: 544), with: nil) === cue)
     }
 
+    /// Leaving the window doesn't move a list. What round 10 saw was `testATouchAlongTheTopLeavesTheListAlone`.
+    func testTheBrowsersListKeepsItsPlace() async throws {
+        let (_, library) = try await makeScreen()
+        library.tracks = (1...155).map { Track(id: UUID(), title: "Track \($0)", artist: "", fileName: "none", duration: 200, bpm: 120, key: "8A", dateAdded: .distantPast) }
+        try await pressBrowse()
+        func list() throws -> UICollectionView {
+            func all(in view: UIView) -> [UICollectionView] {
+                view.subviews.flatMap { [$0 as? UICollectionView].compactMap { $0 } + all(in: $0) }
+            }
+            return try XCTUnwrap(all(in: try XCTUnwrap(window)).max { $0.contentSize.height < $1.contentSize.height })
+        }
+        try list().setContentOffset(CGPoint(x: 0, y: 2000), animated: false)
+        try await settle(500)
+        print("LISTPLACE: scrolled \(try list().contentOffset.y) of \(try list().contentSize.height)")
+        XCTAssertEqual(try list().contentOffset.y, 2000, accuracy: 1)
+        try await pressBrowse()
+        try await pressBrowse()
+        print("LISTPLACE: reopened \(try list().contentOffset.y) of \(try list().contentSize.height)")
+        XCTAssertEqual(try list().contentOffset.y, 2000, accuracy: 1, "The list should be where it was")
+    }
+
+    /// Round 10: on a phone held upright, a press along the top of the screen sent the list back to its top, every time.
+    func testATouchAlongTheTopLeavesTheListAlone() async throws {
+        let (_, library) = try await makeScreen()
+        library.tracks = (1...30).map { Track(id: UUID(), title: "Track \($0)", artist: "", fileName: "none", duration: 200, bpm: 120, key: "8A", dateAdded: .distantPast) }
+        try await pressBrowse()
+        func all(in view: UIView) -> [UICollectionView] {
+            view.subviews.flatMap { [$0 as? UICollectionView].compactMap { $0 } + all(in: $0) }
+        }
+        let lists = all(in: try XCTUnwrap(window))
+        XCTAssertFalse(lists.isEmpty)
+        for list in lists { XCTAssertFalse(list.scrollsToTop, "That's what takes it to the top") }
+    }
+
+    /// Round 10: behind the file picker, the browser's list disappeared and the strip of decks jumped up the screen. A keyboard
+    /// that isn't the browser's own search has no business moving it.
+    func testAKeyboardThatIsntTheSearchsLeavesTheBrowserAlone() async throws {
+        let (_, library) = try await makeScreen()
+        library.tracks = (1...20).map { Track(id: UUID(), title: "Track \($0)", artist: "", fileName: "none", duration: 200, bpm: 120, key: "8A", dateAdded: .distantPast) }
+        try await pressBrowse()
+        func all(in view: UIView) -> [UICollectionView] {
+            view.subviews.flatMap { [$0 as? UICollectionView].compactMap { $0 } + all(in: $0) }
+        }
+        func height() throws -> CGFloat {
+            try XCTUnwrap(all(in: try XCTUnwrap(window)).max { $0.contentSize.height < $1.contentSize.height }).bounds.height
+        }
+        let before = try height()
+        XCTAssertGreaterThan(before, 100)
+        let size = Self.size
+        NotificationCenter.default.post(name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+                                        userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: 100, width: size.width, height: size.height - 100)])
+        try await settle(600)
+        XCTAssertEqual(try height(), before, accuracy: 1, "The list shouldn't make way for it")
+        NotificationCenter.default.post(name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+                                        userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(x: 0, y: size.height, width: size.width, height: 0)])
+        try await settle(300)
+    }
+
     func testOpeningTheBrowserWithCueHeldEndsThePreview() async throws {
         let (dj, _) = try await makeScreen()
         let deck = dj.decks[0]

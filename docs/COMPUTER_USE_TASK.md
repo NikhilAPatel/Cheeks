@@ -2,16 +2,16 @@
 
 **Who this is for:** a Claude session with computer use (it can see the screen, click and drag). This is the only document you need.
 
-**Your job:** set up as below, then run **the retest**, **the first-time user** on the small iPhone, **a big library** and **pressing harder**, and answer **Part 3**. Parts 1 and 2 passed last round and don't need running again, apart from what the retest points you back to.
+**Your job:** set up as below, then run **the retest**, **the first-time user** on the small iPhone and **pressing harder**, and answer **Part 3**. Parts 1 and 2 passed last round and don't need running again, apart from what the retest points you back to.
 
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-10/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-11/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_10.md` in the format at the end, with screenshots in `docs/test-results-10/`. Commit only those to `master`, with the message `Add hands-on test results, part 10`. **Don't push.**
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_11.md` in the format at the end, with screenshots in `docs/test-results-11/`. Commit only those to `master`, with the message `Add hands-on test results, part 11`. **Don't push.**
 
 **Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
@@ -37,7 +37,7 @@ DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.seguedj data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
 xcrun simctl launch "$SIM" com.nikhilpatel.seguedj
-mkdir -p docs/test-results-10
+mkdir -p docs/test-results-11
 ```
 
 **The small iPhone:** use `iPhone SE Cheeks` (59B64076-E0E9-491A-AA6F-A82A60C3D2D2, iOS 27.2), which the owner's given the touch tool access to. It needs a fresh install. Never use `iPhone SE (3rd generation)`: by name that's another project's simulator.
@@ -54,14 +54,16 @@ mkdir -p docs/test-results-10
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-10/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-11/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Reading the meters from video:** crop widths must be even. An odd width gets rounded by ffmpeg on 4:2:0 video, which shears every frame, and round 6's first figures were wrong because of it. Run a control that's known to be red before believing a 0%.
 - **Check a reload really happened:** `playCount` in `library.json` goes up by one each time. A very busy Mac can take over 1 s to open the browser, so a load key tap sent too soon lands on the old layout. Allow about 1.5 s after `BROWSE`, and at least 5 s after a load key before seeking.
 - **Load average is unreliable on this Mac:** it read 40 to 940 while the busiest processes added up to a few cores. Go by what the processes use.
+- **Stopping a video:** `simctl io recordVideo` stops on SIGINT, and a background job in a non-interactive shell ignores that unless you restore it. Never send SIGTERM: last round that left the Duo's render server recording with nothing attached, writing about 118 MB a minute, and only a shutdown clears it, which folds the Duo.
+- **Your touches aren't a UI test's.** A press along the top of the screen set off iOS's scroll-to-top for your tool and not for XCUITest, so a UI test passing doesn't settle anything near the screen's edges.
 - **Can't be tested here, so don't report as failed:** haptics, how anything sounds, and the headphone output. List them under Tooling limits.
 
 **Where things are:**
-- **Top bar:** `SEGUE DJ`, `BROWSE`, `REC`, a waveform icon (Recordings), `MASTER n` and the tempo in the middle, then messages, the clock and the gear (Settings).
+- **Top bar:** `SEGUE DJ`, `BROWSE`, `REC`, a waveform icon (Recordings), `MASTER n` and the tempo in the middle, then messages, the clock, `?` and the gear (Settings).
 - **Waveforms:** overview, deck 1, a strip of beat blocks, deck 2, overview.
 - **Decks** left and right with the **mixer** between them. Each deck has a header, a tempo fader at the outer edge, the jog, a column of keys (`BEAT SYNC`, `MASTER`, `BEAT JUMP`, `Q`, `SLIP`, `KEY`, `REV`, `−`/`+`, `KEY SYNC`), a row of controls for the current pad page, the tabs (`CUE MEM LOOP ROLL SLICER JUMP STEMS FX SAMPLE`) and eight pads. Round `CUE` and `PLAY` are in the bottom outer corner.
 
@@ -70,13 +72,11 @@ Load one track on each deck through `BROWSE` and the `1` and `2` keys, then clos
 ---
 
 ## The retest
-To see what these were, look in `docs/COMPUTER_USE_RESULTS_9.md`, which ends with what was done about them.
+To see what these were, look in `docs/COMPUTER_USE_RESULTS_10.md`, which ends with what was done about them.
 
 **Reading the library:** `library.json` is in the app's data folder at `Library/Application Support/`. It's written about half a second after a change.
 
 **Other sessions:** the other session may be building at low priority on `iPad Air 13-inch (M4)`, and it'll hold off if you ask before measuring. Other projects' jobs may be running as well, so say what was running beside anything you measure. Check which app's in the simulator's foreground before relying on a tap.
-
-**With two fingers:** as last time, both land together and the second slides. Say which way round each test went.
 
 **The tracks:** copy in the three club tracks as well as the usual two, then relaunch. Splitting stems runs on the CPU in the simulator, so allow a few minutes a track, and wait for each deck's stems before pressing `AUTO`.
 
@@ -86,65 +86,57 @@ cp ~/Library/Caches/cheeks-autodj/music/jam1280420.mp3 ~/Library/Caches/cheeks-a
 
 `jam1197771` is Skylander (125), `jam1072904` is Gepzene (128) and `jam1280420` is Houston (126). The `AUTO` key is under the `FILTER` key on the mixer, and `MIX` and `NEXT` are in the browser's toolbar. The rules for taking over are in the table under **In the app** in `docs/AUTO_DJ.md`.
 
-### CA. The browser
-It's been rebuilt underneath. The browser and the decks now stay built and take turns out of sight, so nothing should look different, and opening and closing should be much quicker. This touches every screen, so look hard at it.
-1. **Speed.** With 2,000 tracks and both decks playing, as in **A big library**, open and close it ten times, on video. Worst gap between changed frames, and how many? *Last time: opening 620 to 800 ms, closing 340 to 470 ms.* Also the first open after a launch, straight away and after waiting 5 s.
-2. **Does it look right?** The slide both ways, on the Duo and on the small iPhone both ways up. Anything flashing, jumping, doubled, or left behind when it's finished? Do the waveforms and meters carry on throughout? Is every jog and meter drawing as soon as the decks are back, on a stopped deck and a playing one?
-3. **Nothing behind it.** With the browser open, can you press anything on the decks through it or round it? With it closed, can anything in it be pressed? Try the screen's edges and the gap beside the mixer.
-4. **What it keeps.** Scroll a long way down, close it and open it: it should be where you left it. *Last time: back at the top.* A phone deck on `JOG`: open the browser, and come back. It should still be on `JOG`.
-5. **What it doesn't keep.** Type a search and close it with the keyboard up: the keyboard goes, and the search has gone when you reopen. Start an audition by tapping a row's waveform, then close the browser. The sound should stop. *Last time: nobody had tried it, and from the code it played on, through the master without a split cable.*
-6. **Held while it opens.** Hold a `ROLL` pad, then `CUE`, then a hand on the platter, and press `BROWSE` with the other finger each time. Each should let go, and be fine when you come back.
-7. **Search and filters with 2,000 tracks.** Type a search, and turn `IN KEY` and `±6% BPM` on and off. *Last time: a dim row of the old list for about 1 s, and stalls of 400 to 620 ms.* A short playlist should still animate when a filter changes it.
-8. **The file picker.** Open `IMPORT` and look behind it. *Last time: the mixer shifted down about 170 pt and the deck strip went, until it closed.* `fu-picker-layout` in `docs/test-results-9/`.
+**A bass swap has a beat of silence in it on purpose,** just before the new track lands: about 0.45 s under -50 dB on a recording. That isn't a hole. Anywhere else, it is.
 
-### CB. What failed last time
-1. **A3: idle CPU.** The same table as last time, by the same method, with the browser closed and open. It should be back to about 3 to 5% at rest on the decks page. *Last time: 13 to 16% on the decks page, 3% with the browser open.*
-2. **BA5: the Files folder.** A fresh install, then open Files, `On My iPhone`. There should be a `Segue DJ` folder, with `Music`, `Recordings` and `Backups` in it. Drop a track in from `Browse` or copy one in with the app in the background: it should turn up in the library when you come back. *Last time: no folder.*
-3. **LR1: after a stopped move.** Do what you did: a Bass swap, `AUTO` before the handover, `EXIT` and stop the old deck, then `AUTO`. Everything the move left on the new deck should go, and it should plan and get there at full level. Check against a recording. Also try the other way round: stop the move, leave both playing, stop the new deck, and press `AUTO`.
-4. **J3: tempo from the first analysis.** Fresh install. Severe Tire Damage should read 148 straight after analysis, and stay there when its stems finish. Exhilarate 170.00. Do the club tracks' tempos match what's in the last results? If any jumps by more than a touch when its stems finish, a message should say so.
-5. **BA4: the logo.** On video on the Duo, frame by frame: it shouldn't double or jump at the handover. *Last time: about 17 pt.*
-6. **B2: the launch sweep.** Five launches, on video: the meters should run up and back once as the logo lifts. *Last time: hidden behind the logo on 4 of 5.*
+### DA. Blocked last time
+Only if the Duo's been restarted and opened again, which clears its stuck recorder. If not, say BLOCKED and carry on.
+1. **The browser on video on the Duo.** With 2,000 tracks (before launching: `python3 tools/test-music/big_library.py "$DATA/Library/Application Support/library.json" 2000`) and both decks playing, open and close it ten times. Worst gap between changed frames, and how many? *Last time, by the freeze log only: nothing of 100 ms or more.*
+2. **The logo, frame by frame,** on the Duo: it shouldn't double or jump at the handover. *Round 9: about 17 pt. Last time: blocked.*
+3. **The launch sweep,** five launches on the Duo: the meters should run up and back once as the logo lifts. *Last time: the small iPhone passed, the Duo was blocked.*
 
-### CC. What looked wrong last time
-1. **`DSP`** should be gone from the top bar, whatever the Mac's doing.
-2. **An empty deck.** Fresh install, nothing loaded: `PLAY`, `CUE`, `IN`, a hot cue pad, `BEAT SYNC`, `MASTER`, `BEAT JUMP`, `KEY SYNC`, the jog and the tempo fader should all look dim and, when pressed, say there's no track on that deck with a hand. The tabs should still change page, and the `SAMPLE` page's pads should still play and look normal. Tapping the deck's header should still open the browser. Does it look right? `ca-empty-deck`.
-3. **`SYNC` on a phone's pads page.** On `iPhone SE Cheeks`, upright and on its side, there's now a `SYNC` key beside `JOG`. It should do the same as `BEAT SYNC`, and go away when `JOG` is showing. With a long title on its side, is the header still readable? `ca-se-sync`.
-4. **`MORE`** is now what the mixer's sheet key says on a phone. Is it readable and pressable?
-5. **`AUTO…` giving up.** Press `AUTO` while the stems are splitting, and let the playing deck reach its end. It should say why it stopped. *Last time: nothing.*
-6. **`MIX…`.** With a mix waiting on a loop, the key should read `MIX…` and not a plain `MIX`.
-7. **`SAVE CUE` on a stopped deck.** Park it somewhere by the overview, away from its cue, and press `SAVE CUE`. The memory cue should be where the deck is. On a deck stopped on its cue, it should be on the cue. *Last time: at 0:00, with the deck at 1:31.*
-8. **`DEPTH` and `VOLUME`** now go to where you touch: a tap sets it, and a drag follows the finger all the way to each end.
-9. **`Add to Playlist`** shouldn't offer History any more.
-10. **The stems estimate.** After about 5 s of a split, the header should read something like `Stems 28% · 2 min`, on a phone where there's room. Is it in the right area, as far as you can tell? Does it jump around?
-11. **Upright, while analysing,** the top bar should show a spinner and not "A…".
-12. **Moving the old deck during a move.** During a Loop build, before the new track lands, tap the old deck's overview, then another time press a hot cue on it. It should say the deck was moved and that the decks are yours, and it should stay where you sent it, with the new deck stopped. After the new track's landed, the move should just play out. *Last time: the score took it back about a minute, with no word.*
-13. **`SPACE`, `DUB` and `NOISE` at full,** on a loud part, both ways of the knob. `LIM` should light rarely if at all, and the level shouldn't jump as the knob comes back to centre. *Last time: `SPACE` lit `LIM` the whole time.* Levels only: nobody can judge here how it sounds.
-14. **The cue list and a sampler pad's sheet.** Smaller type on a dark ground. The colour well now opens eight colours in a small popover, and picking one should reach the pad and the waveform at once. `ca-cue-list`, `ca-colours`.
-15. **The first time on the `FX` page** should say that pads slide, once, and never again after a relaunch.
+### DB. What failed last time
+1. **The list's place.** Your touches were the only ones that could show this, so it's yours to confirm. On the Duo and on the small iPhone upright: scroll a long way down, press `BROWSE`, wait, press it again. Then, with the browser open and scrolled, a 0.2 s press on blank parts of the top bar and on `?`. The list shouldn't move for any of them. *Last time: to the top, 6 of 6.*
+2. **The file picker.** On the Duo: browser open, `IMPORT`, `Music files`, and look behind it. Nothing should move. *Last time: the deck strip jumped up about 160 pt and the sidebar and list went.* Also with a search typed and the keyboard up as you press `IMPORT`, and check the keyboard still pushes the list up when you type a search normally.
+3. **`SPACE` fully anticlockwise,** on Skylander's loud part, by the same spot samples. `LIM` should be lit rarely if at all, and the same for `DUB` and `NOISE` both ways. *Last time: `SPACE` 3 of 9 and 6 of 8, the rest clean.* Levels only.
+4. **Long titles on a small phone's side.** They should break between words, or end in `…`, not mid-word. *Last time: "Skyl / an…".*
+5. **The tempo a move leaves.** After a move, the old deck should read +0.0, and a track loaded there should read its own BPM. By hand: set a deck to about +2%, load another track, and it should read +0.0. *Last time: 166.02 on a 170 track.*
+
+### DC. `?`: what a control does
+New. `?` is on the top bar, beside the gear, and on a phone as well.
+1. **Asking.** Press it. The note says what to do and it lights. Touch `SLIP`, `PLAY`, a pad, a knob, a fader, the jog, the waveform, the overview, the strip of blocks, `LIM` and the meters. Each should say what it is, and nothing should change: no deck starting, no knob turning, no pad firing. Check the deck's position and `library.json` afterwards. With a track playing and a recording running: the music shouldn't change or stop at all.
+2. **Moving about.** While it's lit, the pad tabs, `MORE >`, `JOG`, `MIXER` and `BROWSE` should still do what they do, and say what they are. Inside the mixer's sheet and the browser, what's there should explain itself too.
+3. **Where the note goes.** It should never cover what you touched, and it shouldn't sit across the Duo's crease.
+4. **On an empty deck,** the controls should explain themselves, not say there's no track.
+5. **Getting out.** Press `?` again: everything works as before. Go to the Home Screen and back: it should be off.
+6. **Is each note true?** Read as many as you can, and try the control afterwards. A wrong note is a failure. Is any of it hard to understand? `Settings`, `What everything does` has them all, and search should work.
+7. **The hint.** On a fresh install, the first track loaded says once: "New to this? Press ? and tap anything to see what it does."
+8. **Speed.** Turning it on and off with both decks playing. Any freeze in the freeze log, and any change in CPU with it off?
+
+### DD. What looked wrong last time
+1. **After stopping a move and then the old deck,** the new deck should come in straight away, with its stems up, and say so. *Last time: 7.96 s of silence with `PLAY` lit.*
+2. **`OUT` with no `IN`** should say to press `IN` first and set nothing. `IN` then `OUT` on the same spot should say it needs some length. A real loop still works as before, and so does `OUT` during a running loop.
+3. **A capsule's time.** Press a dim control every 4 to 5 s: the message should stay up. *Last time: it went on every other press.*
+4. **An empty deck:** `Q`, `KEY` and the `STEMS` pads shouldn't be lit.
+5. **`AUTO 42%`.** Press `AUTO` while stems split: the key should show their progress. The same for `MIX`. When a move starts, it should say so.
+6. **`AUTO` with "Prepare stems on load" off:** it should start them and wait. On a track already split, it should plan straight away.
+7. **`MIX` with both decks playing** should read: "A mix carries on from one playing deck. Stop the other."
+8. **Deleting a track** should ask first, and refuse if a deck's playing it.
+9. **Import:** new tracks, a mix of new and known, all known. It should say which. From a playlist, they should appear in it. A new playlist should open.
+10. **Capsules on a phone's side** should hang below the bar with nothing cut off, and go away properly. Does one get in your way?
+11. **A headphone `CUE` with `SPLIT` off** should say you won't hear it yet.
+12. **A mix after a loop.** `MIX`, then make a real loop with `IN` and `OUT` during its countdown, then `EXIT`. It should plan again and get there. *Last time: "No clean way in" once, from `OUT` with no `IN`.* If it happens, say what's on each deck.
 
 ## The first-time user
-Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Last time, the Files folder and `BEAT SYNC` upright were what stopped you, and both have changed.
+Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Stay away from the repo's docs and code, and say what you can't un-know.
 
 Do this on `iPhone SE Cheeks`, upright and then on its side: it's the smallest screen the app has to work on.
 
-1. **From nothing to a mix.** Without reading anything in the repo: get a track in, get it on a deck, get it playing, get a second one in time with it, and mix across. Then find out how to get Auto DJ to do it. Write down every moment you weren't sure what to do, what you tried first, and how long each stage took. Screenshot each moment you got stuck, as `fu-*`.
-2. **What does it say when it's empty?** Every screen with nothing in it: the browser, the decks, Recordings, a playlist, the pads with no track. Is it clear what to do next?
-3. **Stems.** Do you notice they're being split? Would you know why `AUTO` won't start yet? Is it clear how long it'll take?
-4. **What needs explaining?** List every control you couldn't work out from looking at it. Don't be polite.
-5. **What happens when you do it wrong?** Press things in the wrong order, with nothing loaded, twice, and during a load. Is every refusal clear? Is anything silently ignored?
-
-## A big library
-Last time's figures are in `docs/COMPUTER_USE_RESULTS_9.md`. Before launching, write a library of made-up tracks. They've no audio, so they show a warning triangle, and your real tracks are imported alongside them:
-```sh
-python3 tools/test-music/big_library.py "$DATA/Library/Application Support/library.json" 2000
-```
-1. **Launch:** how long until a control responds?
-2. **The browser:** open and close it, scroll hard, type in the search box, tap each column, and use `NEXT`, `IN KEY` and `±6% BPM`. Record a video. Is there any hitch you can see? Say where, and how long.
-3. **While playing:** the same, with both decks playing and a recording running. Check the recording for gaps afterwards.
-4. **Measure:** CPU and memory scrolling and at rest, by the method above.
+1. **From nothing to a mix.** Get a track in, get it on a deck, get it playing, get a second one in time with it, and mix across. Then find out how to get Auto DJ to do it. Write down every moment you weren't sure what to do, what you tried first, and how long each stage took. Screenshot each moment you got stuck, as `fu-*`.
+2. **`?`.** Did you find it without being told? Press it, and find out what the controls you didn't understand do. Which notes helped, which didn't, and what's still a mystery? Last time's list is FU4 in `docs/COMPUTER_USE_RESULTS_10.md`, for afterwards.
+3. **What happens when you do it wrong?** Press things in the wrong order, with nothing loaded, twice, and during a load. Is every refusal clear? Is anything silently ignored?
 
 ### Pressing harder
-**A long run.** 15 minutes, with `MIX` and `AUTO` running, and taking over as many ways as you can, with loops now too. A recording running throughout, so you can check for gaps. Afterwards the decks should always be usable, with nothing left silent, looping or filtered that the screen doesn't show. Crashes, dropouts, or a stop you can't explain?
+**A long run.** 15 minutes, with `MIX` and `AUTO` running, and taking over as many ways as you can, with loops too, and `?` turned on and off during it. A recording running throughout, so you can check for gaps. Afterwards the decks should always be usable, with nothing left silent, looping or filtered that the screen doesn't show. Crashes, dropouts, or a stop you can't explain?
 
 ---
 

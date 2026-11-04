@@ -562,6 +562,56 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(b.eqHigh, 0)
     }
 
+    /// Round 10: stopping a move and then the old deck left 8 s of nothing at all, with PLAY lit.
+    func testStoppingTheOldDeckAfterAStoppedMoveBringsTheNewOneIn() async throws {
+        let dj = try ready(only: .bassSwap)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && b.renderer.isPlaying && b.stemLevels != [1, 1, 1, 1] }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertNotEqual(b.stemLevels, [1, 1, 1, 1], "Left as it was, while the old deck's still what people hear")
+        a.pause()
+        dj.tickForTesting()
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1])
+        XCTAssertEqual(b.eqLow, 0)
+        XCTAssertEqual(dj.statusMessage, "Deck 2 is on.")
+    }
+
+    /// Round 10: a move's tempo stayed on the old deck, and went on to the next track loaded there.
+    func testTheOldDeckGoesBackToItsOwnSpeedOnceItsStopped() async throws {
+        let dj = try ready(only: .echoDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        a.setTempo(2)
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        try await run(dj) { dj.autoDJ.phase == .idle }
+        XCTAssertFalse(a.isPlaying)
+        XCTAssertTrue(b.isPlaying)
+        XCTAssertEqual(a.tempo, 0, "Nobody chose that for what's next")
+    }
+
+    func testTheKeySaysHowFarTheStemsHaveGot() throws {
+        let dj = try ready()
+        dj.decks[1].trackMap = nil
+        dj.decks[1].stemStatus = .separating(0.42)
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO 42%")
+        dj.decks[1].stemStatus = .separating(nil)
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO 0%")
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO")
+    }
+
+    func testMixTellsYouToStopADeckWithoutPromisingWhatsNext() throws {
+        let dj = try ready()
+        dj.decks[1].play()
+        dj.autoDJ.startSet(named: "All", tracks: [UUID(), UUID()])
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertEqual(dj.statusMessage, "A mix carries on from one playing deck. Stop the other.")
+    }
+
     func testMovingTheOldDeckDuringAMoveHandsItBack() async throws {
         let dj = try ready(only: .loopDrop)
         let a = dj.decks[0], b = dj.decks[1]

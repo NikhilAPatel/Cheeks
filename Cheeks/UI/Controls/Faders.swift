@@ -129,8 +129,10 @@ struct ChannelFader: View {
                 })
             }
         }
+        .whatsThis("Channel fader")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+        .accessibilityHint(Explanations.named("Channel fader")?.text ?? "")
         .accessibilityValue("\(Int(value * 100)) percent")
         .accessibilityAdjustableAction { direction in
             value = min(1, max(0, value + (direction == .increment ? 0.05 : -0.05)))
@@ -177,8 +179,10 @@ struct CrossfaderControl: View {
                 })
             }
         }
+        .whatsThis("Crossfader")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Crossfader")
+        .accessibilityHint(Explanations.named("Crossfader")?.text ?? "")
         .accessibilityValue(value == 0 ? "Centre" : (value < 0 ? "Towards deck 1" : "Towards deck 2"))
         .accessibilityAdjustableAction { direction in
             value = min(1, max(-1, value + (direction == .increment ? 0.1 : -0.1)))
@@ -231,8 +235,10 @@ struct TempoFader: View {
                 })
             }
         }
+        .whatsThis("Tempo")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Tempo")
+        .accessibilityHint(Explanations.named("Tempo")?.text ?? "")
         .accessibilityValue(String(format: "%+.1f percent", deck.tempoRatioPercent))
         .accessibilityAdjustableAction { direction in
             deck.setTempoManually(min(deck.tempoRange, max(-deck.tempoRange, deck.tempoRatioPercent + (direction == .increment ? 0.5 : -0.5))))

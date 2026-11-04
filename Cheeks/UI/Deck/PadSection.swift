@@ -63,7 +63,7 @@ struct LoopRow: View {
             Key("IN", color: Theme.loop, lit: deck.loopInSet, size: 9, onPress: deck.loopIn)
             Key("OUT", color: Theme.loop, size: 9, onPress: deck.loopOut)
             // A loop that's waiting up ahead isn't holding the deck yet, so it doesn't look like it is.
-            Key(deck.loopArmed ? "ARMED" : deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive && !deck.loopArmed, size: 8.5) {
+            Key(deck.loopArmed ? "ARMED" : deck.loopActive ? "EXIT" : "RELOOP", color: Theme.loop, lit: deck.loopActive && !deck.loopArmed, size: 8.5, help: "RELOOP") {
                 deck.loopActive ? deck.exitLoop() : deck.reloop()
             }
             .frame(minWidth: 46)
@@ -134,7 +134,9 @@ struct PadTabs: View {
         .overlay {
             TouchSurface(onDown: { _ in
                 Haptics.shared.toggle(true)
-                deck.padMode = Self.others[((current ?? -1) + 1) % Self.others.count]
+                let next = Self.others[((current ?? -1) + 1) % Self.others.count]
+                deck.padMode = next
+                WhatsThis.shared.note(next.rawValue.capitalized + " pads")
             })
         }
         .accessibilityElement()
@@ -171,6 +173,7 @@ struct PadTabs: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
             TouchSurface(onDown: { _ in
+                WhatsThis.shared.note(mode.rawValue.capitalized + " pads")
                 guard deck.padMode != mode else { return }
                 Haptics.shared.toggle(true)
                 // No fade: a pad tapped during one fired the old page in the hands-on test.
@@ -243,19 +246,19 @@ struct PadBank: View {
         case .memory: MemoryPad(deck: deck, index: i)
         case .beatLoop:
             let size = loopSizes[i]
-            sizePad(Format.beats(size), color: Theme.loop, lit: deck.loopActive && !deck.loopArmed && abs(deck.loopBeats - size) < 0.0001, name: "\(Format.beats(size)) beat loop") {
+            sizePad(Format.beats(size), color: Theme.loop, lit: deck.loopActive && !deck.loopArmed && abs(deck.loopBeats - size) < 0.0001, name: "\(Format.beats(size)) beat loop", help: "Loop pad") {
                 deck.toggleBeatLoop(size)
             }
         case .roll:
             let size = rollSizes[i]
-            sizePad(Format.beats(size), color: Color(red: 0.1, green: 0.8, blue: 0.95), lit: false, name: "\(Format.beats(size)) beat roll",
+            sizePad(Format.beats(size), color: Color(red: 0.1, green: 0.8, blue: 0.95), lit: false, name: "\(Format.beats(size)) beat roll", help: "Roll pad",
                     onPress: { deck.rollBegin(size) }, onRelease: deck.rollEnd)
         case .slicer:
-            sizePad("\(i + 1)", color: Color(red: 0.6, green: 0.4, blue: 1), lit: false, name: "Slice \(i + 1)",
+            sizePad("\(i + 1)", color: Color(red: 0.6, green: 0.4, blue: 1), lit: false, name: "Slice \(i + 1)", help: "Slice",
                     onPress: { deck.sliceBegin(i) }, onRelease: deck.sliceEnd)
         case .beatJump:
             let beats = jumpSizes[i % 4] * (i < 4 ? -1 : 1)
-            Pad(color: Color(red: 0.2, green: 0.85, blue: 0.62), accessibilityName: "Jump \(Int(abs(beats))) beats \(beats < 0 ? "back" : "forward")", onPress: { deck.beatJump(beats) }) {
+            Pad(color: Color(red: 0.2, green: 0.85, blue: 0.62), accessibilityName: "Jump \(Int(abs(beats))) beats \(beats < 0 ? "back" : "forward")", help: "Jump pad", onPress: { deck.beatJump(beats) }) {
                 HStack(spacing: 3) {
                     Image(systemName: beats < 0 ? "backward.end.fill" : "forward.end.fill").font(.system(size: 8))
                     Text(Format.beats(abs(beats))).font(Theme.digits(14))
@@ -267,7 +270,7 @@ struct PadBank: View {
                 StemPad(deck: deck, stem: stem)
             } else {
                 let soloed = deck.stemsOn.indices.allSatisfy { deck.stemsOn[$0] == ($0 == stem.rawValue) }
-                Pad(color: stem.color, lit: soloed, accessibilityName: "Solo \(stem.label.capitalized)", onPress: { deck.soloStem(stem) }) {
+                Pad(color: stem.color, lit: soloed, accessibilityName: "Solo \(stem.label.capitalized)", help: "Solo", onPress: { deck.soloStem(stem) }) {
                     VStack(spacing: 0) {
                         Text("SOLO").font(Theme.silk(8)).opacity(0.8)
                         Text(stem.short).font(Theme.silk(11))
@@ -281,9 +284,9 @@ struct PadBank: View {
         }
     }
 
-    private func sizePad(_ title: String, color: Color, lit: Bool, name: String,
+    private func sizePad(_ title: String, color: Color, lit: Bool, name: String, help: String,
                          onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) -> some View {
-        Pad(color: color, lit: lit, accessibilityName: name, onPress: onPress, onRelease: onRelease) {
+        Pad(color: color, lit: lit, accessibilityName: name, help: help, onPress: onPress, onRelease: onRelease) {
             Text(title).font(Theme.digits(16))
         }
     }
@@ -302,7 +305,7 @@ struct HotCuePad: View {
         let looping = time.flatMap { start in loopEnd.map { deck.isCurrentLoop(start: start, end: $0) } } ?? false
         Pad(color: color, lit: time != nil, dimmed: time == nil,
             accessibilityName: time == nil ? "Set hot cue \(Theme.hotCueLetters[slot])" : "Hot cue \(Theme.hotCueLetters[slot])" + (info?.name.isEmpty == false ? ", \(info!.name)" : ""),
-            onPress: { deck.hotCue(slot) }) {
+            help: "Hot cue", onPress: { deck.hotCue(slot) }) {
             ZStack(alignment: .topLeading) {
                 Color.clear
                 HStack(spacing: 3) {
@@ -350,7 +353,7 @@ struct MemoryPad: View {
         let position = deck.memoryPage * Deck.memoryItemsPerPage + index
         if position < items.count {
             let item = items[position]
-            Pad(color: color(item), lit: isOn(item), accessibilityName: description(item), onPress: { deck.pressMemory(item) }) {
+            Pad(color: color(item), lit: isOn(item), accessibilityName: description(item), help: "Memory pad", onPress: { deck.pressMemory(item) }) {
                 VStack(spacing: 1) {
                     Image(systemName: icon(item)).font(.system(size: 10, weight: .semibold))
                     Text(item.name.isEmpty ? item.time.clockString : item.name)
@@ -361,7 +364,7 @@ struct MemoryPad: View {
                 }
             }
         } else {
-            Pad(color: Theme.textTertiary, dimmed: true, accessibilityName: "Empty", onPress: {}) { Color.clear }
+            Pad(color: Theme.textTertiary, dimmed: true, accessibilityName: "Empty", help: "Memory pad", onPress: {}) { Color.clear }
         }
     }
 
@@ -444,8 +447,8 @@ struct StemPad: View {
         let on = deck.stemsOn[stem.rawValue]
         let level = deck.stemLevels[stem.rawValue]
         // All the way down looks the same as off, because it sounds the same.
-        let heard = deck.stemIsHeard(stem)
-        Pad(color: stem.color, lit: heard, accessibilityName: stem.label.capitalized, onPress: {
+        let heard = deck.stemIsHeard(stem) && deck.isLoaded
+        Pad(color: stem.color, lit: heard, accessibilityName: stem.label.capitalized, help: "Stem", onPress: {
             startLevel = level
             startOn = on
             dragged = false
@@ -502,6 +505,7 @@ struct StemControlRow: View {
                 .frame(width: 30)
             status
                 .frame(width: small ? 36 : 56)
+                .whatsThis("Stem status")
         }
     }
 
@@ -544,7 +548,7 @@ struct SamplerPad: View {
         let recording = sampler.recordingSlot == slot
         // Lit for as long as it's sounding, so even a quick tap shows that it fired.
         Pad(color: recording ? Theme.danger : SampleBank.color(slot), lit: recording || sampler.looping.contains(slot) || sampler.sounding.contains(slot),
-            accessibilityName: sampler.name(slot).capitalized, onPress: {
+            accessibilityName: sampler.name(slot).capitalized, help: "Sampler pad", onPress: {
                 if sampler.isSetting {
                     sampler.isSetting = false
                     sampler.slotBeingEdited = slot
@@ -580,7 +584,7 @@ struct SamplerControlRow: View {
         @Bindable var sampler = dj.sampler
         HStack(spacing: 3) {
             if sampler.recordingSlot != nil {
-                Key(color: Theme.danger, lit: true, accessibilityName: "Stop recording", onPress: { sampler.stopRecording() }) {
+                Key(color: Theme.danger, lit: true, accessibilityName: "Stop recording", help: "Stop sampling", onPress: { sampler.stopRecording() }) {
                     HStack(spacing: 3) {
                         Image(systemName: "stop.fill").font(.system(size: 8))
                         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
@@ -593,7 +597,7 @@ struct SamplerControlRow: View {
                 Key("SET", color: Theme.accent, lit: sampler.isSetting, size: 8.5, feel: .toggle, onPress: { sampler.isSetting.toggle() })
                     .frame(width: 58)
             }
-            Key("Q", lit: sampler.quantize, feel: .toggle, onPress: { sampler.quantize.toggle() })
+            Key("Q", lit: sampler.quantize, feel: .toggle, help: "Sampler Q", onPress: { sampler.quantize.toggle() })
                 .frame(width: 26)
             DepthBar(value: $sampler.level, label: "VOLUME")
             Key("STOP", color: Theme.danger, size: 8, onPress: { sampler.stopAll() })
@@ -677,7 +681,7 @@ struct FXControlRow: View {
             .frame(width: small ? 15 : 20)
             DepthBar(value: $deck.fxDepth)
             ForEach(Stem.allCases) { stem in
-                Key(stem.short, color: stem.color, lit: deck.fxStems.contains(stem), size: 8.5, feel: .toggle) {
+                Key(stem.short, color: stem.color, lit: deck.fxStems.contains(stem), size: 8.5, feel: .toggle, help: "FX stems") {
                     if deck.fxStems.contains(stem) {
                         if deck.fxStems.count > 1 { deck.fxStems.remove(stem) }
                     } else {
@@ -721,8 +725,10 @@ struct DepthBar: View {
                 })
             }
         }
+        .whatsThis(label)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label.capitalized)
+        .accessibilityHint(Explanations.named(label)?.text ?? "")
         .accessibilityValue("\(Int(value * 100)) percent")
         .accessibilityAdjustableAction { value = min(1, max(0, value + ($0 == .increment ? 0.05 : -0.05))) }
     }
