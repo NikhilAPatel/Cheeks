@@ -60,6 +60,21 @@ final class PCM16Stereo {
         return 0
     }
 
+    /// The same for several that play together, going by what they add up to.
+    static func lastSound(of parts: [PCM16Stereo], above level: Int16) -> Int {
+        var frame = (parts.map(\.frames).min() ?? 0) - 1
+        while frame >= 0 {
+            var left = 0, right = 0
+            for part in parts {
+                left += Int(part.data[frame * 2])
+                right += Int(part.data[frame * 2 + 1])
+            }
+            if abs(left) > Int(level) || abs(right) > Int(level) { return frame + 1 }
+            frame -= 16
+        }
+        return 0
+    }
+
     /// A copy of part of this audio.
     func slice(from start: Int, count: Int) -> PCM16Stereo {
         let first = max(0, min(start, frames))

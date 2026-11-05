@@ -511,23 +511,73 @@ final class OverviewLiveView: LiveView {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    private func needle(_ touches: Set<UITouch>) {
-        guard deck.isLoaded, let touch = touches.first else { return }
-        let fraction = min(1, max(0, touch.location(in: self).x / max(bounds.width, 1)))
+    private func needle(at x: CGFloat) {
+        guard deck.isLoaded else { return }
+        let fraction = min(1, max(0, x / max(bounds.width, 1)))
         deck.seek(to: Double(fraction) * deck.duration)
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    /// A playing deck only jumps for a touch that stays a moment or slides. This strip's right under the top bar and the messages,
+    /// and one stray touch moved a live track by minutes, as a club deck's needle search can be locked against.
+    static let holdToJump = 0.25
+    private static let slideToJump: CGFloat = 8
+    private var waitingAt: CGFloat?
+    private var latestX: CGFloat = 0
+    private var touchCount = 0
+
+    func touchDown(at x: CGFloat) {
         touching = true
-        Haptics.shared.grab()
-        needle(touches)
+        latestX = x
+        touchCount += 1
+        guard deck.isPlaying else {
+            Haptics.shared.grab()
+            needle(at: x)
+            return
+        }
+        waitingAt = x
+        let thisTouch = touchCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdToJump) { [weak self] in
+            guard let self, self.touchCount == thisTouch, self.waitingAt != nil else { return }
+            self.jumpNow()
+        }
     }
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { needle(touches) }
+    func touchMoved(to x: CGFloat) {
+        latestX = x
+        if let waitingAt {
+            if abs(x - waitingAt) > Self.slideToJump { jumpNow() }
+        } else {
+            needle(at: x)
+        }
+    }
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { touching = false }
+    func touchUp() {
+        touching = false
+        guard waitingAt != nil else { return }
+        waitingAt = nil
+        deck.onMessage?("Hold the overview for a moment to jump while the deck's playing.", .info)
+    }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { touching = false }
+    private func jumpNow() {
+        waitingAt = nil
+        Haptics.shared.grab()
+        needle(at: latestX)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let touch = touches.first { touchDown(at: touch.location(in: self).x) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let touch = touches.first { touchMoved(to: touch.location(in: self).x) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { touchUp() }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touching = false
+        waitingAt = nil
+    }
 }
 
 struct OverviewWaveform: UIViewRepresentable {

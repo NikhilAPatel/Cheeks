@@ -102,7 +102,8 @@ extension Library {
         decoder.dateDecodingStrategy = .iso8601
         guard let backup = try? decoder.decode(LibraryBackup.self, from: data) else { throw BackupError.unreadable }
         if !tracks.isEmpty, let safety = try? backupData() {
-            let name = "Before restore \(Int(Date().timeIntervalSince1970)).json"
+            let stamp = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted))
+            let name = "Before restore \(stamp).json"
             try? safety.write(to: Self.backupDirectory.appending(path: name), options: .atomic)
         }
 

@@ -29,6 +29,38 @@ final class EngineTests: XCTestCase {
         return worst
     }
 
+    // MARK: Previews
+
+    /// With no headphones it plays over the mix, for whoever's choosing a track. It was on the recording as well, 3 dB down.
+    func testAPreviewOverTheMixIsHeardAndNotRecorded() throws {
+        let a = DeckRenderer(sampleRate: sr), b = DeckRenderer(sampleRate: sr)
+        var handles: [OpaquePointer?] = [a.handle, b.handle]
+        let core = try XCTUnwrap(handles.withUnsafeMutableBufferPointer { cheeks_engine_create(sr, $0.baseAddress, 2) })
+        defer { cheeks_engine_destroy(core) }
+        cheeks_engine_set_master(core, 1, 0.8, 1, false)
+        let pcm = stereo(sine(440, seconds: 2))
+        cheeks_engine_set_preview(core, pcm.data, Int64(pcm.frames))
+        cheeks_engine_set_preview_routing(core, 1, 0.7)
+        cheeks_engine_set_preview_playing(core, true)
+        cheeks_engine_set_recording(core, true)
+
+        var left = [Float](repeating: 0, count: 256), right = left, heard: Float = 0
+        for _ in 0..<40 {
+            left.withUnsafeMutableBufferPointer { l in
+                right.withUnsafeMutableBufferPointer { r in cheeks_engine_render(core, l.baseAddress!, r.baseAddress!, 256) }
+            }
+            heard = max(heard, left.map(abs).max() ?? 0)
+        }
+        XCTAssertGreaterThan(heard, 0.2, "It's on the output")
+
+        var recordedLeft = [Float](repeating: 0, count: 256 * 40), recordedRight = recordedLeft
+        let count = recordedLeft.withUnsafeMutableBufferPointer { l in
+            recordedRight.withUnsafeMutableBufferPointer { r in cheeks_engine_read_recording(core, l.baseAddress!, r.baseAddress!, Int32(256 * 40)) }
+        }
+        XCTAssertGreaterThan(count, 0, "It's recording")
+        XCTAssertEqual(recordedLeft.map(abs).max() ?? 1, 0, accuracy: 0.0001, "And there's nothing on it")
+    }
+
     // MARK: De-clicking
 
     func testLoopWrapDoesNotClick() {

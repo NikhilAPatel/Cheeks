@@ -381,6 +381,9 @@ final class DJEngine {
                 // Without a split cable there's no cue bus to hear, so it plays through the master, more quietly.
                 cheeks_engine_set_preview_routing(self.core, 1, self.splitCue ? 0 : 0.7)
                 cheeks_engine_set_preview_playing(self.core, true)
+                if !self.splitCue, self.decks.contains(where: \.isPlaying) {
+                    self.say("This preview's over the mix, as SPLIT's off. It won't be on a recording.", .info)
+                }
             }
         }
     }
@@ -457,9 +460,15 @@ final class DJEngine {
             // A first-time user's 126 went to 85 with nothing to say why, and stayed there when the other deck ended.
             if deck.isLoaded, deck.bpm > 0, settlesOn != theirs {
                 say("Deck \(deck.index + 1) follows at \(settlesOn < theirs ? "half" : "double") tempo: \(String(format: "%.0f", settlesOn)) against \(String(format: "%.0f", theirs)).", .info)
+            } else if deck.isLoaded, abs(deck.tempo) > Self.farToStretch {
+                // A long way to stretch a track can be heard, and 170 going to 128 had nothing to say so, where half tempo did.
+                say(String(format: "Deck %d's %.0f%% %@ than its own %.0f BPM, to follow.", deck.index + 1, abs(deck.tempo), deck.tempo < 0 ? "slower" : "faster", deck.bpm), .info)
             }
         }
     }
+
+    /// Percent. Past this, stretching starts to be heard.
+    private static let farToStretch = 12.0
 
     func performUndo() {
         undoAction?()

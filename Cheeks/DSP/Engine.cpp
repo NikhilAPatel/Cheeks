@@ -976,6 +976,7 @@ private:
         std::fill(programLeft, programLeft + n, 0.0f);
         std::fill(programRight, programRight + n, 0.0f);
         std::fill(cueLeft, cueLeft + n, 0.0f);
+        bool previewOnMaster = false;
         std::fill(cueRight, cueRight + n, 0.0f);
 
         for (int d = 0; d < deckCount; ++d) {
@@ -1011,7 +1012,10 @@ private:
                 const float toMaster = relaxed(previewToMaster);
                 if (toMaster > 0) {
                     preview.position = before;
-                    preview.mixInto(programLeft, programRight, n, toMaster);
+                    std::fill(previewLeft, previewLeft + n, 0.0f);
+                    std::fill(previewRight, previewRight + n, 0.0f);
+                    preview.mixInto(previewLeft, previewRight, n, toMaster);
+                    previewOnMaster = true;
                 }
                 put(previewPosition, double(preview.position));
             }
@@ -1031,6 +1035,15 @@ private:
         put(limiterDB, gainNow < 0.9999f ? -20 * std::log10(std::max(gainNow, 0.0001f)) : 0.0f);
 
         if (relaxed(recording)) pushRecording(n);
+
+        // Someone choosing a track, with no headphones to do it in. It's over the mix, so it goes on after anything's recorded
+        // or sampled from it, and it isn't in the meters or the limiter. Only the crudest limit: it's quiet, and only for them.
+        if (previewOnMaster) {
+            for (int i = 0; i < n; ++i) {
+                programLeft[i] = std::clamp(programLeft[i] + previewLeft[i], -1.0f, 1.0f);
+                programRight[i] = std::clamp(programRight[i] + previewRight[i], -1.0f, 1.0f);
+            }
+        }
 
         const float masterTarget = relaxed(masterGain), phonesTarget = relaxed(phonesGain), blendTarget = relaxed(programInCue);
         const bool isSplit = relaxed(split);
@@ -1194,6 +1207,7 @@ private:
     float trimNow[4] = {1, 1, 1, 1}, faderNow[4] = {}, cueNow[4] = {};
     float masterNow = 0.9f, phonesNow = 0.8f, blendNow = 0.5f, splitNow = 0;
     float chLeft[kBlock], chRight[kBlock], programLeft[kBlock], programRight[kBlock], cueLeft[kBlock], cueRight[kBlock];
+    float previewLeft[kBlock], previewRight[kBlock];
     float voiceLeft[kBlock], voiceRight[kBlock];
 };
 

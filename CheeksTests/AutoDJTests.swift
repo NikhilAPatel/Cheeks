@@ -676,7 +676,7 @@ final class AutoDJTests: XCTestCase {
         dj.crossfader = -1
         dj.autoDJ.press()
         XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
-        XCTAssertEqual(dj.statusMessage, "Auto DJ is waiting for the stems. If this track ends first, deck 2 starts.")
+        XCTAssertEqual(dj.statusMessage, "Auto DJ is waiting for the stems. If this track finishes first, deck 2 starts.")
         a.seek(to: a.duration - 2)
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 5)
         XCTAssertFalse(a.isPlaying)
@@ -752,7 +752,7 @@ final class AutoDJTests: XCTestCase {
         XCTAssertFalse(dj.statusMessage?.contains("starting") == true, "\(dj.statusMessage ?? "")")
         try await run(dj, until: { auto.barsToGo == 0 }, seconds: 10)
         XCTAssertEqual(auto.legend, "AUTO")
-        XCTAssertEqual(dj.statusMessage, "Loop build starting. STEMS shows what's in. A control you touch is yours.")
+        XCTAssertEqual(dj.statusMessage, "Loop build starting. Put both decks on STEMS to watch it. A control you touch is yours.")
     }
 
     /// RELOOP took a deck back a minute and a half, to a loop nobody set.
@@ -1039,17 +1039,6 @@ final class AutoDJTests: XCTestCase {
         XCTAssertTrue(dj.decks[0].isPlaying, "The track playing just carries on")
     }
 
-    func testLoadingSomethingElseStopsAMix() async throws {
-        let ids = [UUID(), UUID()]
-        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
-        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
-        try await run(dj, until: { if case .armed = dj.autoDJ.phase { return true } else { return false } }, seconds: 30)
-        put(try map(bpm: 118, firstBar: 0.3), on: dj.decks[1], name: "Mine")
-        dj.tickForTesting()
-        XCTAssertNil(dj.autoDJ.mixSet)
-        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
-    }
-
     func testStoppingTheDeckStopsAMix() async throws {
         let ids = [UUID(), UUID()]
         let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
@@ -1135,6 +1124,87 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.decks[0].track?.id == ids[2] }, seconds: 2)
         for _ in 0..<5 { dj.tickForTesting() }
         XCTAssertEqual(dj.statusMessage, "No clean way in. Deck 2 just started.", "Up next doesn't cover it")
+    }
+
+    // MARK: Round 16
+
+    /// Stems sum to the mix, so what's left in one can be cancelled by what's left in another. Going by each on its own, round 16
+    /// sat through 3.8 s of a file's silence, with the next track ready.
+    func testAMixGoesByWhatCanBeHeardAndNotWhatsLeftInAStem() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let first = try map(bars: 40)
+        let silence = Int(4 * Synth.sampleRate)
+        for (i, stem) in first.stems.enumerated() {
+            // Well over the threshold each, and nothing at all together.
+            let residue: Int16 = i == 0 ? 300 : i == 1 ? -300 : 0
+            (stem.data + (stem.frames - silence) * 2).update(repeating: residue, count: silence * 2)
+        }
+        let dj = engine(loading: [ids[0]: first, ids[1]: try map(), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.autoDJ.stopForTesting()
+        let end = dj.decks[0].track!.duration
+        dj.decks[0].seek(to: end - 6)
+        try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 5)
+        XCTAssertEqual(dj.decks[0].position, end - 4, accuracy: 0.2, "It goes when there's nothing left to hear")
+    }
+
+    /// An echo out that's lost its moment has already looked everywhere, and it took that for having nothing to offer. With
+    /// 2 minutes of track left it said there was no way in, did nothing, and left a 4 s hole at the end.
+    func testAMixPlansAgainFromWhereASeekPutsItEvenAfterALastResort() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(bars: 128), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.leavesOut = Set(TransitionMove.allCases)
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        XCTAssertEqual(dj.autoDJ.mixSet?.lastResort, true)
+        let a = dj.decks[0], map = try XCTUnwrap(a.trackMap)
+        // Past where it meant to leave, with plenty still to play.
+        let barsToGo = dj.autoDJ.barsToGo
+        let here = Int((a.position - map.firstBar) / map.barSeconds)
+        let seekBar = min(here + barsToGo + 16, map.barCount - 24)
+        a.seek(to: map.seconds(atBar: seekBar))
+        try await run(dj, until: { dj.statusMessage == "No clean way in. Next track starts when this one ends." || (self.isArmed(dj) && dj.autoDJ.barsToGo < barsToGo) }, seconds: 30)
+        XCTAssertNotEqual(dj.statusMessage, "No clean way in. Next track starts when this one ends.")
+        XCTAssertEqual(dj.autoDJ.phase, .armed(.echoDrop), "It echoes out from here")
+        XCTAssertLessThan(dj.autoDJ.barsToGo, 24, "And soon")
+    }
+
+    /// With nowhere to go from here, somewhere earlier may have one. It stopped looking for good.
+    func testAMixThatsGivenUpLooksAgainIfTheDeckGoesBack() async throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(bars: 128), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.leavesOut = Set(TransitionMove.allCases)
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        let a = dj.decks[0], map = try XCTUnwrap(a.trackMap)
+        // So near the end there's no room for even an echo.
+        a.seek(to: a.duration - map.barSeconds * 3)
+        try await run(dj, until: { dj.statusMessage == "No clean way in. Next track starts when this one ends." }, seconds: 10)
+        XCTAssertEqual(dj.autoDJ.legend, "MIX", "It isn't thinking")
+        a.seek(to: map.seconds(atBar: 40))
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        XCTAssertEqual(dj.autoDJ.phase, .armed(.echoDrop))
+    }
+
+    func testLoadingSomethingElseOnTheWaitingDeckChangesWhatsNext() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let other = try map(bpm: 125, firstBar: 0.3)
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: other])
+        dj.autoDJ.startSet(named: "Tonight", tracks: Array(ids.prefix(2)))
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        let waiting = dj.decks[1]
+        put(other, on: waiting, name: "Changed my mind", id: ids[2])
+        dj.tickForTesting()
+        XCTAssertNotNil(dj.autoDJ.mixSet, "The mix goes on")
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting), "Without the plan for the old track")
+        XCTAssertEqual(dj.autoDJ.mixSet?.next, ids[2])
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, [ids[1]], "What it replaced comes after it")
+        XCTAssertEqual(dj.statusMessage, "Up next: Changed my mind. The mix carries on.")
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        try await run(dj, until: { waiting.isPlaying && !dj.decks[0].isPlaying }, seconds: 400)
+        XCTAssertEqual(waiting.track?.id, ids[2])
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
     }
 
     // MARK: Plans

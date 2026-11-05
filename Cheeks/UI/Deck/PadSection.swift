@@ -122,7 +122,8 @@ struct PadTabs: View {
         let current = Self.others.firstIndex(of: deck.padMode)
         return ZStack {
             HStack(spacing: 1) {
-                Text(current.map { Self.others[$0].rawValue } ?? "MORE")
+                // Short names, all no wider than MORE, or the other tabs change as this goes round: STEMS shrank beside SAMPLE.
+                Text(current.map { Self.others[$0].tabName } ?? "MORE")
                     .font(Theme.silk(8.5))
                     .tracking(0.3)
                     .lineLimit(1)
@@ -442,7 +443,8 @@ struct MemoryControlRow: View {
                 Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
             }
             .frame(width: 20)
-            Text("\(deck.memoryPage + 1)/\(deck.memoryPageCount)")
+            // Only worth showing with a page to go to. "1/1" on an empty deck read as one saved.
+            Text(deck.memoryPageCount > 1 ? "\(deck.memoryPage + 1)/\(deck.memoryPageCount)" : " ")
                 .font(Theme.digits(10))
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 24)
@@ -453,7 +455,7 @@ struct MemoryControlRow: View {
             Key("LIST", color: Theme.accent, size: 8, onPress: { showList = true })
                 .frame(width: 30)
         }
-        .sheet(isPresented: $showList) { CueListView(deck: deck) }
+        .sheet(isPresented: $showList) { CueListView(deck: deck).presentationDetents([.large]) }
     }
 
     private func page(_ step: Int) {
@@ -701,12 +703,16 @@ struct FXControlRow: View {
                 Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
             }
             .frame(width: small ? 15 : 20)
-            Text(Format.beats(deck.fxBeats))
-                .font(Theme.digits(small ? 10 : 12))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(width: small ? 20 : 26)
-                .contentTransition(.numericText())
-                .animation(Theme.press, value: deck.fxBeats)
+            // On its own between two arrows, "1/2" read as page one of two, for 20 minutes.
+            VStack(spacing: -1) {
+                Text(Format.beats(deck.fxBeats))
+                    .font(Theme.digits(small ? 10 : 12))
+                    .foregroundStyle(Theme.textPrimary)
+                    .contentTransition(.numericText())
+                    .animation(Theme.press, value: deck.fxBeats)
+                Text("BEATS").font(Theme.silk(5)).foregroundStyle(Theme.textTertiary)
+            }
+            .frame(width: small ? 20 : 26)
             Key(color: Theme.accent, accessibilityName: "Longer", onPress: { step(1) }) {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
             }

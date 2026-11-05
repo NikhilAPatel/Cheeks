@@ -12,6 +12,14 @@ enum PadMode: String, CaseIterable, Identifiable {
     case fx = "FX"
     case sampler = "SAMPLE"
     var id: String { rawValue }
+    /// On the phone's tab that takes turns, which has only as much room as MORE.
+    var tabName: String {
+        switch self {
+        case .slicer: "SLICE"
+        case .sampler: "SMPL"
+        default: rawValue
+        }
+    }
 }
 
 /// Beat FX. Most run on the deck's FX bus in the realtime core; roll, brake and backspin work the transport.
@@ -223,6 +231,10 @@ final class Deck {
     // Tempo
     private(set) var tempo: Double = 0 { didSet { applyTempo() } }
     var tempoRange: Double = 10
+    /// What the range key last chose. A tempo beyond it widens the range, but only for as long as that track's on it: left on
+    /// WIDE by a sync, an 18 pt nudge on the next track was +45%.
+    private(set) var chosenTempoRange: Double = 10
+    static let tempoRanges: [Double] = [6, 10, 16, 100]
     var keyLock = true { didSet { applyTempo() } }
     var keyShift = 0 { didSet { applyTempo() } }
     var syncOn = false
@@ -317,6 +329,9 @@ final class Deck {
 
     var sampleRate: Double { AudioConfig.sampleRate }
     var tempoRatio: Double { 1 + tempo / 100 }
+    /// How long what's left of the track will really take, at the speed it's going. The biggest number on the deck, and at 87% it
+    /// was out by a seventh, which is a lot when it's what you're timing the next move by.
+    var timeLeft: Double { max(0, duration - position) / max(tempoRatio, 0.01) }
     var effectiveBPM: Double { bpm * tempoRatio }
     /// The loop's switched on but the deck hasn't got to it yet: it's waiting up ahead.
     var isLoopAhead: Bool { renderer.loopActive && renderer.playhead < renderer.loopStart }
@@ -463,7 +478,7 @@ final class Deck {
         keyShift = 0
         // Everyone meets a new track at its own speed. What the last one was at means nothing to it, and a move used to leave
         // a number on the fader that nobody had chosen: Exhilarate read 166.02 on a stopped deck.
-        setTempo(0)
+        resetTempo()
         autoGainDB = Self.autoGain(for: track?.loudness)
         onMixChange?()
         Task { [weak self] in
@@ -622,7 +637,30 @@ final class Deck {
         tempo = value
     }
 
-    func setTempo(_ value: Double) { tempo = value }
+    /// The fader's cap can't show a tempo beyond its range, and its first touch would jump there from the range's edge.
+    func setTempo(_ value: Double) {
+        if abs(value) > tempoRange { tempoRange = Self.tempoRanges.first { $0 >= abs(value) } ?? Self.tempoRanges.last ?? 100 }
+        tempo = value
+    }
+
+    /// Back to the track's own speed, and the range someone chose.
+    func resetTempo() {
+        setTempo(0)
+        tempoRange = chosenTempoRange
+    }
+
+    /// The range key. A range too narrow for how fast the deck's going is passed over, as pressing it pinned the cap, and the
+    /// next touch jumped the tempo to that range's edge: 30 BPM in a live mix, with nothing said.
+    func stepTempoRange() {
+        let fits = Self.tempoRanges.filter { $0 >= abs(tempo) }
+        guard fits.count > 1, let widest = fits.last else {
+            onMessage?(String(format: "Deck %d's %.1f%% from its own speed, so it needs WIDE.", index + 1, abs(tempo)), .refused)
+            return
+        }
+        let next = fits.first { $0 > tempoRange } ?? fits.first ?? widest
+        tempoRange = next
+        chosenTempoRange = next
+    }
 
     private func applyTempo() {
         renderer.setTempo(ratio: tempoRatio, keyLock: keyLock, keyShift: keyShift)

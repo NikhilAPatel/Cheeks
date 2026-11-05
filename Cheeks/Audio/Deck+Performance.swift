@@ -97,8 +97,13 @@ extension Deck {
             onMessage?("There's already a memory cue here.", .refused)
             return
         }
+        let hadOneBefore = track?.memoryCues.contains { $0.time < time } == true
         saveMemoryCue(at: time)
         Haptics.shared.confirm()
+        // The first one's where the track loads from then on. One stray press moved that, with nothing said and no way back.
+        offerUndo?(hadOneBefore ? "Memory cue saved." : "Memory cue saved. The track loads here now.") { [weak self] in
+            self?.updateTrack { $0.memoryCues.removeAll { abs($0.time - time) < 0.01 } }
+        }
     }
 
     /// Saves the loop that's set, on or off.
@@ -464,11 +469,7 @@ extension Deck {
     func sync(to master: Deck) {
         guard isLoaded, bpm > 0, master.bpm > 0 else { return }
         let target = matchedBPM(for: master.effectiveBPM)
-        let newTempo = (target / bpm - 1) * 100
-        if abs(newTempo) > tempoRange {
-            tempoRange = [6, 10, 16, 100].first { $0 >= abs(newTempo) } ?? 100
-        }
-        setTempo(newTempo)
+        setTempo((target / bpm - 1) * 100)
         syncOn = true
         alignPhase(to: master, smoothly: false)
     }
@@ -527,6 +528,15 @@ extension Deck {
         } else {
             stemsOn[stem.rawValue].toggle()
         }
+        sayItWaitsForTheSplit()
+    }
+
+    /// The pad lights at once, and until the split's done there's nothing to take away, so the waveform and the meters don't
+    /// change. A first-time user took that for broken until it all happened by itself, 15 s later.
+    private func sayItWaitsForTheSplit() {
+        guard case .separating(let progress) = stemStatus, stemsOn.contains(false) else { return }
+        let sofar = progress.map { " It's at \(Int($0 * 100))%." } ?? ""
+        onMessage?("That happens when the split's done.\(sofar)", .info)
     }
 
     /// Solo a stem; soloing the already-soloed stem restores what was on before.
@@ -542,6 +552,7 @@ extension Deck {
             stemsOn = Stem.allCases.map { $0 == stem }
             if stemLevels[stem.rawValue] < Self.silentStem { stemLevels[stem.rawValue] = 1 }
         }
+        sayItWaitsForTheSplit()
     }
 
     func setStems(_ on: Set<Stem>) {
@@ -551,6 +562,7 @@ extension Deck {
         stemsOn = Stem.allCases.map { on.contains($0) }
         // A combination means hearing those stems, so they come up to full, wherever they were.
         for stem in on where stemLevels[stem.rawValue] != 1 { stemLevels[stem.rawValue] = 1 }
+        sayItWaitsForTheSplit()
     }
 
     /// Whether a stem can be heard: it's on, and it isn't all the way down.

@@ -184,6 +184,8 @@ struct KeyLegend: View {
             .tracking(0.5)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
+            // A key's light fades when it changes, and the words crossing read as "REEXITOP".
+            .contentTransition(.identity)
             .padding(.horizontal, 2)
     }
 }

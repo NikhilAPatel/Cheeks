@@ -102,6 +102,90 @@ final class DeckTests: XCTestCase {
         return deck
     }
 
+    /// Pressing the range key on a deck synced beyond the new range pinned the cap, and its next touch jumped the live tempo to
+    /// that range's edge: 129.53 to 159.80 BPM for a first-time user, twice.
+    func testARangeTooNarrowForTheTempoIsPassedOver() {
+        let deck = makeDeck(0, bpm: 170, at: 0)
+        var said: (String, StatusKind)?
+        deck.onMessage = { said = ($0, $1) }
+        deck.setTempo(-23.8)
+        XCTAssertEqual(deck.tempoRange, 100, "It widens to hold it")
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 100, "Nothing narrower can")
+        XCTAssertEqual(deck.tempo, -23.8)
+        XCTAssertEqual(said?.0, "Deck 1's 23.8% from its own speed, so it needs WIDE.")
+        XCTAssertEqual(said?.1, .refused)
+        deck.setTempo(-12)
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 16, "It goes round what fits")
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 100)
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 16, "And skips what doesn't")
+        deck.setTempo(0)
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 100)
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 6, "All of them, at its own speed")
+    }
+
+    /// Left on WIDE by a sync, an 18 pt nudge on the next track was +45%.
+    func testARangeWidenedForOneTrackGoesBackWhenItsOver() {
+        let deck = makeDeck(0, bpm: 170, at: 0)
+        XCTAssertEqual(deck.tempoRange, 10)
+        deck.setTempo(-23.8)
+        XCTAssertEqual(deck.tempoRange, 100)
+        deck.resetTempo()
+        XCTAssertEqual(deck.tempo, 0)
+        XCTAssertEqual(deck.tempoRange, 10, "What was chosen")
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 16)
+        deck.stepTempoRange()
+        XCTAssertEqual(deck.tempoRange, 100)
+        deck.resetTempo()
+        XCTAssertEqual(deck.tempoRange, 100, "Someone chose WIDE, and it stays")
+    }
+
+    func testTimeLeftAllowsForTheTempo() {
+        let deck = makeDeck(0, bpm: 170, at: 0)
+        let whole = deck.timeLeft
+        XCTAssertEqual(whole, deck.duration, accuracy: 0.01)
+        deck.setTempo(-20)
+        XCTAssertEqual(deck.timeLeft, whole / 0.8, accuracy: 0.01, "Slower takes longer")
+        XCTAssertEqual(Format.toGo(61), "-01:01.0")
+        XCTAssertEqual(Format.toGo(0), "00:00.0", "There's nothing to take away")
+    }
+
+    /// The pad lights, and nothing changes until the split's done. A first-time user thought it was broken.
+    func testAStemPadSaysItsWaitingForTheSplit() {
+        let deck = makeDeck(0, bpm: 124, at: 0)
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.stemStatus = .separating(0.24)
+        deck.toggleStem(.vocals)
+        XCTAssertEqual(said, "That happens when the split's done. It's at 24%.")
+        said = nil
+        deck.toggleStem(.vocals)
+        XCTAssertNil(said, "Everything's back on, and that's what's already heard")
+        deck.setStems([.drums, .bass])
+        XCTAssertEqual(said, "That happens when the split's done. It's at 24%.")
+        said = nil
+        deck.stemStatus = .ready("AI")
+        deck.setStems([.drums])
+        XCTAssertNil(said, "It's just happened")
+    }
+
+    func testTheFirstMemoryCueSaysItMovesWhereTheTrackLoads() {
+        let deck = makeDeck(0, bpm: 124, at: 8)
+        var said: String?, undo: (@MainActor () -> Void)?
+        deck.offerUndo = { said = $0; undo = $1 }
+        deck.saveMemoryCueHere()
+        XCTAssertEqual(said, "Memory cue saved. The track loads here now.")
+        XCTAssertEqual(deck.track?.memoryCues.count, 1)
+        undo?()
+        XCTAssertEqual(deck.track?.memoryCues.count, 0, "And it can be taken back")
+    }
+
     func testSyncMatchesTempoAndPhase() {
         let master = makeDeck(0, bpm: 128, firstBeat: 0.11, at: 10.3)
         let deck = makeDeck(1, bpm: 125, firstBeat: 0.42, at: 20.0)

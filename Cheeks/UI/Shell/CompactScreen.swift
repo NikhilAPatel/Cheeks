@@ -99,7 +99,10 @@ struct CompactScreen: View {
             WaveformPanel(waveHeight: max(30, min(90, size.height * 0.07)), overviewHeight: 11, phaseHeight: 6)
             // Fixed heights, so one deck's page can never push the other off the screen.
             GeometryReader { geo in
-                let deck = max(0, (geo.size.height - mixer - 4) / 2)
+                let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                // It crossed the tempo readout on deck 2's JOG, and the bottom row of its pads.
+                let indicator = min(10, scene?.keyWindow?.safeAreaInsets.bottom ?? 0)
+                let deck = max(0, (geo.size.height - mixer - 4 - indicator) / 2)
                 VStack(spacing: 2) {
                     CompactDeck(deck: dj.decks[0], keysSideBySide: true).frame(width: width, height: deck)
                     CompactMixer(layout: .portrait).frame(height: mixer)

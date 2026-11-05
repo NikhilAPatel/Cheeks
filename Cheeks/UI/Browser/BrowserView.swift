@@ -360,7 +360,7 @@ struct BrowserView: View {
                 renamingPlaylist = playlist
             }
         }
-        Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+        Button(library.isHistory(playlist) ? "Delete History" : "Delete Playlist", systemImage: "trash", role: .destructive) {
             if source == .playlist(playlist.id) { source = .all }
             library.deletePlaylist(playlist)
         }
@@ -431,6 +431,8 @@ struct BrowserView: View {
                     searchFocused = false
                     importKind = .audio
                     importing = true
+                    // The picker can take several seconds to come up the first time, with nothing on screen to say it's coming.
+                    dj.say("Opening Files…", .info)
                 }
                 Button("DJ library (XML)…", systemImage: "doc.text") {
                     searchFocused = false
@@ -524,6 +526,8 @@ struct BrowserView: View {
     }
 
     private var sourceName: String {
+        // With some of it filtered out it isn't all of anything, and "all your tracks, 3 to go" was said of 4 out of 7.
+        if inKeyOnly || nearBPMOnly || !search.isEmpty { return "this list" }
         guard case .playlist(let id) = source, let playlist = library.playlists.first(where: { $0.id == id }) else { return "all your tracks" }
         return library.shownName(of: playlist)
     }
@@ -531,7 +535,7 @@ struct BrowserView: View {
     /// Where the sidebar's sources go on a phone held upright.
     private var sourceMenu: some View {
         Menu {
-            Button("All tracks", systemImage: source == .all ? "checkmark" : "music.note.list") { source = .all }
+            Button("All Tracks", systemImage: source == .all ? "checkmark" : "music.note.list") { source = .all }
             ForEach(library.playlists) { playlist in
                 Button(library.shownName(of: playlist), systemImage: source == .playlist(playlist.id) ? "checkmark" : "music.note") { source = .playlist(playlist.id) }
             }
@@ -649,6 +653,13 @@ struct ArtworkPreview: View {
             if previewing {
                 Color.black.opacity(0.5)
                 Image(systemName: "stop.fill").font(.system(size: 9)).foregroundStyle(.white)
+                // A phone's list has no meters or waveform to show it's going, and this is all there is to see.
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    Circle().trim(from: 0, to: dj.previewFraction)
+                        .stroke(Theme.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .padding(3)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -778,7 +789,8 @@ struct TrackRow: View {
                 }
             }
             if let playlistID {
-                Button("Remove from Playlist", systemImage: "minus.circle") { library.remove(track.id, from: playlistID) }
+                let isHistory = library.playlists.first { $0.id == playlistID }.map(library.isHistory) == true
+                Button(isHistory ? "Remove from History" : "Remove from Playlist", systemImage: "minus.circle") { library.remove(track.id, from: playlistID) }
             }
             Button("Re-analyse", systemImage: "waveform.badge.magnifyingglass") {
                 library.reanalyze(track)

@@ -231,7 +231,8 @@ struct TempoFader: View {
                     deck.setTempoManually(next)
                 }, onUp: { dragStart = nil }, onDoubleTap: {
                     Haptics.shared.detent()
-                    deck.setTempoManually(0)
+                    deck.syncOn = false
+                    deck.resetTempo()
                 })
             }
         }

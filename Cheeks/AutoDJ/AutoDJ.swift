@@ -35,6 +35,8 @@ final class AutoDJ {
         var stepsBack = 0
         /// It's looked as far back as it can, and an echo out is what's left.
         var lastResort = false
+        /// Where it found nothing it could do, so it knows if someone's taken the deck back from there.
+        var gaveUpAt: Double?
         /// Something's just been said that matters more than what's up next, which the deck shows anyway.
         var keepsQuietAboutNext = false
         /// It's said that this is the last one.
@@ -103,6 +105,8 @@ final class AutoDJ {
             if deck.eqMid == after.eqMid { deck.eqMid = before.eqMid }
             if deck.eqHigh == after.eqHigh { deck.eqHigh = before.eqHigh }
             if deck.syncOn == after.syncOn { deck.syncOn = before.syncOn }
+            // A tempo someone's set since stays, and the range has to hold it.
+            deck.setTempo(deck.tempo)
             undoMixer()
         }
     }
@@ -200,6 +204,8 @@ final class AutoDJ {
             guard let mixSet else { return name }
             // The last track on the list has nothing to wait for, and "MIX…" read as if it was still thinking.
             if mixSet.next == nil, mixSet.queue.isEmpty, !mixSet.needsStart { return name }
+            // Nor when it's given up on a move, which read as thinking for over 2 minutes.
+            if mixSet.gaveUpAt != nil { return name }
             return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
         // The clock starts a couple of bars ahead of the move, and it's still counting those.
         case .running: return barsToGo > 0 ? "\(name) \(barsToGo)" : name
@@ -369,8 +375,15 @@ final class AutoDJ {
             mixSet?.next = nil
             return
         }
-        guard waiting.track?.id == next else {
-            endSet("Mix off: deck \(waiting.index + 1) has something else on it now.")
+        guard let onDeck = waiting.track?.id else { return }
+        guard onDeck == next else {
+            // Someone's changed their mind about what's next, which is no reason to stop the mix: two first-time users did this,
+            // and had to start over with what they'd loaded. What it replaced stays on the list, right after it.
+            mixSet?.queue.removeAll { $0 == onDeck }
+            mixSet?.queue.insert(next, at: 0)
+            mixSet?.next = onDeck
+            planAgainFromHere()
+            say("Up next: \(waiting.track?.title ?? "that"). The mix carries on.", .info)
             return
         }
         guard !waiting.isPlaying else {
@@ -398,15 +411,19 @@ final class AutoDJ {
             askedForStems.insert(id)
             deck.prepareStems()
         }
-        guard set.plannedFor != next, let map = air.trackMap, waiting.trackMap != nil else { return }
+        // It gave up from where the deck was then. Further back there may well be a way in.
+        if let gaveUpAt = set.gaveUpAt, air.renderer.playhead < gaveUpAt - AudioConfig.sampleRate { planAgainFromHere() }
+        guard mixSet?.plannedFor != next, let map = air.trackMap, waiting.trackMap != nil else { return }
         // As late as it'll go, and no further back than a third of the way in: past that it's better to echo out from
         // where it would have left anyway, and past that to let the track finish.
         let usual = TransitionPlanner.setExit(in: map)
-        var from = usual - TransitionPlanner.setStepBack * set.stepsBack
-        let lookedEverywhere = set.stepsBack > 0 && from < map.barCount / 3
+        let stepsBack = mixSet?.stepsBack ?? 0
+        var from = usual - TransitionPlanner.setStepBack * stepsBack
+        let lookedEverywhere = stepsBack > 0 && from < map.barCount / 3
         if lookedEverywhere {
-            guard !set.lastResort else {
+            guard mixSet?.lastResort != true else {
                 mixSet?.plannedFor = next
+                mixSet?.gaveUpAt = air.renderer.playhead
                 say("No clean way in. Next track starts when this one ends.", .info)
                 return
             }
@@ -429,9 +446,16 @@ final class AutoDJ {
     private func handOver(to deck: Deck) {
         mixSet?.onAir = deck.index
         mixSet?.next = nil
+        planAgainFromHere()
+    }
+
+    /// Forgets how far it's looked and what it's settled for. From somewhere else in the track, all of that's different: a last
+    /// resort that lost its moment took having looked everywhere to mean there was nothing, with 2 minutes of track left.
+    private func planAgainFromHere() {
         mixSet?.plannedFor = nil
         mixSet?.stepsBack = 0
         mixSet?.lastResort = false
+        mixSet?.gaveUpAt = nil
     }
 
     /// There was no move ready: stems weren't there in time, or there was no clean way in. The music mustn't stop.
@@ -479,8 +503,9 @@ final class AutoDJ {
     private func hasNothingLeftToHear(_ deck: Deck) -> Bool {
         guard deck.renderer.frameCount > 0, let id = deck.track?.id else { return false }
         if silentFrom?.track != id {
-            // Stems are stored at half level, so the same sound is half the size in one.
-            let last = deck.renderer.stemSources?.map { $0.lastSound(above: Self.silence / 2) }.max()
+            // Stems are stored at half level, so the same sound is half the size in them. Together, as what's left in one is
+            // often cancelled by what's left in another, and the mix is silent with each still over this.
+            let last = deck.renderer.stemSources.map { PCM16Stereo.lastSound(of: $0, above: Self.silence / 2) }
                 ?? deck.renderer.mixSource?.lastSound(above: Self.silence)
             silentFrom = (id, last.map(Double.init) ?? .infinity)
         }
@@ -522,7 +547,7 @@ final class AutoDJ {
             return
         }
         phase = .waitingForStems
-        say("\(letItBeHeard(from))Auto DJ is waiting for the stems. If this track ends first, deck \(to.index + 1) starts.", .info)
+        say("\(letItBeHeard(from))Auto DJ is waiting for the stems. If this track finishes first, deck \(to.index + 1) starts.", .info)
     }
 
     /// A deck playing with the crossfader shut on it can't be heard. With no move to open it yet, that was a silent master for as
@@ -551,6 +576,8 @@ final class AutoDJ {
         guard let outgoing, let incoming, let map = outgoing.trackMap, let mapB = incoming.trackMap,
               let stemsA = outgoing.renderer.stemSources, let stemsB = incoming.renderer.stemSources else { return false }
         phase = .planning
+        plannedA = outgoing.track?.id
+        plannedB = incoming.track?.id
         // A move into this track may have left a key shift on it, which is what its notes will sound like.
         let mapA = map.heard(shiftedBy: outgoing.keyShift)
         let rateA = outgoing.tempoRatio
@@ -584,6 +611,12 @@ final class AutoDJ {
     private func planFinished(_ score: TransitionScore?) {
         guard phase == .planning else { return }
         planning = nil
+        // It's been thinking about a track that's since gone, and would have played the new one by the old one's map.
+        guard outgoing?.track?.id == plannedA, incoming?.track?.id == plannedB else {
+            reset()
+            if mixSet == nil { say("Auto DJ stopped: the track changed.", .info) }
+            return
+        }
         guard let score else {
             guard mixSet != nil else {
                 // Too near the end, as a rule. Someone's pressed the key, and the music carries on all the same.
@@ -612,8 +645,6 @@ final class AutoDJ {
             _ = planIfReady()
             return
         }
-        plannedA = outgoing.track?.id
-        plannedB = incoming.track?.id
         prepare(incoming, for: score)
         let steps = score.steps
         let loaded = steps.withUnsafeBufferPointer {
@@ -659,7 +690,6 @@ final class AutoDJ {
         deck.keyLock = true
         deck.keyShift = score.plan.shift
         let tempo = (score.b.rate - 1) * 100
-        if abs(tempo) > deck.tempoRange { deck.tempoRange = [6, 10, 16, 100].first { $0 >= abs(tempo) } ?? 100 }
         // Stems and the grid go by what the map found, and the tempo's relative to what the deck thinks its BPM is.
         deck.setTempo(deck.bpm > 0 ? (score.b.map.bpm * score.b.rate / deck.bpm - 1) * 100 : tempo)
         // Cued where it'll come in, as a DJ would. It sat wherever it was until the score moved it, for up to a minute, and a
@@ -680,6 +710,13 @@ final class AutoDJ {
     private var planStillHolds: Bool {
         guard let outgoing, let incoming, score != nil, ending == nil else { return true }
         guard outgoing.track?.id == plannedA, incoming.track?.id == plannedB else {
+            // Ahead of the move, something else on the waiting deck is just what's next now, and the mix goes on with that. There's
+            // nothing to put back: getting ready only changed the deck for a track that's gone.
+            if mixSet != nil, outgoing.track?.id == plannedA, case .armed = phase, !cheeks_engine_auto_running(core) {
+                prepared = nil
+                cancel()
+                return false
+            }
             cancelForChange("the track changed.")
             return false
         }
@@ -760,14 +797,14 @@ final class AutoDJ {
                         say("Auto DJ lost its moment when the deck moved.", .info)
                     } else {
                         // A mix just plans again from wherever the deck's got to.
-                        mixSet?.plannedFor = nil
+                        planAgainFromHere()
                     }
                 } else if isHeldBack(outgoing, before: score.armFrame) {
                     cancel()
                     if mixSet == nil {
                         say("Auto DJ stopped: deck \(number) is in a loop.", .info)
                     } else {
-                        mixSet?.plannedFor = nil
+                        planAgainFromHere()
                         say("The mix will carry on when deck \(number)'s loop ends.", .info)
                     }
                 }
@@ -825,7 +862,10 @@ final class AutoDJ {
         saidItsStarting = true
         if !isAskingForRating() {
             // "Take it back" read as cancelling the whole thing. And the faders mostly stay still in a move, so it says where to look.
-            say(mixSet == nil ? "\(move.title) starting. STEMS shows what's in. A control you touch is yours." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
+            // Two first-time users took 34 and 17 minutes to see what a move does. Watching both decks on STEMS is what did it.
+            let onStems = outgoing?.padMode == .stems && incoming?.padMode == .stems
+            let watch = onStems ? "" : " Put both decks on STEMS to watch it."
+            say(mixSet == nil ? "\(move.title) starting.\(watch) A control you touch is yours." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
         }
     }
 
@@ -943,7 +983,8 @@ final class AutoDJ {
         reset()
         Haptics.shared.confirm()
         // The question's what says what the thumbs beside it are for.
-        let question = move != nil && askForRating != nil ? " More like that?" : ""
+        // "That" could have been the kind of move, the track or the pair. It's the kind of move.
+        let question = move != nil && askForRating != nil ? " More \(title.lowercased())s?" : ""
         say("\(title) done. Deck \(number) is on.\(away)\(question)", .done)
         if let move { askForRating?(move, from, to) }
     }
@@ -994,7 +1035,7 @@ final class AutoDJ {
             clearAfterMove(incoming, isOld: false)
             // Stopped by hand, it can't still be at the move's speed.
             if !incoming.renderer.isPlaying {
-                incoming.setTempo(0)
+                incoming.resetTempo()
                 incoming.keyShift = 0
             }
         }
@@ -1025,7 +1066,7 @@ final class AutoDJ {
             if !playing, deck.reverse { deck.reverse = false }
             // Stopped, it's on its way out, and these were only ever the move's. A deck still playing has them because that's how it sounds.
             if !playing {
-                deck.setTempo(0)
+                deck.resetTempo()
                 deck.keyShift = 0
             }
         }

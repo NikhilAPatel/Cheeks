@@ -120,10 +120,7 @@ struct TempoSection: View {
 
     var body: some View {
         VStack(spacing: 3) {
-            Key(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))", size: 8.5, help: "Tempo range", onPress: {
-                let ranges: [Double] = [6, 10, 16, 100]
-                deck.tempoRange = ranges[((ranges.firstIndex(of: deck.tempoRange) ?? 0) + 1) % ranges.count]
-            })
+            Key(deck.tempoRange >= 100 ? "WIDE" : "±\(Int(deck.tempoRange))", size: 8.5, help: "Tempo range", onPress: deck.stepTempoRange)
             .frame(height: 19)
             TempoFader(deck: deck)
             Text(String(format: "%+.1f", deck.tempoRatioPercent))
@@ -292,8 +289,8 @@ struct JogReadout: View {
     private func readouts(_ unit: CGFloat) -> some View {
         VStack(spacing: 0) {
             DeckClock(deck: deck) {
-                let remaining = deck.duration - deck.position
-                Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "--:--.-")
+                let remaining = deck.timeLeft
+                Text(deck.isLoaded ? Format.toGo(remaining) : "--:--.-")
                     .font(Theme.digits(10.5 * unit))
                     .foregroundStyle(deck.isLoaded && remaining < 30 ? Theme.danger : Theme.textPrimary.opacity(0.85))
             }
@@ -375,7 +372,7 @@ struct DeckHeader: View {
             Haptics.shared.key()
             openBrowser()
         }
-        .sheet(isPresented: $showCueList) { CueListView(deck: deck) }
+        .sheet(isPresented: $showCueList) { CueListView(deck: deck).presentationDetents([.large]) }
     }
 
     private var subtitle: String {
@@ -449,9 +446,9 @@ struct DeckHeader: View {
     /// Remaining time large, elapsed small.
     private var times: some View {
         DeckClock(deck: deck) {
-            let remaining = deck.duration - deck.position
+            let remaining = deck.timeLeft
             VStack(alignment: .trailing, spacing: 0) {
-                Text(deck.isLoaded ? "-" + Format.tenths(remaining) : "–")
+                Text(deck.isLoaded ? Format.toGo(remaining) : "–")
                     .font(Theme.digits(tight ? 12.5 : 18))
                     .foregroundStyle(deck.isLoaded && remaining < 30 ? Theme.danger : Theme.textPrimary)
                 Text(deck.isLoaded ? Format.tenths(deck.position) : " ")
@@ -521,6 +518,11 @@ enum Format {
     /// "1 track", "2 tracks".
     static func count(_ number: Int, _ noun: String) -> String {
         "\(number) \(noun)\(number == 1 ? "" : "s")"
+    }
+
+    /// Time left. With none left, there's nothing to take away from it.
+    static func toGo(_ seconds: Double) -> String {
+        (seconds >= 0.05 ? "-" : "") + tenths(seconds)
     }
 
     static func tenths(_ seconds: Double) -> String {

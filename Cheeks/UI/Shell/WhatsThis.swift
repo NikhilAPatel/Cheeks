@@ -132,7 +132,7 @@ struct WhatsThisKey: View {
             // Not over something it's already saying: it can wait for the next track.
             guard loaded, !hintShown, dj.statusMessage == nil else { return }
             hintShown = true
-            dj.say("New to this? Press ? and tap anything to see what it does.", .info)
+            dj.say("New to this? Press ? and tap anything to see what it does. The gear has the whole guide.", .info)
         }
     }
 }

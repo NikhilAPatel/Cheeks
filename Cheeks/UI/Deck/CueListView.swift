@@ -103,13 +103,13 @@ struct CueListView: View {
                         deck.updateTrack { $0.hotCueInfo[slot, default: HotCueInfo()].color = CueColor(color) }
                     }
                 }
-            }
-            .onDelete { rows in
-                let slots = rows.map { hotSlots[$0] }
-                deck.updateTrack { t in
-                    for slot in slots {
-                        t.hotCues[slot] = nil
-                        t.hotCueInfo[slot] = nil
+                // Asks for a second touch: a full swipe deleted at once, and any way back would have been under this sheet.
+                .swipeActions(allowsFullSwipe: false) {
+                    Button("Delete", role: .destructive) {
+                        deck.updateTrack { t in
+                            t.hotCues[slot] = nil
+                            t.hotCueInfo[slot] = nil
+                        }
                     }
                 }
             }
@@ -137,10 +137,11 @@ struct CueListView: View {
                         .font(Theme.digits(13))
                         .buttonStyle(.borderless)
                     }
-                }
-                .onDelete { rows in
-                    let gone = Set(rows.map { cues[$0].id })
-                    deck.updateTrack { $0.memoryCues.removeAll { gone.contains($0.id) } }
+                    .swipeActions(allowsFullSwipe: false) {
+                        Button("Delete", role: .destructive) {
+                            deck.updateTrack { $0.memoryCues.removeAll { $0.id == cue.id } }
+                        }
+                    }
                 }
             }
         }
@@ -174,10 +175,11 @@ struct CueListView: View {
                             } }))
                             .labelsHidden()
                     }
-                }
-                .onDelete { rows in
-                    let gone = Set(rows.map { loops[$0].id })
-                    deck.updateTrack { $0.savedLoops.removeAll { gone.contains($0.id) } }
+                    .swipeActions(allowsFullSwipe: false) {
+                        Button("Delete", role: .destructive) {
+                            deck.updateTrack { $0.savedLoops.removeAll { $0.id == loop.id } }
+                        }
+                    }
                 }
             } header: {
                 Text("Saved loops")

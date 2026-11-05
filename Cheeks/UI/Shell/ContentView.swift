@@ -501,8 +501,10 @@ struct TopBar: View {
         .overlay(alignment: .top) {
             if layout.isCompact { StatusCapsule().padding(.horizontal, 6).offset(y: showLibrary ? 62 : 28) }
         }
-        .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
-        .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }
+        // All the way up, from the start. Left to choose, they stopped half-way and then rose under a finger aiming at a row, and
+        // two flicks could park one as a bar at the bottom, over deck 2's keys.
+        .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj).presentationDetents([.large]) }
+        .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library).presentationDetents([.large]) }
         // Here rather than on the pads, since both decks can be showing them at once.
         .sheet(isPresented: Binding(get: { dj.sampler.slotBeingEdited != nil }, set: { if !$0 { dj.sampler.slotBeingEdited = nil } })) {
             if let slot = dj.sampler.slotBeingEdited { SamplerSlotSheet(slot: slot).environment(dj) }
@@ -512,7 +514,8 @@ struct TopBar: View {
         .alert("Stop recording?", isPresented: $confirmStopRecording) {
             Button("Keep recording", role: .cancel) {}
             // It may have stopped by itself (storage full) while this was open; don't start a new one.
-            Button("Stop and save", role: .destructive) { if dj.isRecording { dj.toggleRecording() } }
+            // Not red: it's the safe choice, and red's for what can't be undone.
+            Button("Stop and save") { if dj.isRecording { dj.toggleRecording() } }
         }
     }
 
@@ -604,6 +607,7 @@ extension StatusKind {
 
 struct StatusCapsule: View {
     @Environment(DJEngine.self) private var dj
+    @State private var lateQuestion: LateQuestion?
 
     private var shown: (text: String, symbol: String?, tint: Color)? {
         if let error = dj.engineError { return (error, StatusKind.problem.symbol, StatusKind.problem.tint) }
@@ -625,6 +629,9 @@ struct StatusCapsule: View {
             if let shown, hasKeys {
                 row(shown.text, symbol: shown.symbol, tint: shown.tint, touchOnly: true)
                     .transition(.identity)
+            } else if shown == nil, let lateQuestion {
+                row(lateQuestion.text, symbol: lateQuestion.symbol, tint: lateQuestion.tint, touchOnly: true)
+                    .transition(.identity)
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.statusMessage)
@@ -632,9 +639,26 @@ struct StatusCapsule: View {
         .task(id: dj.statusSerial) {
             guard let message = dj.statusMessage else { return }
             try? await Task.sleep(for: .seconds(Self.secondsUp(message, hasKeys: hasKeys)))
-            if !Task.isCancelled { dj.statusMessage = nil }
+            guard !Task.isCancelled else { return }
+            let question = dj.rateAction.map { LateQuestion(text: message, symbol: dj.statusKind.symbol, tint: dj.statusKind.tint, rate: $0) }
+            dj.statusMessage = nil
+            lateQuestion = question
+        }
+        .task(id: lateQuestion?.id) {
+            guard lateQuestion != nil else { return }
+            try? await Task.sleep(for: .seconds(Self.secondsToStillCount))
+            if !Task.isCancelled { lateQuestion = nil }
         }
     }
+
+    /// A question that's just gone. Going for a thumb as it left, the press landed on what was under it, and that's the overview:
+    /// it moved a deck from 1:08 to 4:01. So the keys' touches stay a little longer, and a press there still counts.
+    private struct LateQuestion {
+        let id = UUID()
+        let text: String, symbol: String?, tint: Color
+        let rate: @MainActor (Bool) -> Void
+    }
+    private static let secondsToStillCount = 2.0
 
     /// One with keys stays around longer: you may need a moment to realise you want them. And one on two lines has to be
     /// there long enough to read to its end, which is usually the part you act on.
@@ -677,13 +701,13 @@ struct StatusCapsule: View {
                         .frame(width: 46, height: 18)
                 }
             }
-            if dj.rateAction != nil {
+            if dj.rateAction != nil || (touchOnly && lateQuestion != nil) {
                 rateKey(liked: true, touchOnly: touchOnly)
                 rateKey(liked: false, touchOnly: touchOnly)
             }
         }
         .padding(.leading, 10)
-        .padding(.trailing, hasKeys ? 3 : 10)
+        .padding(.trailing, hasKeys || (touchOnly && lateQuestion != nil) ? 3 : 10)
         .padding(.vertical, 2)
         .frame(minHeight: 24)
         .accessibilityHidden(touchOnly)
@@ -709,7 +733,8 @@ struct StatusCapsule: View {
 
     private func rate(_ liked: Bool) {
         Haptics.shared.confirm()
-        dj.rateAction?(liked)
+        (dj.rateAction ?? lateQuestion?.rate)?(liked)
+        lateQuestion = nil
     }
 
     private func undo() {

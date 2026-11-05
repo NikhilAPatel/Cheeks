@@ -373,6 +373,79 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertNil(dj.rateAction)
     }
 
+    /// Going for a thumb as the question left, the press landed on the overview under it, and a deck went from 1:08 to 4:01.
+    func testAThumbPressedAsTheQuestionLeavesStillCounts() async throws {
+        let (dj, _) = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        let before = Set(controls(in: window.bounds).map { ObjectIdentifier($0.view) })
+        var rated: Bool?
+        dj.say("Loop build done. More loop builds?", .done)
+        dj.rateAction = { rated = $0 }
+        // Long enough for it to have gone by itself, with its time up.
+        try await settle(8600)
+        XCTAssertNil(dj.statusMessage, "The question's gone")
+        let thumbs = controls(in: window.bounds).filter { !before.contains(ObjectIdentifier($0.view)) }
+        XCTAssertEqual(thumbs.count, 2, "Their touches are still there")
+        thumbs[0].view.onDown?(.zero)
+        thumbs[0].view.onUp?()
+        XCTAssertNotNil(rated, "And count")
+        try await settle(300)
+        XCTAssertEqual(controls(in: window.bounds).filter { !before.contains(ObjectIdentifier($0.view)) }.count, 0, "Once")
+    }
+
+    func testTheKeysTouchesDontStayForever() async throws {
+        let (dj, _) = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        let before = Set(controls(in: window.bounds).map { ObjectIdentifier($0.view) })
+        dj.say("Loop build done. More loop builds?", .done)
+        dj.rateAction = { _ in }
+        try await settle(8000 + 2800)
+        XCTAssertEqual(controls(in: window.bounds).filter { !before.contains(ObjectIdentifier($0.view)) }.count, 0)
+    }
+
+    private func overview(of deck: Int) throws -> OverviewLiveView {
+        var found: [OverviewLiveView] = []
+        func walk(_ view: UIView) {
+            if let view = view as? OverviewLiveView { found.append(view) }
+            view.subviews.forEach(walk)
+        }
+        try walk(XCTUnwrap(window))
+        return found[deck]
+    }
+
+    /// One stray touch on this strip moved a live track by minutes.
+    func testOnAPlayingDeckAStrayTouchOnTheOverviewDoesntJump() async throws {
+        let (dj, _) = try await makeScreen()
+        let deck = dj.decks[0], strip = try overview(of: 0)
+        var said: String?
+        deck.onMessage = { message, _ in said = message }
+        deck.play()
+        XCTAssertTrue(deck.isPlaying)
+        strip.touchDown(at: strip.bounds.width * 0.9)
+        strip.touchUp()
+        XCTAssertEqual(deck.position, 20, accuracy: 0.5, "A tap's not enough")
+        XCTAssertEqual(said, "Hold the overview for a moment to jump while the deck's playing.")
+        try await settle(Int(OverviewLiveView.holdToJump * 1000) + 200)
+        XCTAssertEqual(deck.position, 20, accuracy: 0.5, "Nor does it go off late")
+
+        strip.touchDown(at: strip.bounds.width * 0.9)
+        try await settle(Int(OverviewLiveView.holdToJump * 1000) + 200)
+        XCTAssertEqual(deck.position, 54, accuracy: 1, "Held, it goes")
+        strip.touchUp()
+
+        deck.seek(to: 20)
+        strip.touchDown(at: strip.bounds.width * 0.5)
+        XCTAssertEqual(deck.position, 20, accuracy: 0.5)
+        strip.touchMoved(to: strip.bounds.width * 0.8)
+        XCTAssertEqual(deck.position, 48, accuracy: 1, "Sliding's clearly meant")
+        strip.touchUp()
+
+        deck.pause()
+        strip.touchDown(at: strip.bounds.width * 0.25)
+        XCTAssertEqual(deck.position, 15, accuracy: 1, "Stopped, it goes at once")
+        strip.touchUp()
+    }
+
     /// Presses the BROWSE key, where it is at the top left, and waits for the decks to slide away.
     private func pressBrowse() async throws {
         let key = try XCTUnwrap(window?.hitTest(CGPoint(x: 112, y: 12), with: nil) as? TouchSurfaceView)

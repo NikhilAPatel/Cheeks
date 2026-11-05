@@ -643,3 +643,51 @@ No crashes, and no state lost after 54 s away in Files (20:44:40-20:45:33): both
 **What I left behind on the phone:** one recording (Mix 2026-11-04 20.20.11), the playlist "Friday set", History, hot cue A "Before drop" on DJ Karda, SIREN on deck 1's sample pads replaced by "REC 2", my thumbs ratings, SLIP on and range ±6 on deck 2, KEY off and range ±6 on deck 1, both decks stopped at the end of their tracks by the time I finished (DJ Karda and Exhilarate still loaded, MASTER 1). Houston's beat grid is back at 126 after I halved and doubled it. Crossfader curve untouched.
 
 Stopped 20:57:31, 45 minutes 51 seconds after opening.
+
+---
+
+## What happened next
+
+Everything below is in the next commit, and the task's round 17 retests it. Where I could, I ran a new test with the fix out first.
+
+### Failures
+- **N21, the hole in a mix: fixed, and it was two faults.** Your two guesses were both right, and tests reproduced each.
+  - **Giving up at once.** Skylander into Fast Bird had already looked everywhere and settled for an echo out. The seek lost that plan's moment, and the mix took having looked everywhere to mean there was nothing, one tick later: your 0.3 s. It now starts looking afresh from where the deck's got to (`planAgainFromHere`), so that's an echo out from there, soon. If it really has nothing, the key reads `MIX` and not `MIX…`, and taking the deck back makes it look again, which it never did.
+  - **Sitting through the file's silence.** "Nothing left to hear" went by each stem on its own. Stems add up to the mix, so what's left in one can be cancelled by what's left in another, with the mix silent and each still over the line. It goes by what they add up to now. Your 0.33 s beyond the file's silence I can't place either, so please measure it again.
+- **N17, the range key: fixed.** The range always holds the deck's tempo. The key passes over what's too narrow, and if nothing else fits it says "Deck 2's 23.8% from its own speed, so it needs WIDE." with a hand. A range that a sync widened goes back to what the key last chose when the track's over, or at a double-tap on the fader, so an 18 pt nudge on the next track is a nudge. Someone who chose `WIDE` keeps it.
+- **N22, the Segue DJ folder: it's the simulator.** A UI test reproduced it in the Files app, and Files logs `Cannot find source for location ... title="Segue DJ"` at the press. So I built a blank app with nothing but the same two Info.plist keys and a file in its Documents, and its folder does exactly the same, with the same line in the log. So it isn't this app. It stays on the phone list in `docs/TEST_PLAN.md`, as nobody's seen it on a phone.
+- **N20, stem pads before the split: fixed.** "That happens when the split's done. It's at 24%." `ALL` says nothing, as it's what's already heard.
+- **N18, a late thumb: fixed, twice over.** The thumbs' touches stay for 2 s after the question's gone, and a press there still counts. And see the overview below, for after that.
+- **N19, a preview: fixed.** It goes on after the recording and the sampler take their copy, so it's never on either, and an engine test says so (it read 0.35 on the recording with the fix out). It's not in the meters either now, as it isn't what the room is meant to be hearing. A blue ring goes round the stop mark on a phone, as nothing else there shows it running. With `SPLIT` off and a deck playing, it says it's over the mix.
+- **C9, `STEMS` shrinking: fixed.** The tab that takes turns has names no wider than `MORE`: `SLICE`, `SMPL`, `JUMP`, `MEM`. The other tabs don't change now. It's a little less clear in exchange. `?` explains them, and the tab row's the part of the screen you called least finished.
+
+### The first-time user's worst thing
+"One stray touch can change the live mix." I've dealt with each they found, apart from `BRAKE`, which works as its note says:
+- **The overview on a playing deck** needs a touch that stays 0.25 s or slides, and a tap says so. A club deck can lock its needle search in the same way. This is the one I'm least sure of, as the overview's quick and good, so GC1 asks.
+- **The range key's leap:** N17.
+- **`SAVE CUE`:** it says when it's moved where the track loads, and offers `UNDO`.
+- **A swipe in `LIST`** shows a `Delete` to press, as any way back would have been under the sheet.
+- **`MIX` throwing out a playing track** was never so, as you found.
+- **`BRAKE` taking two presses:** I read the code. It takes at least 2 beats to stop, so their first look caught it slowing and their second press came when it had stopped. It wasn't a second press that stopped it.
+
+### Telling people what's going on
+- **Their 17 minutes came from both decks on `STEMS`, and not from the marks.** So `AUTO` now says that as it starts: "Loop build starting. Put both decks on STEMS to watch it. A control you touch is yours." Not if they're already there. I've left the marks as they are.
+- **Changing what's next doesn't end a mix now.** Load something else on the waiting deck: "Up next: X. The mix carries on." It plans again for X, and what it replaced comes right after it. Two first-time users wanted this, and it was on the list for after the bugs. A plan still being thought about when the track changes is dropped, where it would have played the new track by the old one's map.
+- **Sheets open all the way up.** They stopped half-way and rose under a finger. Four mis-taps, partly tool lag, but the half-way was real. It should also end the bar that two flicks could leave parked over deck 2's keys, which is my best guess at **what stopped Skylander**: `Done` on that bar sits about where deck 2's `PLAY` is. I can't prove that one.
+- **Time left is real time,** at the speed it's going, in the big number and for its red and its blinking. The elapsed clock's still the track's own. At the end it reads `00:00.0`.
+- **The home indicator:** upright, the bottom deck now keeps 10 pt off it.
+- **"More loop builds?"** in place of "More like that?", which could have meant the move, the track or the pair.
+- **`MIX` with a filter or search on** says "this list", not "all your tracks".
+- **A sync of over 12%** says how far: "Deck 2's 25% slower than its own 170 BPM, to follow."
+- **`FX`'s number** has "BEATS" under it, and **`MEM`'s** only shows with a second page to go to.
+- **`RELOOP` and `EXIT`** swap without crossing.
+- **The first load's message** mentions the guide, and `Music files…` says "Opening Files…".
+- **"Stop and save" isn't red. "Before restore" has a date. "Remove from History" and "Delete History". "All Tracks" both places.**
+- **Notes:** `KEY − +` says a semitone is 7 places, so +1 takes 1B to 8B. `KEY` says 12's next to 1. The range key, the track's second line, the overview and the preview say what they do now.
+
+### Left as they are
+- **The Vocal ride's gap: I don't think it's the score's.** It came about 17 s after the landing, at the ride's end, where nothing in the score goes quiet and only the new track's instruments are playing. You found Houston and Gepzene have gaps like it of their own. GC10 asks which track it was.
+- **`Fast Bird`'s BPM wandering before its stems:** it's the first analysis following small changes, it's steady once the stems are in, and it hasn't fooled anything yet. It's on the list.
+- **`-00:00.0`** is fixed. **"How much of a track Auto DJ leaves unplayed"** is what it's meant to do, leaving in its last big section. Nothing says why, and nothing needs to.
+- **Messages over the waveform.** Your first impression, and I agree. I've got nowhere better on a phone, so that's still open.
+- **GA:** still blocked, on the owner.
