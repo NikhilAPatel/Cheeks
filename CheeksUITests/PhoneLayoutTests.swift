@@ -72,6 +72,50 @@ final class PhoneLayoutTests: CheeksUITestCase {
         XCTAssertEqual(app.state, .runningForeground, "Turning it mustn't bring anything down")
     }
 
+    /// The note says a playlist can be renamed, and held upright there's no sidebar to hold it in. Holding it in the menu just chose it.
+    func testHeldUprightAPlaylistCanStillBeRenamedAndDeleted() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        defer { XCUIDevice.shared.orientation = .landscapeLeft }
+        openBrowser()
+        let menu = button("Playlists")
+        press(menu)
+        let new = app.buttons["New playlist…"].firstMatch
+        waitFor(new, seconds: 3)
+        XCTAssertFalse(app.buttons["Rename Playlist"].exists, "With All Tracks showing there's nothing to rename")
+        new.tap()
+        let name = app.alerts.textFields.firstMatch
+        waitFor(name, seconds: 3)
+        name.typeText("Upright test")
+        app.alerts.buttons["Create"].tap()
+        sleep(1)
+
+        press(menu)
+        let rename = app.buttons["Rename Playlist"].firstMatch
+        waitFor(rename, seconds: 3)
+        screenshot("phone-upright-playlist-menu")
+        rename.tap()
+        let newName = app.alerts.textFields.firstMatch
+        waitFor(newName, seconds: 3)
+        XCTAssertEqual(newName.value as? String, "Upright test")
+        app.alerts.buttons["Cancel"].tap()
+        sleep(1)
+
+        press(menu)
+        let delete = app.buttons["Delete Playlist"].firstMatch
+        waitFor(delete, seconds: 3)
+        delete.tap()
+        sleep(1)
+        press(menu)
+        waitFor(new, seconds: 3)
+        XCTAssertFalse(app.buttons["Upright test"].exists, "It's gone")
+        XCTAssertFalse(app.buttons["Rename Playlist"].exists, "And it's back on All Tracks")
+        app.tap()
+        sleep(1)
+        closeBrowser()
+    }
+
     func testTheBrowserFitsBothWaysUp() throws {
         guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
         for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {

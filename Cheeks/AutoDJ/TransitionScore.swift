@@ -38,6 +38,8 @@ struct TransitionScore {
     private(set) var handover: Double = 0
     /// When the score starts the new deck, in mix beats.
     private(set) var incomingStarts: Double = 0
+    /// The new deck's frame it starts from.
+    private(set) var incomingFrom: Double = 0
     /// When the score stops the old deck, or starts it stopping, in mix beats.
     private(set) var outgoingStops: Double = 0
 
@@ -117,7 +119,8 @@ struct TransitionScore {
         // A track can't start before its first bar.
         let lead = Double(min(Self.leadBars, entry) * 4)
         incomingStarts = max(0, beat - lead)
-        fire(CheeksAutoStart, b, at: incomingStarts, a: b.frame(atBar: entry), b: beat, c: b.rate)
+        incomingFrom = b.frame(atBar: entry)
+        fire(CheeksAutoStart, b, at: incomingStarts, a: incomingFrom, b: beat, c: b.rate)
     }
 
     private mutating func write() {

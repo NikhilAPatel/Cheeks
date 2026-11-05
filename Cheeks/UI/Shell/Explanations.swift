@@ -50,7 +50,7 @@ enum Explanations {
         ]),
         Section(title: "Waveforms", entries: [
             Explanation(title: "WAVEFORM", text: "The track going past, and the line is what you're hearing. Drag to move, pinch to zoom, double-tap to reset it. Colours are lows, mids and highs, or stems. The number counts bars in the section. UP's a build-up, DOWN a breakdown.", names: ["Waveform"]),
-            Explanation(title: "OVERVIEW", text: "The whole track. Touch it to go straight to that point. The strip of colour marks its sections: intro, verse, build-up, chorus, breakdown and outro.", names: ["Overview"]),
+            Explanation(title: "OVERVIEW", text: "The whole track. Touch it to go straight to that point. The flags are your cues, and the strip of colour marks its sections: intro, verse, build-up, chorus, breakdown and outro.", names: ["Overview"]),
             Explanation(title: "BEAT BLOCKS", text: "Four blocks for each deck, one lit for each beat of the bar, mirrored about the middle, so you can see whether the two line up. Red is the first beat. The scale in the middle shows how far apart they are.", names: ["Phase strip"]),
         ]),
         Section(title: "Deck", entries: [
@@ -133,7 +133,7 @@ enum Explanations {
             Explanation(title: "OUT", text: "Ends the track on its own echo: on the next beat it cuts, and only the repeats are left. Press it again to bring the track back.", names: ["Echo out"]),
         ]),
         Section(title: "Sampler", entries: [
-            Explanation(title: "SAMPLE PAD", text: "Plays this sound. To change it, press SET and then the pad.", names: ["Sampler pad"]),
+            Explanation(title: "SAMPLE PAD", text: "Plays this sound. REC and a number is a piece of the mix you recorded onto this pad. To change what's on it, press SET and then the pad.", names: ["Sampler pad"]),
             Explanation(title: "SET", text: "Press this and then a pad to change what's on it: a file, a deck's loop, or a recording of the mix. That's also where a pad becomes a one shot, a gate or a loop.", names: ["SET"]),
             Explanation(title: "Q", text: "With it on, a pad starts on the leading deck's beat rather than straight away.", names: ["Sampler Q"]),
             Explanation(title: "VOLUME", text: "How loud the sampler is.", names: ["VOLUME"]),
@@ -154,7 +154,8 @@ enum Explanations {
             Explanation(title: "CUE/MST", text: "What's in your headphones: left for the decks you've cued, right for the mix, or some of each. It needs SPLIT on.", names: ["CUE/MST"]),
             Explanation(title: "LEVEL", text: "The headphone volume. It needs SPLIT on.", names: ["LEVEL"]),
             Explanation(title: "SPLIT", text: "For a splitter cable with speakers on one side and headphones on the other: the mix in the left ear and your cue in the right.", names: ["SPLIT"]),
-            Explanation(title: "AUTO", text: "Mixes from the playing deck into the other with the controls you can see. A number's bars to go, a % the stems, … it's thinking. Touch a control to take it back, or press again to stop. MIX in the browser does a whole list.", names: ["Auto DJ"]),
+            Explanation(title: "AUTO", text: "Mixes the playing deck into the other, with the controls you can see. The key shows bars to go, % while the stems split, or … while it chooses. Touch a control to take it back, or press to stop. MIX in the browser does a list.", names: ["Auto DJ"]),
+            Explanation(title: "MIX", text: "A mix through a list, started from the browser, which shows which list and what's left. The key shows bars to the next move, or % while the stems split, or … while it chooses. Touch a control to take it back, or press to stop.", names: ["Mix on the mixer"]),
             Explanation(title: "MIXER", text: "The mixer controls with no room here: TRIM, MASTER, the headphone controls, SPLIT and the FILTER knob's effects.", names: ["More mixer controls"]),
             Explanation(title: "LIM", text: "Lights when the mix is so loud that the limiter's holding it back. With two full tracks that's normal now and then. If it stays on, turn TRIM down: on a phone, that's under MIXER.", names: ["LIM"]),
             Explanation(title: "METERS", text: "How loud things are: deck 1, the mix left and right, and deck 2. Red means too hot.", names: ["Meters"]),
@@ -173,8 +174,9 @@ enum Explanations {
             Explanation(title: "±6% BPM", text: "Shows only tracks within 6% of the leading deck's tempo, which can be matched without sounding wrong.", names: ["BPM filter"]),
             Explanation(title: "NEXT", text: "Puts the list in a good order to play from the leading deck, by how close the tempo is and how well the key goes. That deck's own track drops off the list while it's on, and what's been played goes last.", names: ["Best next first"]),
             Explanation(title: "MIX", text: "Auto DJ through the list on screen, in the order it's showing when you press it. With a track playing it goes on from there, then back for what's above it that hasn't been played. AUTO does just one move. Press again to stop.", names: ["Mix through this list", "Stop the mix"]),
+            Explanation(title: "MIX LINE", text: "Which list the mix is going through, and how many tracks are left. It's only here while a mix is on.", names: ["Mix line"]),
             Explanation(title: "IMPORT", text: "Adds music from the Files app, or a library exported from your DJ software. If Files opens on an empty folder, go back from there to find your music.", names: ["IMPORT"]),
-            Explanation(title: "PLAYLISTS", text: "Chooses which list you're looking at, and makes new ones. To put a track in one, press and hold the track. To rename one, press and hold the playlist.", names: ["Playlists"]),
+            Explanation(title: "PLAYLISTS", text: "Chooses which list you're looking at, and makes new ones. To put a track in one, press and hold the track. To rename or delete one, press and hold it in the sidebar, or choose it and open this menu on an upright phone.", names: ["Playlists"]),
             Explanation(title: "KEY", text: "The track's key: A is minor and B is major. The same number, or numbers next to each other, go together. It lights up when it goes with the deck that's leading.", names: ["Track key"]),
             Explanation(title: "1 / 2", text: "Loads this track onto that deck. A playing deck won't take one, so stop it first.", names: ["Load on deck"]),
             Explanation(title: "PREVIEW", text: "Touch a track's small waveform to hear it: in the cue ear with SPLIT on, or quietly on the main output without.", names: ["Preview", "Stop preview"]),

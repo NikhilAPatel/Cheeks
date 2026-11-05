@@ -49,8 +49,13 @@ final class UndoAndRefusalTests: CheeksUITestCase {
         let master = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'MASTER'")).firstMatch
         waitFor(master)
         print("UITEST: master \(master.frame), undo \(undo.frame)")
-        // The whole capsule sits to the right of the readout, whose number ends about 60 pt past its label.
-        XCTAssertGreaterThan(undo.frame.minX, master.frame.maxX + 60)
+        if app.windows.firstMatch.frame.width < 900 {
+            // On a phone it hangs below the bar, whose readout it can't reach.
+            XCTAssertGreaterThan(undo.frame.minY, master.frame.maxY)
+        } else {
+            // The whole capsule sits to the right of the readout, whose number ends about 60 pt past its label.
+            XCTAssertGreaterThan(undo.frame.minX, master.frame.maxX + 60)
+        }
         undo.tap()
     }
 

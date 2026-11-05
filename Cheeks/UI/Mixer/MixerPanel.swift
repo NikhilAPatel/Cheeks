@@ -78,7 +78,8 @@ struct AutoKey: View {
 
     var body: some View {
         let auto = dj.autoDJ!
-        Key(auto.legend, lit: auto.isActive, size: 8, feel: .toggle, accessibilityName: "Auto DJ", onPress: { auto.press() })
+        // During a mix it reads MIX, and its note has to as well.
+        Key(auto.legend, lit: auto.isActive, size: 8, feel: .toggle, accessibilityName: "Auto DJ", help: auto.mixSet == nil ? nil : "Mix on the mixer", onPress: { auto.press() })
     }
 }
 

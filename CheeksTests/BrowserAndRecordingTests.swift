@@ -46,6 +46,23 @@ final class BrowserAndRecordingTests: XCTestCase {
         library.deletePlaylist(playlist)
     }
 
+    /// "History 2026-11-04" was cut off in the sidebar as "History 202…", which leaves out the day.
+    func testAHistoryPlaylistShowsADateThatFits() throws {
+        let library = Library()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = Playlist(id: UUID(), name: "History " + formatter.string(from: Date()), trackIDs: [])
+        XCTAssertEqual(library.shownName(of: today), "History " + Date().formatted(.dateTime.month(.abbreviated).day()))
+        XCTAssertLessThanOrEqual(library.shownName(of: today).count, 14)
+        let old = Playlist(id: UUID(), name: "History 2020-03-07", trackIDs: [])
+        XCTAssertTrue(library.shownName(of: old).contains("2020"), "It can't be mistaken for this year's")
+        let mine = Playlist(id: UUID(), name: "Friday", trackIDs: [])
+        XCTAssertEqual(library.shownName(of: mine), "Friday")
+        let odd = Playlist(id: UUID(), name: "History of house", trackIDs: [])
+        XCTAssertEqual(library.shownName(of: odd), "History of house")
+    }
+
     /// Playing a recording had no time on it and no way to move through it, and its pause started it again from the top.
     func testARecordingPausesAndMoves() async throws {
         let frames = Int(AudioConfig.sampleRate) * 8

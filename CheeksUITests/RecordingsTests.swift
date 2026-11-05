@@ -16,4 +16,43 @@ final class RecordingsTests: CheeksUITestCase {
         sleep(1)
         print("UITEST: finished at \(Date())")
     }
+
+    /// A grey button with no reason cost a first-time user about 11 minutes, on and off.
+    func testARecordingWontPlayOverTheMixAndSaysWhy() throws {
+        loadDeck1()
+        // One to play, on a simulator that may have none.
+        press(button("Record"))
+        sleep(2)
+        press(button("Stop recording"))
+        let save = app.alerts.buttons["Stop and save"]
+        waitFor(save)
+        save.tap()
+        sleep(3)
+
+        press(button("Play"))
+        sleep(1)
+        press(button("Recordings"))
+        let play = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Play Mix'")).firstMatch
+        waitFor(play)
+        let reason = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'stop both decks'")).firstMatch
+        XCTAssertTrue(reason.exists, "The reason should be there before anyone has to ask")
+        XCTAssertTrue(play.isEnabled, "A press gets a reply, so it isn't disabled")
+        screenshot("recordings-deck-playing")
+        play.tap()
+        sleep(1)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Pause Mix'")).firstMatch.exists, "It would play over the mix")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+        press(button("Pause"))
+        sleep(1)
+
+        press(button("Recordings"))
+        waitFor(play)
+        XCTAssertFalse(reason.exists, "With the decks stopped there's nothing to explain")
+        play.tap()
+        let pause = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Pause Mix'")).firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 3))
+        pause.tap()
+        app.buttons["Done"].firstMatch.tap()
+    }
 }

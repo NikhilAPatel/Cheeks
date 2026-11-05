@@ -345,3 +345,56 @@ I saw no crash.
 - The app's name for itself: none of the screens I can still see shows one, so I only know "Segue DJ" from the brief.
 
 State left behind: app running, both decks stopped, my Warmup playlist and one recording added, deck 1 tempo at +7.2.
+
+## What happened next
+
+The final gate, from clean installs: unit 435 tests (8 skipped), no failures. iPad 28 UI tests (5 skipped), no failures. Small iPhone: phone layouts 3 pass, and the walk 5 pass with no control lacking a note. A short suite on the folded Duo, 4 pass. The long suite on the unfolded Duo wasn't run, as it's folded.
+
+The first full run caught a mistake of mine that the new tests alone hadn't: the check for someone starting the new deck also fired when a move's clock ran out, so every move ended saying "you started deck 2 yourself". That's fixed. Three older tests expected the silent new deck that N10 removes, so they now use a Bass swap, where the new deck's been heard. `testTheFXTabSaysWhenEffectsAreOn` failed once in that first run and passed in the second. Nothing it touches changed, and I didn't find out why, so say if the `FX` tab's blue dot ever misbehaves.
+
+**Fixed, with a test I ran with the fix taken out, to see it fail for the right reason**
+- **N10: the new deck left playing in silence.** The score starts a new deck a couple of bars ahead of its moment with every stem down, and handing back only looked at whether it was playing. So `AUTO` in those bars left it running with nothing to hear. A new deck with no stem up is now stopped and goes back as it was: stems up, its tempo and key, and the place it was in. One that's been heard carries on. The old deck stays as it is, as that's what people are listening to.
+- **What's still down after a hand-back.** A stem's level only shows on the `STEMS` page, so the message now ends "ALL brings back deck 1's stems." when a playing deck has any down.
+- **N9: refusing from any row.** What's been on air is left out on both sides of the playing row. With nothing left it refuses, and says "You've played the rest of Warmup. To go round again, stop the deck and press MIX.", which is the way to replay a list, and that has a test as well.
+- **N11, part of it.** The refusal says what's showing: "A mix needs at least two tracks, and only one's showing." A mix now starts on the deck its first track is already on. It would have loaded it on deck 1 as well.
+- **`PLAY` on the new deck early in a move.** It ends the move and says so: "Auto DJ stopped: you started deck 2 yourself. Deck 1 carries on." Its stems come up, as someone who presses `PLAY` wants to hear it.
+- **A deck at its very end during a move.** A plan now cues the new deck where it'll come in, at once, as a DJ would, and puts it back if it's called off. One moved by hand since stays where it was sent.
+- **The message and the key.** They never counted to different points. The message was being read a few seconds after it went up, with the key counting beside it. There's no number in it now: "Loop build next. The key's counting down the bars."
+- **A `FILTER` knob at the centre.** A sweep under 0.03 can't be heard, so it counts as no sweep, and the knob goes back to what the key says. A knob still swept stays on `FILTER` until it's back at the centre, by hand or otherwise.
+- **The crossfader moving at the press.** It and the new deck's fader now wait for the score's clock, about 2 bars before the move, the same as the `FILTER` knobs. That's said then. In a mix it could have been minutes early.
+- **The same music at another BPM: this was worse than it looked.** On the old code, 60 s of music at 170 BPM with 3 minutes of silence after it read 109, and one at 128 read 122.89. Silence brought down the average that an onset's measured against. The first analysis now stops where the music stops. On 40 real tracks, none changed in BPM, key or sections, and one lost one tempo marker of 124.
+
+**Fixed, with a UI test**
+- **N12: the grey play button.** A line at the top of the sheet now says why while a deck's playing: "A recording plays out loud, over the mix. To listen to one, stop both decks." A press buzzes and moves its hand. The status capsule's under the sheet, so it couldn't go there. The share and menu icons beside it are the same colour as the list key now, as they looked disabled.
+- **N13: renaming on an upright phone.** The playlists menu has a tick on the current list, and Rename and Delete for it. The note says where to look.
+- **Which list, and what's left.** While a mix is on, a line along the bottom of the browser's list says so: "Mixing through Warmup, 3 tracks to go." It's over the list and not above it, so nothing moves under a finger. It's there whichever list is showing, which answers changing list with `MIX` lit.
+
+**Changed, with a test of what it does, or none**
+- **N11, the rest.** With `NEXT` on, `MIX` puts back the track it's hiding, first. So with Houston on the deck and Gepzene showing, it plays Houston and then Gepzene. No test of this part: it's in the browser's body. It's in the retest.
+- **The slide.** Measured in Release on the iPad, the mixer runs about a frame behind the panels, as UIKit moves them on the render server and SwiftUI moves it from the main thread. That's the steady gap: 26 slides had a median widest gap of 47 pt, and a worst of 98. There are two changes. The panels start 8 ms later, which took the median to 33 pt. And a panel-coloured backing now goes with the mixer, under the panels, only while they move, so what opens is the panels' own colour and not black. Over 27 slides the widest black is now 3 pt typically and 24 pt at worst, and none has 40 pt or more. In frames from the middle of a slide I can't see the band. It's still there, up to about 100 pt wide, so it's worth saying if it shows at speed.
+- **The first slide after launch.** Sampling it found the 100 to 243 ms freeze isn't in the app's code: the main thread is waiting inside Core Animation's commit, while RenderBox is on the phone to the render server (`RB::SharedSurfaceGroup::prune_removed_locked`, `-[CAContext waitForCommitId:timeout:]`). That's the simulator's render server being busy with a first frame. A phone may well not do it.
+- **The holds in your 27 of 49 slides:** in Release there's no main-thread freeze of 50 ms or more in any slide but the first. So the rest is the render server or the recorder, and I can't take it further without a phone. I measured 9 of 26, 10 of 27 and 12 of 27 in three runs, the same before and after the backing.
+- **The Recordings icon** is left of `REC` now, as `REC` grows to hold its timer. It can't move.
+- **`AUTO` during a mix** has a note of its own, titled `MIX`, and `AUTO`'s note is clearer about what the key shows.
+- **`MIX` looks like what it is:** a play or stop mark on it, and a gap from the filters, where there's room. It read as one more filter.
+- **On a phone, a message over the browser** hangs below the search and the filters, as those are often what it's sending you to.
+- **History** reads "History Nov 4" and fits.
+- **Notes:** `REC 5` on a sampler pad, and the flags on the overview, were the first-time user's questions.
+
+**Answers to what you asked or saw**
+- **Fast Bird's 140.59 and 139.71:** that's jam1121443, which has a real tempo map with over 120 markers, and the header shows the tempo at the playhead. Nothing's wrong.
+- **FC13:** that's two rounds of nothing taking a message away early, and I can't explain the 2.5 s, so I'm closing it.
+- **The knob going from `CRUSH` to `FILTER` during a mix, and the key shift going back to 0 at its end,** are as designed. The knob's note says Auto DJ can borrow it, and the old deck's numbers were the move's.
+- **`SLIP` during a build:** the time running backwards is the loop wrapping. There's nothing to come back to, as the deck stops at the end of the move.
+
+**Decided against**
+- **A track parked by a mix:** the deck shows where it is, and moving it after the fact would be the surprise.
+- **Saying beforehand which moves take a knob:** nobody needs that before pressing, and it shows when it happens.
+- **Changing Gepzene's and Exhilarate's sections:** the kick and the bass really are in, so the rule's doing what it says. Someone has to listen before that changes.
+- **The `AnimationKit` lines:** those are iOS's own, from its long-press menus.
+
+**Not done**
+- **Pressing during the slide on the full layout, and FA.** These need the Duo opened in Device Hub, or the iPad's touch access granted. I've asked the owner.
+- **Moving the mixer with the panels for real,** which would need it in a host of its own. Nothing in one showed up for VoiceOver last time, and I still don't know why. The backing makes that matter much less.
+- **A playlist can't be reordered,** and tracks can only be added one at a time. Features, so they wait behind bugs and speed.
+- **The Files folder, the first keyboard's freeze, the import picker's first folder and the slide's stalls** still want the phone.

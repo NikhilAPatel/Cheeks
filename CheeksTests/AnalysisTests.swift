@@ -15,6 +15,18 @@ final class AnalysisTests: XCTestCase {
         }
     }
 
+    /// The same music read 170 BPM, and 162.7 with 3 minutes of silence after it.
+    func testSilenceAfterTheMusicLeavesItsTempoAlone() {
+        for bpm in [170.0, 128.0, 96.0] {
+            let music = Synth.track(bpm: bpm, firstBeat: 0.2, seconds: 60, chords: Synth.aMinor)
+            let longer = PCM16Stereo(frames: music.frames + Int(Synth.sampleRate) * 180)
+            memcpy(longer.data, music.data, music.frames * 4)
+            let alone = TrackAnalyzer.analyze(music), withSilence = TrackAnalyzer.analyze(longer)
+            XCTAssertEqual(withSilence.bpm, alone.bpm, accuracy: 0.05, "\(bpm)")
+            XCTAssertEqual(withSilence.firstBeat, alone.firstBeat, accuracy: 0.01, "\(bpm)")
+        }
+    }
+
     /// A track whose bars have a real "1": a loud hit every four beats on top of the kicks.
     func testGridStartsOnTheDownbeat() {
         let bpm = 126.0, offset = 0.2

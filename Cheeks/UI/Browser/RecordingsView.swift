@@ -13,10 +13,21 @@ struct RecordingsView: View {
     @State private var deleting: URL?
     /// Where a finger's dragged the playback to, until it lets go.
     @State private var scrubbing: TimeInterval?
+    /// Presses it's had to refuse, which make the reason move, in case it hasn't been read.
+    @State private var refusals = 0
 
     var body: some View {
         NavigationStack {
             List {
+                // A grey button with nothing to say why lost a first-time user about 11 minutes. The status capsule's under this sheet.
+                if decksPlaying, !recordings.isEmpty {
+                    Label {
+                        Text("A recording plays out loud, over the mix. To listen to one, stop both decks.")
+                    } icon: {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(Theme.warn).symbolEffect(.bounce, value: refusals)
+                    }
+                    .font(.footnote)
+                }
                 if recordings.isEmpty {
                     ContentUnavailableView("No recordings yet", systemImage: "record.circle",
                                            description: Text((dj.isRecording ? "You're recording now, and it'll be here once you stop." : "Tap REC at the top of the screen to record your mix.")
@@ -55,13 +66,22 @@ struct RecordingsView: View {
             HStack(spacing: 12) {
                 // Previews play straight to the main output, so they're off while a deck is playing.
                 let isPlaying = player.playing == url && !player.isPaused
-                Button { player.toggle(url) } label: {
+                let refused = decksPlaying && !isPlaying
+                Button {
+                    if refused {
+                        refusals += 1
+                        Haptics.shared.deny()
+                    } else {
+                        player.toggle(url)
+                    }
+                } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 28))
+                        .foregroundStyle(refused ? Color.secondary : Color.primary)
                 }
                 .buttonStyle(.plain)
-                .disabled(decksPlaying && !isPlaying)
                 .accessibilityLabel("\(isPlaying ? "Pause" : "Play") \(url.deletingPathExtension().lastPathComponent)")
+                .accessibilityHint(refused ? "Stop both decks first." : "")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(url.deletingPathExtension().lastPathComponent).font(.headline)
                     Text(details(url)).font(.caption).foregroundStyle(.secondary)
@@ -73,10 +93,12 @@ struct RecordingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // In the same colour as the list key beside them. They looked disabled.
                 ShareLink(items: [url] + existingCompanions(url)) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .buttonStyle(.borderless)
+                .tint(.primary)
                 Menu {
                     Button("Rename", systemImage: "pencil") {
                         newName = url.deletingPathExtension().lastPathComponent
@@ -87,6 +109,7 @@ struct RecordingsView: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .buttonStyle(.borderless)
+                .tint(.primary)
             }
             if player.playing == url { playback }
             if expanded == url, let text = tracklist(url) {

@@ -61,7 +61,7 @@ That's six takes, mostly from one pair, so these are early signs.
 
 ## Mixing through a list
 
-`MIX` in the browser takes the list on screen, in the order it's showing. It carries on from a track that's already playing, and comes back for what's above it that hasn't been on air, or starts from the top. It differs from a press of `AUTO` in three ways:
+`MIX` in the browser takes the list on screen, in the order it's showing. It carries on from a track that's already playing and comes back for what's above it, leaving out what's been on air on either side, or starts from the top. While it's on, the browser says which list it's going through and how many tracks are left. It differs from a press of `AUTO` in three ways:
 
 - **It gives each track its time.** Someone pressing `AUTO` wants it soon, but a mix starts looking to leave once a track's last big section is under way, or 60% of the way through one that never lets up (`TransitionPlanner.setExit`). If no plan passes from there, it looks 16 bars further back each time, but no further than a third of the way in.
 - **It keeps the moves varied.** The last four moves count against playing them again. It leaves out the brake drop, which the owner found way too jarring, as nobody's there to take it back.
@@ -127,7 +127,7 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
 ## In the app
 
 - **`AUTO`** on the mixer. It needs one deck playing, the other loaded and stopped, and stems on both. It waits for stems that are still splitting. If the track runs out or fades away first, or it's too near the end for any move, the next track just starts, so the music doesn't stop.
-- **Press:** plans, auditions, then waits for the bar and counts down to when the move starts. Press again to call it off.
+- **Press:** plans, auditions, cues the new deck where it'll come in, then waits for the bar and counts down to when the move starts. Press again to call it off. The crossfader and the new deck's fader move about 2 bars before the move, when the score's clock starts, and it says so if they do.
 - **Mid-move:** the knobs and stem levels follow the score, and touching one takes it back. At the end, the old deck goes back to neutral, and on the new deck what you took stays as you set it.
 - **Cutting it short:**
 
@@ -138,7 +138,7 @@ They lean on the choice and never rule a move out, so a move with bad ratings st
   | Stop the old deck | The new one comes in at once, whole | The move plays out |
   | Send the old deck somewhere: a seek, a hot cue or a beat jump | The decks are yours, as with pressing `AUTO`, and it says so | The move plays out |
 
-  A new deck that nobody's heard yet goes back to how it was, with its stems up and its tempo where it had it, the same as calling it off during the countdown. A stem left all the way down shows as off, and a tap or `ALL` brings it back. Only a move that plays out asks for a rating or counts as a move played.
+  A new deck that nobody's heard yet goes back to how it was, with its stems up, its tempo where it had it and in the place it was, the same as calling it off during the countdown. That includes one the score has already started, a couple of bars early with its stems down. Pressing `PLAY` on the new deck before the score starts it ends the move, with the old deck carrying on. A playing deck left with stems down gets a word, as they only show on the `STEMS` page. A stem left all the way down shows as off, and a tap or `ALL` brings it back. Only a move that plays out asks for a rating or counts as a move played.
 
   A loop would hold the old deck back from ever reaching its moment. So pressing `AUTO` or `MIX` takes a loop off, and pressing `AUTO` again after stopping a move clears what that move left on the deck. A loop set during the countdown calls off `AUTO`, and a mix just waits until it's over, as holding a track longer isn't stopping the mix.
 - **At the end:** the old deck's stopped and both decks are back to neutral. The new track carries on at the playing tempo.

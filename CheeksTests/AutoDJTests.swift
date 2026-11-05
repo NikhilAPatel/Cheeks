@@ -386,24 +386,22 @@ final class AutoDJTests: XCTestCase {
         XCTAssertGreaterThan(peak(dj), 0.1)
     }
 
-    /// With the new deck playing and quiet, its stems are down and can be seen to be, and it's easy to bring them back.
+    /// With the new deck part of the way in, what's still down can be seen to be, and it's easy to bring back.
     func testStoppingPartWayLeavesTheStemsWithinReach() async throws {
-        let dj = try ready()
-        let a = dj.decks[0], b = dj.decks[1]
+        let dj = try ready(only: .bassSwap)
+        let a = dj.decks[0], b = dj.decks[1], drums = Stem.drums.rawValue
         dj.autoDJ.press()
-        try await run(dj) { b.renderer.isPlaying }
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 16 && b.stemLevels[drums] > 0.1 }
         dj.autoDJ.press()
         _ = dj.renderOffline(frames: 4410)
         dj.tickForTesting()
         XCTAssertEqual(dj.autoDJ.phase, .idle)
-        XCTAssertTrue(b.isPlaying, "It's left playing")
-        XCTAssertEqual(b.stemLevels, [0, 0, 0, 0], "and quiet, as it was")
-        XCTAssertFalse(b.stemIsHeard(.drums), "which shows")
-        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped. The decks are yours.")
+        XCTAssertTrue(b.isPlaying, "It's been heard, so it's left playing")
+        XCTAssertGreaterThan(b.stemLevels[drums], 0.05, "as it was")
+        XCTAssertFalse(b.stemIsHeard(.vocals), "and what's down shows")
+        XCTAssertEqual(dj.statusMessage?.hasPrefix("Auto DJ stopped. The decks are yours."), true, dj.statusMessage ?? "nothing")
         a.pause()
         a.stemsOn = [false, false, false, false]
-        _ = dj.renderOffline(frames: 44_100)
-        XCTAssertLessThan(peak(dj, frames: 8820), 0.01, "Only the new deck's left, and it's quiet")
         b.setStems(Set(Stem.allCases))
         XCTAssertEqual(b.stemLevels, [1, 1, 1, 1])
         _ = dj.renderOffline(frames: 4410)
@@ -547,11 +545,11 @@ final class AutoDJTests: XCTestCase {
         let dj = try ready(only: .bassSwap)
         let a = dj.decks[0], b = dj.decks[1]
         dj.autoDJ.press()
-        // Both playing, and the new deck's still on what the score gave it.
-        try await run(dj) { self.isRunning(dj) && b.renderer.isPlaying && b.stemLevels != [1, 1, 1, 1] }
+        // Both playing, and the new deck's on what the score gave it, some of which has been heard.
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 16 && b.stemLevels[Stem.drums.rawValue] > 0.1 }
         dj.autoDJ.press()
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
-        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped. The decks are yours.")
+        XCTAssertEqual(dj.statusMessage?.hasPrefix("Auto DJ stopped. The decks are yours."), true, dj.statusMessage ?? "nothing")
         XCTAssertNotEqual(b.stemLevels, [1, 1, 1, 1], "It's left as it was")
         a.pause()
         dj.tickForTesting()
@@ -567,7 +565,7 @@ final class AutoDJTests: XCTestCase {
         let dj = try ready(only: .bassSwap)
         let a = dj.decks[0], b = dj.decks[1]
         dj.autoDJ.press()
-        try await run(dj) { self.isRunning(dj) && b.renderer.isPlaying && b.stemLevels != [1, 1, 1, 1] }
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 16 && b.stemLevels[Stem.drums.rawValue] > 0.1 }
         dj.autoDJ.press()
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
         XCTAssertNotEqual(b.stemLevels, [1, 1, 1, 1], "Left as it was, while the old deck's still what people hear")
@@ -624,13 +622,13 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(dj.statusMessage, "That's the last track in Set. The mix ends with it.")
     }
 
-    func testACrossfaderAPlanMovesSaysSo() async throws {
-        let dj = try ready(only: .echoDrop)
+    func testACrossfaderAMoveMovesSaysSo() async throws {
+        let dj = try ready(only: .loopDrop)
         dj.crossfader = -1
         dj.autoDJ.press()
-        try await run(dj) { self.isArmed(dj) }
+        try await run(dj) { self.isRunning(dj) }
         XCTAssertEqual(dj.crossfader, 0)
-        XCTAssertTrue(dj.statusMessage?.hasSuffix("Crossfader to the middle, to hear both.") == true, dj.statusMessage ?? "nothing")
+        XCTAssertEqual(dj.statusMessage, "Crossfader to the middle, to hear both.")
     }
 
     /// Round 11: EXIT during a Loop build looked as if it had worked, and the score's next loop took the deck back with no word.
@@ -1480,11 +1478,257 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(dj.statusMessage?.contains("crossfader"), true, dj.statusMessage ?? "nothing")
     }
 
-    /// The message stays up while the key counts, so a number in it goes out of date: "in 6 bars" with `AUTO 4`.
-    func testTheFirstMessageDoesntPretendToCount() async throws {
+    /// The message stays up while the key counts, so a number in it goes out of date: it was up to 3 bars out by the time it was read.
+    func testTheFirstMessageLeavesTheCountingToTheKey() async throws {
         let dj = try ready(only: .echoDrop)
         dj.autoDJ.press()
         try await run(dj) { self.isArmed(dj) }
-        XCTAssertEqual(dj.statusMessage?.hasPrefix("Echo throw in about"), true, dj.statusMessage ?? "nothing")
+        XCTAssertEqual(dj.statusMessage, "Echo throw next. The key's counting down the bars.")
+    }
+
+    // MARK: Round 14
+
+    /// `AUTO` in a build's last bars left the new deck running with its stems down: `PLAY` lit, nothing to hear, nothing to say so.
+    func testHandingBackLeavesNoNewDeckPlayingInSilence() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        b.seek(to: 7)
+        _ = dj.renderOffline(frames: 512)
+        b.setTempoManually(2)
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && b.renderer.isPlaying }
+        XCTAssertFalse(Stem.allCases.contains(where: b.stemIsHeard), "The score starts it a couple of bars early, unheard")
+        XCTAssertTrue(a.renderer.loopActive)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertFalse(b.renderer.isPlaying, "Nobody's heard it, and nobody could")
+        XCTAssertFalse(b.isPlaying)
+        XCTAssertEqual(b.stemLevels, [1, 1, 1, 1], "It's ready for whatever's next")
+        XCTAssertEqual(b.tempo, 2, accuracy: 0.001)
+        _ = dj.renderOffline(frames: 512)
+        XCTAssertEqual(b.position, 7, accuracy: 0.01, "It goes back as it was, and that's where it was")
+        XCTAssertTrue(a.isPlaying)
+        XCTAssertTrue(a.renderer.loopActive)
+        XCTAssertEqual(dj.statusMessage?.hasPrefix("Auto DJ stopped. The decks are yours. Deck 1 is still looping."), true, dj.statusMessage ?? "nothing")
+        XCTAssertEqual(a.stemsAltered, dj.statusMessage?.hasSuffix("ALL brings back deck 1's stems.") == true, dj.statusMessage ?? "nothing")
+    }
+
+    func testHandingBackSaysWhenStemsAreStillDown() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], bass = Stem.bass.rawValue
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.stemLevels[bass] < 0.5 }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertLessThan(a.stemLevels[bass], 1, "It's what's being heard, and it stays")
+        XCTAssertEqual(dj.statusMessage?.hasSuffix("ALL brings back deck 1's stems."), true, dj.statusMessage ?? "nothing")
+    }
+
+    /// Part of it's been heard already, so it carries on as it is.
+    func testHandingBackLeavesANewDeckThatsBeenHeardPlaying() async throws {
+        let dj = try ready(only: .bassSwap)
+        let b = dj.decks[1], drums = Stem.drums.rawValue
+        dj.autoDJ.press()
+        // Past the clock's start by more than a tick, or these are still the levels from before it.
+        try await run(dj) { self.isRunning(dj) && cheeks_engine_auto_beat(dj.coreForTesting) > 16 && b.stemLevels[drums] > 0.1 }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertTrue(b.renderer.isPlaying)
+        XCTAssertGreaterThan(b.stemLevels[drums], 0.05)
+        XCTAssertEqual(dj.statusMessage?.contains("ALL brings back"), true, dj.statusMessage ?? "nothing")
+    }
+
+    /// `PLAY` on the new deck in a move's first seconds got no reply. It started where it sat, with nothing to hear, and a second
+    /// press stopped it. The score then took it from 2:34 to 0:35 by itself.
+    func testStartingTheNewDeckBeforeTheScoreDoesEndsTheMoveAndSaysSo() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertFalse(b.renderer.isPlaying, "The score's a good while from starting it")
+        b.play()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(dj.statusMessage, "Auto DJ stopped: you started deck 2 yourself. Deck 1 carries on.")
+        XCTAssertTrue(b.renderer.isPlaying)
+        XCTAssertTrue(Stem.allCases.allSatisfy(b.stemIsHeard), "They wanted to hear it")
+        XCTAssertTrue(a.isPlaying)
+    }
+
+    /// A deck sitting at its very end stayed there for 30 s of a move, and a first-time user couldn't tell it was coming.
+    func testTheNewDeckIsCuedWhereItComesInAndGoesBackIfCalledOff() async throws {
+        let dj = try ready(only: .loopDrop)
+        let b = dj.decks[1]
+        b.seek(to: 200)
+        _ = dj.renderOffline(frames: 512)
+        let was = b.position
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        _ = dj.renderOffline(frames: 512)
+        XCTAssertNotEqual(b.position, was, accuracy: 1)
+        XCTAssertFalse(b.renderer.isPlaying)
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 512)
+        XCTAssertEqual(b.position, was, accuracy: 0.01)
+    }
+
+    func testANewDeckMovedByHandWhileArmedStaysWhereItWasSent() async throws {
+        let dj = try ready(only: .loopDrop)
+        let b = dj.decks[1]
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        b.seek(to: 33)
+        dj.autoDJ.press()
+        _ = dj.renderOffline(frames: 512)
+        XCTAssertEqual(b.position, 33, accuracy: 0.01)
+    }
+
+    /// With a sweep barely started, a knob was left on FILTER with a dot of blue on it, and the key still said DUB.
+    func testAKnobBarelySweptGoesBackWhenTheDecksDo() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.colorFX = .dubEcho
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.filter > 0 }
+        XCTAssertEqual(a.colorFX, .filter)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(a.filter, 0)
+        XCTAssertEqual(a.colorFX, .dubEcho)
+    }
+
+    func testAKnobStillSweptStaysUntilItsBackAtTheCentre() async throws {
+        let dj = try ready(only: .loopDrop)
+        let a = dj.decks[0]
+        dj.colorFX = .dubEcho
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) && a.filter > 0.2 }
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(a.colorFX, .filter, "That's what it's doing")
+        a.filter = 0
+        dj.tickForTesting()
+        XCTAssertEqual(a.colorFX, .dubEcho, "Now it isn't")
+    }
+
+    /// The crossfader and the new deck's fader moved at the press, 9 bars ahead, and in a mix it can be minutes.
+    func testTheMixerWaitsForTheClock() async throws {
+        let dj = try ready(only: .loopDrop)
+        let b = dj.decks[1]
+        dj.crossfader = -1
+        b.fader = 0
+        dj.autoDJ.press()
+        try await run(dj) { self.isArmed(dj) }
+        XCTAssertEqual(dj.crossfader, -1)
+        XCTAssertEqual(b.fader, 0)
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertEqual(dj.crossfader, 0)
+        XCTAssertGreaterThanOrEqual(b.fader, 0.5)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 1)
+        XCTAssertEqual(dj.crossfader, -1, "Nobody's heard the new deck, so it never needed moving")
+        XCTAssertEqual(b.fader, 0)
+    }
+
+    func testAMoveThatStartsWithAClosedChannelStillGetsHeard() async throws {
+        let dj = try ready(only: .echoDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        dj.crossfader = -1
+        b.fader = 0
+        dj.autoDJ.press()
+        try await run(dj) { dj.autoDJ.phase == .idle && b.isPlaying && !a.isPlaying }
+        XCTAssertEqual(dj.crossfader, 0)
+        XCTAssertGreaterThanOrEqual(b.fader, 0.5)
+        XCTAssertGreaterThan(peak(dj), 0.01)
+    }
+
+    /// From row 3 of 5 with everything played it went on, and played rows 4 and 5 again. Only row 5 refused.
+    func testAMixLeavesOutWhatsBeenPlayedBelowItToo() throws {
+        let ids = (0..<5).map { _ in UUID() }
+        let dj = engine(loading: [:])
+        dj.autoDJ.hasBeenHeard = { $0 == ids[3] || $0 == ids[0] }
+        put(try map(), on: dj.decks[0], name: "Playing", id: ids[2])
+        dj.decks[0].play()
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, [ids[4], ids[1]])
+    }
+
+    func testWithEverythingPlayedAMixRefusesFromAnyRowAndSaysWhatToDo() throws {
+        let ids = (0..<5).map { _ in UUID() }
+        for row in [0, 2, 4] {
+            let dj = engine(loading: [:])
+            dj.autoDJ.hasBeenHeard = { _ in true }
+            put(try map(), on: dj.decks[0], name: "Playing", id: ids[row])
+            dj.decks[0].play()
+            dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+            XCTAssertNil(dj.autoDJ.mixSet, "Row \(row)")
+            XCTAssertEqual(dj.statusMessage, "You've played the rest of Tonight. To go round again, stop the deck and press MIX.")
+            XCTAssertEqual(dj.statusKind, .refused)
+        }
+    }
+
+    func testAMixOnAListWithNothingElseOnItSaysThat() throws {
+        let id = UUID()
+        let dj = engine(loading: [:])
+        put(try map(), on: dj.decks[0], name: "Playing", id: id)
+        dj.decks[0].play()
+        dj.autoDJ.startSet(named: "Tonight", tracks: [id])
+        XCTAssertEqual(dj.statusMessage, "There's nothing left in Tonight to mix into.")
+    }
+
+    /// What that refusal says to do has to work.
+    func testWithNothingPlayingAMixGoesRoundAgain() throws {
+        let ids = (0..<3).map { _ in UUID() }
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(), ids[2]: try map()])
+        dj.autoDJ.hasBeenHeard = { _ in true }
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, [ids[1], ids[2]])
+        XCTAssertEqual(dj.decks[0].track?.id, ids[0])
+    }
+
+    /// "A mix needs at least two tracks" with the sidebar saying there were two. It says what's showing now.
+    func testAMixTooShortSaysWhatsShowing() throws {
+        let dj = engine(loading: [:])
+        dj.autoDJ.startSet(named: "Warmup", tracks: [UUID()])
+        XCTAssertEqual(dj.statusMessage, "A mix needs at least two tracks, and only one's showing.")
+        XCTAssertEqual(dj.statusKind, .refused)
+        dj.autoDJ.startSet(named: "Warmup", tracks: [])
+        XCTAssertEqual(dj.statusMessage, "A mix needs at least two tracks, and none are showing.")
+    }
+
+    /// NEXT hides the track on the deck, so the browser hands it over first. It has to start there, and not load it again.
+    func testAMixStartsOnTheDeckTheFirstTrackIsAlreadyOn() throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[1]: try map()])
+        var loads: [UUID] = []
+        let load = dj.autoDJ.loadTrack
+        dj.autoDJ.loadTrack = { id, deck in
+            loads.append(id)
+            return load?(id, deck)
+        }
+        put(try map(), on: dj.decks[1], name: "First", id: ids[0])
+        dj.autoDJ.startSet(named: "Warmup", tracks: ids)
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        dj.autoDJ.tick()
+        XCTAssertTrue(dj.decks[1].isPlaying)
+        dj.autoDJ.tick()
+        XCTAssertEqual(loads, [ids[1]])
+        XCTAssertEqual(dj.decks[0].track?.id, ids[1])
+    }
+
+    /// Which list, and what's left, were only said once. The browser keeps them showing.
+    func testAMixsLineCountsWhatsToCome() throws {
+        let ids = (0..<3).map { _ in UUID() }
+        let dj = engine(loading: [ids[1]: try map(), ids[2]: try map()])
+        put(try map(), on: dj.decks[0], name: "Playing", id: ids[0])
+        dj.decks[0].play()
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.autoDJ.mixSet?.line, "Mixing through Tonight, 2 tracks to go.")
+        dj.autoDJ.tick()
+        XCTAssertNotNil(dj.autoDJ.mixSet?.next)
+        XCTAssertEqual(dj.autoDJ.mixSet?.line, "Mixing through Tonight, 2 tracks to go.", "The one waiting on the deck hasn't been played yet")
+        var last = try XCTUnwrap(dj.autoDJ.mixSet)
+        last.queue = []
+        last.next = nil
+        XCTAssertEqual(last.line, "Mixing through Tonight. This is the last track.")
     }
 }

@@ -148,7 +148,8 @@ struct BrowserView: View {
             VStack(spacing: 0) {
                 toolbar
                 columnHeader
-                table
+                // Over the list and not above it, so nothing moves under a finger when a mix starts or ends.
+                table.safeAreaInset(edge: .bottom, spacing: 0) { mixLine }
             }
         }
         .background(Color(white: 0.06))
@@ -330,20 +331,9 @@ struct BrowserView: View {
             }
             Section {
                 ForEach(library.playlists) { playlist in
-                    sidebarRow(playlist.name, icon: library.isHistory(playlist) ? "clock.arrow.circlepath" : "music.note.list",
+                    sidebarRow(library.shownName(of: playlist), icon: library.isHistory(playlist) ? "clock.arrow.circlepath" : "music.note.list",
                                count: playlist.trackIDs.count, tag: .playlist(playlist.id))
-                        .contextMenu {
-                            if !library.isHistory(playlist) {
-                                Button("Rename Playlist", systemImage: "pencil") {
-                                    renamedPlaylistName = playlist.name
-                                    renamingPlaylist = playlist
-                                }
-                            }
-                            Button("Delete Playlist", systemImage: "trash", role: .destructive) {
-                                if source == .playlist(playlist.id) { source = .all }
-                                library.deletePlaylist(playlist)
-                            }
-                        }
+                        .contextMenu { playlistActions(playlist) }
                 }
                 Button { showNewPlaylist = true } label: {
                     Label("New Playlist", systemImage: "plus").font(Theme.text(11.5)).foregroundStyle(Theme.textSecondary)
@@ -358,6 +348,20 @@ struct BrowserView: View {
         .environment(\.defaultMinListRowHeight, 30)
         .scrollContentBackground(.hidden)
         .background(Color(white: 0.045))
+    }
+
+    @ViewBuilder
+    private func playlistActions(_ playlist: Playlist) -> some View {
+        if !library.isHistory(playlist) {
+            Button("Rename Playlist", systemImage: "pencil") {
+                renamedPlaylistName = playlist.name
+                renamingPlaylist = playlist
+            }
+        }
+        Button("Delete Playlist", systemImage: "trash", role: .destructive) {
+            if source == .playlist(playlist.id) { source = .all }
+            library.deletePlaylist(playlist)
+        }
     }
 
     private func sidebarHeader(_ title: String) -> some View {
@@ -455,29 +459,74 @@ struct BrowserView: View {
     private var mixKey: some View {
         let auto = dj.autoDJ!
         let on = auto.mixSet != nil
-        return Key("MIX", lit: on, size: 8.5, feel: .toggle, accessibilityName: on ? "Stop the mix" : "Mix through this list", onPress: {
+        let roomy = layout != .portrait
+        return Key(lit: on, feel: .toggle, accessibilityName: on ? "Stop the mix" : "Mix through this list", onPress: {
             if on {
                 auto.press()
             } else {
-                auto.startSet(named: sourceName, tracks: tracks.map(\.id))
+                auto.startSet(named: sourceName, tracks: listToMix)
             }
-        })
-        .frame(width: 36, height: 24)
+        }) {
+            // It does something, where the keys beside it only change what's listed. It read as one more filter.
+            HStack(spacing: 2) {
+                if roomy { Image(systemName: on ? "stop.fill" : "play.fill").font(.system(size: 6.5, weight: .bold)) }
+                KeyLegend(title: "MIX", size: 8.5)
+            }
+        }
+        .frame(width: roomy ? 46 : 36, height: 24)
+        .padding(.leading, roomy ? 5 : 0)
+    }
+
+    /// What MIX goes through: the rows, and what NEXT has hidden from them. With a track on the deck and one row showing, it said a
+    /// mix needs at least two tracks while the sidebar said there were two.
+    private var listToMix: [UUID] {
+        let rows = tracks.map(\.id)
+        guard bestNext, let hidden = (nextFrom ?? nextFromNow).track, isInSource(hidden) else { return rows }
+        return [hidden] + rows
+    }
+
+    private func isInSource(_ track: UUID) -> Bool {
+        switch source {
+        case .all: library.track(track) != nil
+        case .playlist(let id): library.playlists.first { $0.id == id }?.trackIDs.contains(track) == true
+        }
+    }
+
+    /// Which list a mix is going through, and what's left of it, for as long as it's on. Nothing showed this after the first
+    /// message, and a first-time user changing list with MIX lit took it to apply to the new one.
+    @ViewBuilder
+    private var mixLine: some View {
+        if let set = dj.autoDJ.mixSet {
+            HStack(spacing: 5) {
+                Circle().fill(Theme.accent).frame(width: 5, height: 5)
+                Text(set.line).font(Theme.text(10.5, .medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(Color(white: 0.12))
+            .whatsThis("Mix line")
+        }
     }
 
     private var sourceName: String {
         guard case .playlist(let id) = source, let playlist = library.playlists.first(where: { $0.id == id }) else { return "all your tracks" }
-        return playlist.name
+        return library.shownName(of: playlist)
     }
 
     /// Where the sidebar's sources go on a phone held upright.
     private var sourceMenu: some View {
         Menu {
-            Button("All tracks", systemImage: "music.note.list") { source = .all }
+            Button("All tracks", systemImage: source == .all ? "checkmark" : "music.note.list") { source = .all }
             ForEach(library.playlists) { playlist in
-                Button(playlist.name, systemImage: "music.note") { source = .playlist(playlist.id) }
+                Button(library.shownName(of: playlist), systemImage: source == .playlist(playlist.id) ? "checkmark" : "music.note") { source = .playlist(playlist.id) }
             }
             Button("New playlist…", systemImage: "plus") { showNewPlaylist = true }
+            // There's no holding a row in a menu, which is how the sidebar does this, and the note said to.
+            if let playlistID, let playlist = library.playlists.first(where: { $0.id == playlistID }) {
+                Divider()
+                playlistActions(playlist)
+            }
         } label: {
             Image(systemName: "sidebar.left").font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)

@@ -67,7 +67,9 @@ struct ContentView: View {
     private func panels(width: CGFloat, mixerWidth: CGFloat) -> some View {
         let deck = (width - mixerWidth - 6) / 2
         let browser = width - mixerWidth - 3
+        let mixerAt = showLibrary ? browser + 3 : deck + 3
         return ZStack(alignment: .leading) {
+            BehindTheMixer(x: mixerAt, width: mixerWidth)
             Offstage(showLibrary, x: deck + 3) {
                 DeckPanel(deck: dj.decks[0])
             }
@@ -90,7 +92,7 @@ struct ContentView: View {
                 .frame(width: browser)
             }
             // Never out of sight when the browser opens, so its meters and knobs carry on.
-            MixerOnItsWay(x: showLibrary ? browser + 3 : deck + 3, width: mixerWidth)
+            MixerOnItsWay(x: mixerAt, width: mixerWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -123,6 +125,38 @@ private struct MixerOnItsWay: View {
     }
 }
 
+/// What shows where the mixer and the panels come apart on the way across. UIKit moves the panels on the render server, and SwiftUI
+/// moves the mixer one frame at a time from the main thread, so at full speed it's about a frame behind them, which is 30 to 90 pt
+/// on an iPad, even in Release, with black showing through. This goes with the mixer, under the panels and in their colour. At rest
+/// they cover it, apart from the black gutters beside the mixer, so it's only there while things are moving.
+private struct BehindTheMixer: View {
+    let x: CGFloat
+    let width: CGFloat
+    /// Further than the mixer's been seen to fall behind.
+    private let reach: CGFloat = 300
+    @State private var isMoving = false
+    @State private var settling: Task<Void, Never>?
+
+    var body: some View {
+        LinearGradient(colors: [Theme.panelTop, Theme.panelBottom], startPoint: .top, endPoint: .bottom)
+            .frame(width: width + reach * 2)
+            .geometryGroup()
+            .offset(x: x - reach)
+            .opacity(isMoving ? 1 : 0)
+            .animation(.easeOut(duration: 0.1), value: isMoving)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: x) {
+                isMoving = true
+                settling?.cancel()
+                settling = Task {
+                    try? await Task.sleep(for: .seconds(0.45))
+                    if !Task.isCancelled { isMoving = false }
+                }
+            }
+    }
+}
+
 private struct IsOffstageKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -138,9 +172,10 @@ extension EnvironmentValues {
 /// Panels slide with UIKit and not with SwiftUI, because of what a touch finds. UIKit goes by where a view's going, so a press
 /// lands on the control that's about to be there. SwiftUI moves a view frame by frame, and `PLAY` pressed just after closing
 /// the browser set a hot cue on the pad going past, 4 times out of 5. It's the same spring as `Theme.panel`, and the delay's what
-/// SwiftUI takes to start moving the mixer: without it they were 62 pt apart on the way. A touch doesn't wait for it.
+/// SwiftUI takes to start moving the mixer: 22 ms left them 47 pt apart at the most in a typical slide, in Release, and 30 ms 33 pt.
+/// A touch doesn't wait for it.
 private func slide(_ view: UIView, to transform: CGAffineTransform) {
-    UIView.animate(springDuration: 0.38, bounce: 0.14, delay: 0.022, options: [.allowUserInteraction, .beginFromCurrentState]) {
+    UIView.animate(springDuration: 0.38, bounce: 0.14, delay: 0.03, options: [.allowUserInteraction, .beginFromCurrentState]) {
         view.transform = transform
     }
 }
@@ -408,12 +443,14 @@ struct TopBar: View {
             }
             .frame(width: 66, height: 20)
 
-            recordKey
-
             Key(color: Theme.accent, accessibilityName: "Recordings", onPress: { showRecordings = true }) {
                 Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
             }
             .frame(width: 26, height: 20)
+
+            // Last of these, as it grows to hold its timer. Ahead of Recordings it pushed that key along, and a press where it
+            // had been landed on this: one press from stopping someone's recording.
+            recordKey
             Spacer(minLength: 4)
             }
             .frame(maxWidth: .infinity)
@@ -448,9 +485,10 @@ struct TopBar: View {
         .padding(.horizontal, 6)
         .frame(height: 26)
         // On a phone there's no room for a message in the bar, so it hangs just below it for its few seconds. On its side it
-        // used to stay in the bar, and lost its second half, which is usually the part you act on.
+        // used to stay in the bar, and lost its second half, which is usually the part you act on. Over the browser it hangs
+        // below the search and the filters, as those are what a message like "only one's showing" sends you to.
         .overlay(alignment: .top) {
-            if layout.isCompact { StatusCapsule().padding(.horizontal, 6).offset(y: 28) }
+            if layout.isCompact { StatusCapsule().padding(.horizontal, 6).offset(y: showLibrary ? 62 : 28) }
         }
         .sheet(isPresented: $showRecordings) { RecordingsView().environment(dj) }
         .sheet(isPresented: $showSettings) { SettingsView().environment(dj).environment(library) }

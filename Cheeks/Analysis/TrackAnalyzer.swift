@@ -144,9 +144,13 @@ enum TrackAnalyzer {
             values.map { UInt8(min(255, ($0 / peak) * lift * 255)) }
         }
         let waveform = WaveformData(low: quantize(low), mid: quantize(mid, lift: 1.1), high: quantize(high, lift: 1.5))
-        let onset = onsetEnvelope(energyFull: energyFull, energyLow: energyLow)
-        var (bpm, firstBeat) = detectTempo(onset: onset, highs: onsetOfHighs(energyHigh), sampleRate: sr)
-        let markers = TempoMapDetector.detect(onset: onset, fps: sr / Double(tempoHop), bpm: bpm, firstBeat: firstBeat)
+        // Up to where the music ends. Silence after it brings down the average an onset's measured against: the same music read
+        // 170 BPM, and 162.7 with 3 minutes of silence after it.
+        let heard = (energyFull.lastIndex { $0 > silentHop } ?? energyFull.count - 1) + 1
+        let musicOnset = onsetEnvelope(energyFull: Array(energyFull.prefix(heard)), energyLow: Array(energyLow.prefix(heard)))
+        var (bpm, firstBeat) = detectTempo(onset: musicOnset, highs: onsetOfHighs(Array(energyHigh.prefix(heard))), sampleRate: sr)
+        let markers = TempoMapDetector.detect(onset: musicOnset, fps: sr / Double(tempoHop), bpm: bpm, firstBeat: firstBeat)
+        let onset = musicOnset + [Float](repeating: 0, count: max(0, energyFull.count - musicOnset.count))
         if let markers, let first = markers.first {
             bpm = TempoMapDetector.typicalBPM(markers)
             firstBeat = first.time
@@ -159,6 +163,9 @@ enum TrackAnalyzer {
                                                                   signalRate: sr / Double(keyDecimation), duration: Double(n) / sr), grid: grid)
         return AnalysisResult(bpm: bpm, firstBeat: firstBeat, tempoMarkers: markers, phrases: phrases, key: key, loudness: loudness.integrated, waveform: waveform)
     }
+
+    /// A hop's energy at -50 dB, which is as good as silence.
+    private static let silentHop = Float(tempoHop) * 1e-5
 
     /// Onset strength: positive change in log energy, weighting the kick region.
     /// `energyFull`/`energyLow` are per-hop (512 frames) energies of the mono mix and its <150 Hz band.
