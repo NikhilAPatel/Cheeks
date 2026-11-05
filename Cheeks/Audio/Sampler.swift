@@ -222,6 +222,8 @@ final class Sampler {
             return
         }
         useSound(pcm, fileName: name, title: "REC \(slot + 1)", slot: slot)
+        // It's replaced what was there, with nothing to say how to get that back.
+        onMessage?("Pad \(slot + 1) has your recording. SET and then the pad can restore its original sound.", .done)
     }
 
     var recordedSeconds: Double { Double(cheeks_engine_capture_frames(core)) / AudioConfig.sampleRate }

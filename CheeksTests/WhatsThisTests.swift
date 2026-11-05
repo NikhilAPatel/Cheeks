@@ -60,6 +60,13 @@ final class WhatsThisTests: XCTestCase {
     }
 
     /// The note has to fit a phone's screen beside what it's about, and be read mid-set.
+    /// They're in bright colour on every row, and searching for one found nothing.
+    func testTheGuideFindsAKeyCode() {
+        for code in ["5A", "12B"] {
+            XCTAssertEqual(Explanations.found(code).flatMap(\.entries).first?.names, ["Track key"], code)
+        }
+    }
+
     func testNotesAreShort() {
         for entry in Explanations.sections.flatMap(\.entries) {
             XCTAssertLessThanOrEqual(entry.text.count, 230, entry.title)

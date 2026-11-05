@@ -119,6 +119,7 @@ private final class WhatsThisTouchView: UIView {
 struct WhatsThisKey: View {
     @Environment(DJEngine.self) private var dj
     @AppStorage("whatsThisHintShown") private var hintShown = false
+    @AppStorage("swapTheLowsHintShown") private var lowsHintShown = false
 
     var body: some View {
         let help = WhatsThis.shared
@@ -133,6 +134,13 @@ struct WhatsThisKey: View {
             guard loaded, !hintShown, dj.statusMessage == nil else { return }
             hintShown = true
             dj.say("New to this? Press ? and tap anything to see what it does. The gear has the whole guide.", .info)
+        }
+        .onChange(of: dj.decks.allSatisfy(\.isPlaying)) { _, both in
+            // The crossfader works, so nothing suggests there's more to it. A first-time user mixed that way for 15 minutes,
+            // until the guide mentioned the LOWs. Not during a move, which has it in hand.
+            guard both, !lowsHintShown, dj.statusMessage == nil, dj.autoDJ.phase == .idle, dj.autoDJ.mixSet == nil else { return }
+            lowsHintShown = true
+            dj.say("Two basslines clash. Turn the new track's LOW down, and swap the two LOWs as you crossfade. The gear's guide has the rest.", .info)
         }
     }
 }

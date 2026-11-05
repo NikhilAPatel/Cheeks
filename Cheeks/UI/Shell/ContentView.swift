@@ -306,7 +306,7 @@ struct WaveformPanel: View {
         .displayWell(cornerRadius: 5)
         .overlay(alignment: .topLeading) { deckBadge(dj.decks[0]).offset(x: 4, y: overviewHeight + 4) }
         .overlay(alignment: .bottomLeading) { deckBadge(dj.decks[1]).offset(x: 4, y: -overviewHeight - 4) }
-        .overlay { BarCounters(decks: dj.decks, waveHeight: waveHeight) }
+        .overlay { BarCounters(decks: dj.decks, waveHeight: waveHeight, overviewHeight: overviewHeight) }
     }
 
     private func deckBadge(_ deck: Deck) -> some View {
@@ -321,8 +321,10 @@ struct WaveformPanel: View {
 
 /// "16.4" and a phrase count beside each playhead, where a bar count usually goes.
 private struct BarCounters: View {
+    @Environment(\.screenLayout) private var layout
     let decks: [Deck]
     var waveHeight: CGFloat
+    var overviewHeight: CGFloat
 
     var body: some View {
         GeometryReader { geo in
@@ -337,11 +339,19 @@ private struct BarCounters: View {
                         .padding(.horizontal, 3)
                         .background(Capsule().fill(Color.black.opacity(text.isEmpty ? 0 : 0.72)))
                         .fixedSize()
-                        .position(x: x - 36, y: deck.index == 0 ? 14 + 1 + 8 : geo.size.height - 14 - 1 - waveHeight + 8)
+                        .position(x: x - 36, y: y(of: deck, in: geo.size.height))
                 }
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// A phone's messages hang over the top of deck 1's waveform, and every one sat on this for its whole life. So there it
+    /// goes at the bottom of that waveform, beside deck 2's, with the beat blocks between them.
+    private func y(of deck: Deck, in height: CGFloat) -> CGFloat {
+        let overview = overviewHeight + 1
+        if deck.index == 1 { return height - overview - waveHeight + 8 }
+        return layout.isCompact ? overview + waveHeight - 8 : overview + 8
     }
 
     private func label(_ deck: Deck) -> String {
@@ -592,6 +602,7 @@ extension StatusKind {
         case .info: "info.circle.fill"
         case .refused: "hand.raised.fill"
         case .problem: "exclamationmark.triangle.fill"
+        case .removed: "trash.circle.fill"
         }
     }
 
@@ -601,6 +612,7 @@ extension StatusKind {
         case .info: Theme.textSecondary
         case .refused: Theme.warn
         case .problem: Theme.danger
+        case .removed: Theme.textSecondary
         }
     }
 }
@@ -612,7 +624,7 @@ struct StatusCapsule: View {
     private var shown: (text: String, symbol: String?, tint: Color)? {
         if let error = dj.engineError { return (error, StatusKind.problem.symbol, StatusKind.problem.tint) }
         if let message = dj.statusMessage {
-            return dj.undoAction != nil ? (message, "trash.circle.fill", Theme.textSecondary) : (message, dj.statusKind.symbol, dj.statusKind.tint)
+            return (message, dj.statusKind.symbol, dj.statusKind.tint)
         }
         return dj.savingRecordings > 0 ? ("Saving your mix…", nil, Theme.accent) : nil
     }

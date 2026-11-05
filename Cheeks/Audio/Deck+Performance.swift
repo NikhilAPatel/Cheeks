@@ -18,7 +18,7 @@ extension Deck {
                 t.hotCues[slot] = nil
                 t.hotCueInfo[slot] = nil
             }
-            offerUndo?("Deleted hot cue \(Theme.hotCueLetters[slot])") { [weak self] in
+            offerUndo?("Deleted hot cue \(Theme.hotCueLetters[slot])", .removed) { [weak self] in
                 self?.updateTrack { t in
                     t.hotCues[slot] = removed
                     t.hotCueInfo[slot] = info
@@ -101,7 +101,7 @@ extension Deck {
         saveMemoryCue(at: time)
         Haptics.shared.confirm()
         // The first one's where the track loads from then on. One stray press moved that, with nothing said and no way back.
-        offerUndo?(hadOneBefore ? "Memory cue saved." : "Memory cue saved. The track loads here now.") { [weak self] in
+        offerUndo?(hadOneBefore ? "Memory cue saved." : "Memory cue saved. The track loads here now.", .done) { [weak self] in
             self?.updateTrack { $0.memoryCues.removeAll { abs($0.time - time) < 0.01 } }
         }
     }
@@ -165,10 +165,10 @@ extension Deck {
         switch item {
         case .cue(let cue):
             updateTrack { $0.memoryCues.removeAll { $0.id == cue.id } }
-            offerUndo?("Deleted memory cue") { [weak self] in self?.updateTrack { $0.memoryCues.append(cue) } }
+            offerUndo?("Deleted memory cue", .removed) { [weak self] in self?.updateTrack { $0.memoryCues.append(cue) } }
         case .loop(let loop):
             updateTrack { $0.savedLoops.removeAll { $0.id == loop.id } }
-            offerUndo?("Deleted saved loop") { [weak self] in self?.updateTrack { $0.savedLoops.append(loop) } }
+            offerUndo?("Deleted saved loop", .removed) { [weak self] in self?.updateTrack { $0.savedLoops.append(loop) } }
         }
         memoryPage = min(memoryPage, memoryPageCount - 1)
     }
@@ -807,6 +807,8 @@ extension Deck {
             t.bpm = current * multiplier
             t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time, bpm: $0.bpm * multiplier, beatInBar: $0.beatInBar) }
         }
+        // A first-time user had to watch the clock to find out this doesn't change the speed.
+        onMessage?(String(format: "Deck %d's track reads %.0f BPM now. Its speed hasn't changed.", index + 1, current * multiplier), .done)
     }
 
     func nudgeBPM(by delta: Double) {

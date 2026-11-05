@@ -102,7 +102,11 @@ extension Library {
         decoder.dateDecodingStrategy = .iso8601
         guard let backup = try? decoder.decode(LibraryBackup.self, from: data) else { throw BackupError.unreadable }
         if !tracks.isEmpty, let safety = try? backupData() {
-            let stamp = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted))
+            // In the time on the phone: it read 8 hours on from when it was made.
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd HHmmss"
+            let stamp = formatter.string(from: Date())
             let name = "Before restore \(stamp).json"
             try? safety.write(to: Self.backupDirectory.appending(path: name), options: .atomic)
         }

@@ -163,8 +163,14 @@ struct CompactDeck: View {
 
     /// Swaps the pads for the jog and the keys beside it.
     private var pageKey: some View {
-        Key(showJog ? "PADS" : "JOG", lit: showJog, size: 8, feel: .toggle, accessibilityName: showJog ? "Show pads, deck \(deck.index + 1)" : "Show jog, deck \(deck.index + 1)", help: "Deck page", actsDuringHelp: true, onPress: { showJog.toggle() })
-            .frame(width: keyWidth)
+        Key(color: Theme.accent, lit: showJog, feel: .toggle, accessibilityName: showJog ? "Show pads, deck \(deck.index + 1)" : "Show jog, deck \(deck.index + 1)", help: "Deck page", actsDuringHelp: true, onPress: { showJog.toggle() }) {
+            VStack(spacing: 0) {
+                KeyLegend(title: showJog ? "PADS" : "JOG", size: 8)
+                // Round after round, the tempo fader's what nobody could find, behind a word that means the wheel.
+                if !showJog { Text("TEMPO").font(Theme.silk(5)) }
+            }
+        }
+        .frame(width: keyWidth)
     }
 
     /// On its side, what these give up goes to the track's title.
@@ -355,6 +361,10 @@ struct MixerMoreSheet: View {
                 .frame(width: 110)
             }
             .frame(height: 34)
+            // It lit with nothing to say what it does, or that one output can't do it.
+            Text(dj.splitCue ? "SPLIT's on: the mix in the left ear and your cue in the right, for a splitter cable." : "One output, like AirPods, only plays the mix. SPLIT's for a splitter cable.")
+                .font(Theme.text(11))
+                .foregroundStyle(Theme.textTertiary)
             Spacer(minLength: 0)
         }
         .padding(16)

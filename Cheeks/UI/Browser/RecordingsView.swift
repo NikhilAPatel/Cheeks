@@ -52,10 +52,12 @@ struct RecordingsView: View {
                 Button("Rename") { rename(url) }
                 Button("Cancel", role: .cancel) {}
             }
-            .confirmationDialog("Delete this recording and its tracklist?",
-                                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                                titleVisibility: .visible, presenting: deleting) { url in
+            // A confirmation dialog on a phone on its side had no Cancel to see, only a red Delete.
+            .alert("Delete this recording and its tracklist?",
+                   isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                   presenting: deleting) { url in
                 Button("Delete", role: .destructive) { delete(url) }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .preferredColorScheme(.dark)

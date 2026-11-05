@@ -192,6 +192,7 @@ struct CueListView: View {
     private func lengthText(_ loop: SavedLoop) -> String {
         guard deck.grid != nil else { return String(format: "%.1f s", loop.end - loop.start) }
         let beats = deck.beatPosition(loop.end * deck.sampleRate) - deck.beatPosition(loop.start * deck.sampleRate)
-        return "\(Format.beats((beats * 16).rounded() / 16)) beats"
+        // Rounded only under a beat, where it's a fraction. 7.7 on the deck read 7.8 here.
+        return "\(Format.beats(beats < 1 ? (beats * 16).rounded() / 16 : beats)) beats"
     }
 }

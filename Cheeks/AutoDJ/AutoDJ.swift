@@ -41,6 +41,10 @@ final class AutoDJ {
         var keepsQuietAboutNext = false
         /// It's said that this is the last one.
         var saidItsTheLast = false
+        /// What was on the waiting deck when the list ran out, so anything else there is what someone's just loaded.
+        var leftOnWaiting: UUID?
+        /// It's said once in this mix that STEMS is where to watch from.
+        var saidToWatch = false
         /// How many tracks it's got, said again with what's up next, which comes straight after and would take its place.
         var opening: String?
 
@@ -143,6 +147,8 @@ final class AutoDJ {
     @ObservationIgnored private let core: OpaquePointer
     @ObservationIgnored private let decks: [Deck]
     @ObservationIgnored private let say: (String, StatusKind) -> Void
+    /// Takes a message down, if it's still the one showing.
+    @ObservationIgnored var takeBack: ((String) -> Void)?
     /// Opens the channel for a deck that's coming in, and gives back how to undo that.
     @ObservationIgnored private let prepareMixer: (Deck) -> (() -> Void)
     @ObservationIgnored private var planning: Task<Void, Never>?
@@ -365,7 +371,15 @@ final class AutoDJ {
                 mixSet?.opening = nil
             } else if !set.saidItsTheLast {
                 mixSet?.saidItsTheLast = true
+                mixSet?.leftOnWaiting = waiting.isLoading ? waiting.loadingTrack?.id : waiting.track?.id
                 if !isAskingForRating() { say("That's the last track in \(set.name). The mix ends with it.", .info) }
+            } else if !waiting.isLoading, waiting.loadError == nil, let id = waiting.track?.id, id != set.leftOnWaiting {
+                // Loading on the waiting deck changes what's next everywhere else in a mix. Here it was ignored, with nothing
+                // said: the mix ended in silence, with what they'd loaded sitting ready.
+                mixSet?.next = id
+                mixSet?.saidItsTheLast = false
+                planAgainFromHere()
+                say("Up next: \(waiting.track?.title ?? "that"). The mix carries on.", .info)
             }
             return
         }
@@ -412,7 +426,11 @@ final class AutoDJ {
             deck.prepareStems()
         }
         // It gave up from where the deck was then. Further back there may well be a way in.
-        if let gaveUpAt = set.gaveUpAt, air.renderer.playhead < gaveUpAt - AudioConfig.sampleRate { planAgainFromHere() }
+        if let gaveUpAt = set.gaveUpAt, air.renderer.playhead < gaveUpAt - AudioConfig.sampleRate {
+            planAgainFromHere()
+            // It stayed up for 4 s with MIX 40 already counting beside it.
+            takeBack?(Self.noWayIn)
+        }
         guard mixSet?.plannedFor != next, let map = air.trackMap, waiting.trackMap != nil else { return }
         // As late as it'll go, and no further back than a third of the way in: past that it's better to echo out from
         // where it would have left anyway, and past that to let the track finish.
@@ -424,7 +442,7 @@ final class AutoDJ {
             guard mixSet?.lastResort != true else {
                 mixSet?.plannedFor = next
                 mixSet?.gaveUpAt = air.renderer.playhead
-                say("No clean way in. Next track starts when this one ends.", .info)
+                say(Self.noWayIn, .info)
                 return
             }
             from = usual
@@ -441,6 +459,8 @@ final class AutoDJ {
             mixSet?.lastResort = false
         }
     }
+
+    private static let noWayIn = "No clean way in. Next track starts when this one ends."
 
     /// The incoming deck's the one on air now, and the other one's free for what comes next.
     private func handOver(to deck: Deck) {
@@ -864,8 +884,16 @@ final class AutoDJ {
             // "Take it back" read as cancelling the whole thing. And the faders mostly stay still in a move, so it says where to look.
             // Two first-time users took 34 and 17 minutes to see what a move does. Watching both decks on STEMS is what did it.
             let onStems = outgoing?.padMode == .stems && incoming?.padMode == .stems
-            let watch = onStems ? "" : " Put both decks on STEMS to watch it."
-            say(mixSet == nil ? "\(move.title) starting.\(watch) A control you touch is yours." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
+            // A brake drop has nothing to see there: the old deck stops and the new one's all in.
+            let watch = onStems || move == .brakeDrop ? "" : " Put both decks on STEMS to watch it."
+            if mixSet == nil {
+                say("\(move.title) starting.\(watch) A control you touch is yours.", .info)
+            } else {
+                // Someone who only ever presses MIX never got this. Once a mix, or it's a nag every few minutes.
+                let tip = mixSet?.saidToWatch == true ? "" : watch
+                if !tip.isEmpty { mixSet?.saidToWatch = true }
+                say("\(move.title) into \(incoming?.track?.title ?? "the next track").\(tip)", .info)
+            }
         }
     }
 

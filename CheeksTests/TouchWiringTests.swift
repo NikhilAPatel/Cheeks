@@ -52,7 +52,7 @@ final class TouchWiringTests: XCTestCase {
         return out
     }
 
-    private func makeScreen() async throws -> (DJEngine, Library) {
+    private func makeScreen(size: CGSize = TouchWiringTests.size, startsOnJog: Bool = false) async throws -> (DJEngine, Library) {
         let library = Library()
         let dj = DJEngine(library: library)
         dj.stopRealtimeForTesting()
@@ -64,11 +64,11 @@ final class TouchWiringTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 1
-        let host = UIHostingController(rootView: ContentView(opensBrowserWhenEmpty: false).environment(library).environment(dj))
+        let host = UIHostingController(rootView: ContentView(opensBrowserWhenEmpty: false).environment(library).environment(dj).environment(\.compactDeckStartsOnJog, startsOnJog))
         window.rootViewController = host
-        window.frame = CGRect(origin: .zero, size: Self.size)
+        window.frame = CGRect(origin: .zero, size: size)
         window.isHidden = false
-        window.frame = CGRect(origin: .zero, size: Self.size)
+        window.frame = CGRect(origin: .zero, size: size)
         host.view.frame = window.bounds
         self.window = window
         try await settle()
@@ -127,6 +127,8 @@ final class TouchWiringTests: XCTestCase {
 
         var changed: Set<String> = []
         for control in found {
+            // They come in no fixed order, and SYNC refuses on the only deck playing, so each starts with nothing playing.
+            dj.decks.forEach { $0.pause() }
             changed.formUnion(try await exercise(control, dj: dj))
         }
         for name in ["isPlaying", "quantize", "slipMode", "keyLock", "reverse", "syncOn", "headphoneCue",
@@ -413,6 +415,20 @@ final class TouchWiringTests: XCTestCase {
         return found[deck]
     }
 
+    /// Pressing JOG made the waveforms hop 3 or 4 pt, in the first-time user's report for round 17.
+    func testOnAPhoneTheWaveformsDontMoveWithADecksPage() async throws {
+        for size in [CGSize(width: 667, height: 375), CGSize(width: 844, height: 390), CGSize(width: 375, height: 667)] {
+            var tops: [CGFloat] = []
+            for onJog in [false, true] {
+                _ = try await makeScreen(size: size, startsOnJog: onJog)
+                try await settle(300)
+                let strip = try overview(of: 1)
+                tops.append(strip.convert(strip.bounds, to: nil).minY)
+            }
+            XCTAssertEqual(tops[0], tops[1], accuracy: 0.5, "At \(size)")
+        }
+    }
+
     /// One stray touch on this strip moved a live track by minutes.
     func testOnAPlayingDeckAStrayTouchOnTheOverviewDoesntJump() async throws {
         let (dj, _) = try await makeScreen()
@@ -435,9 +451,16 @@ final class TouchWiringTests: XCTestCase {
 
         deck.seek(to: 20)
         strip.touchDown(at: strip.bounds.width * 0.5)
-        XCTAssertEqual(deck.position, 20, accuracy: 0.5)
         strip.touchMoved(to: strip.bounds.width * 0.8)
-        XCTAssertEqual(deck.position, 48, accuracy: 1, "Sliding's clearly meant")
+        XCTAssertEqual(deck.position, 20, accuracy: 0.5, "A thumb brushing along it is still a stray touch")
+        strip.touchUp()
+        XCTAssertEqual(deck.position, 20, accuracy: 0.5)
+
+        strip.touchDown(at: strip.bounds.width * 0.5)
+        try await settle(Int(OverviewLiveView.holdToJump * 1000) + 200)
+        XCTAssertEqual(deck.position, 30, accuracy: 1)
+        strip.touchMoved(to: strip.bounds.width * 0.8)
+        XCTAssertEqual(deck.position, 48, accuracy: 1, "Once it's held it goes with the finger")
         strip.touchUp()
 
         deck.pause()
@@ -770,7 +793,7 @@ final class TouchWiringTests: XCTestCase {
         let strip = CGRect(x: 300, y: 0, width: 650, height: 30)
         let before = Set(controls(in: strip).map { ObjectIdentifier($0.view) })
         // Where the key ends up, with the capsule settled.
-        dj.decks[0].offerUndo?("Deleted hot cue A") {}
+        dj.decks[0].offerUndo?("Deleted hot cue A", .removed) {}
         try await settle(800)
         let settled = try XCTUnwrap(controls(in: strip).first { !before.contains(ObjectIdentifier($0.view)) })
         var undone = 0
@@ -780,7 +803,7 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertTrue(controls(in: strip).allSatisfy { before.contains(ObjectIdentifier($0.view)) }, "It's gone again")
 
         // From the first frame on, a touch there has to land on the key.
-        dj.decks[0].offerUndo?("Deleted hot cue A") { undone += 1 }
+        dj.decks[0].offerUndo?("Deleted hot cue A", .removed) { undone += 1 }
         var frames = 0, missed = 0
         var pressed = false
         for _ in 0..<40 {

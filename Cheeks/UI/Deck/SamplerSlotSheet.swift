@@ -49,6 +49,12 @@ struct SamplerSlotSheet: View {
                 }
             }
             .font(Theme.text(13))
+            // On a phone on its side it was 39 pt too tall, so a flick moved its rows under a finger for 0.7 s, and that cost a
+            // first-time user two wrong rows, one of which recorded over a pad.
+            .listSectionSpacing(.compact)
+            .environment(\.defaultMinListRowHeight, 34)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .scrollBounceBehavior(.basedOnSize)
             .scrollContentBackground(.hidden)
             .background(Color(white: 0.07))
             .navigationTitle("Pad \(slot + 1)")

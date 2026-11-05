@@ -438,6 +438,7 @@ struct BrowserView: View {
                     searchFocused = false
                     importKind = .djLibrary
                     importing = true
+                    dj.say("Choose the XML your DJ software exported.", .info)
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -722,6 +723,14 @@ struct TrackRow: View {
             }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // The first thing a first-time user tries on a row, and it did nothing at all.
+            .onTapGesture {
+                guard !WhatsThis.shared.isOn else { return }
+                Haptics.shared.tick()
+                dj.say("Press 1 or 2 to load this, or hold the row for more.", .info)
+            }
+            .whatsThis("Track row")
             if !layout.isCompact {
                 Text(track.artist.isEmpty ? "Unknown artist" : track.artist)
                     .font(Theme.text(11))

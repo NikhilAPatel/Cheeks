@@ -136,6 +136,7 @@ struct TempoSection: View {
 /// SYNC, MASTER, quantize, slip, key lock and key controls, stacked on the inner side of the jog.
 struct DeckKeys: View {
     @Environment(DJEngine.self) private var dj
+    @Environment(\.screenLayout) private var layout
     @Bindable var deck: Deck
     /// Two columns, for a deck too short to stack them: a phone held upright.
     var sideBySide = false
@@ -174,9 +175,10 @@ struct DeckKeys: View {
             dj.toggleSync(deck)
             if !wasOn && deck.syncOn { Haptics.shared.confirm() }
         })
-        .frame(height: 32)
+        // On the smallest phone on its side, the page was 8 pt taller than its room, and pressing JOG moved everything above it.
+        .frame(height: layout == .landscape ? 26 : 32)
         Key("MASTER", color: Theme.cue, lit: dj.masterIndex == deck.index && deck.isLoaded, size: 8.5, feel: .toggle, onPress: { dj.setMaster(deck) })
-            .frame(height: 22)
+            .frame(height: layout == .landscape ? 20 : 22)
     }
 
     /// Quantize, slip, key lock and reverse.
@@ -402,7 +404,8 @@ struct DeckHeader: View {
     private var stemsProgress: String? {
         // During a load, that's still the last track's progress, under the new track's name.
         guard deck.padMode != .stems, !deck.isLoading, case .separating(let progress) = deck.stemStatus else { return nil }
-        return "Stems " + (progress.map { "\(Int($0 * 100))%" } ?? "waiting")
+        // 100% didn't fit on the small iPhone, for the moment it showed, and it isn't done until it's done.
+        return "Stems " + (progress.map { "\(min(99, Int($0 * 100)))%" } ?? "waiting")
     }
 
     /// The tempo it's playing at, as the jog shows it. Tap it to fix the beat grid, which belongs to the
@@ -410,8 +413,9 @@ struct DeckHeader: View {
     private var gridMenu: some View {
         Menu {
             Section("Beat grid: " + String(format: "%.2f", deck.bpm) + " BPM at normal speed") {
-                Button("Double BPM", systemImage: "multiply") { deck.scaleBPM(2) }
-                Button("Halve BPM", systemImage: "divide") { deck.scaleBPM(0.5) }
+                // It's what the track's read as, and not its speed. "Halve BPM" sounds like a speed control.
+                Button("Double the Reading", systemImage: "multiply") { deck.scaleBPM(2) }
+                Button("Halve the Reading", systemImage: "divide") { deck.scaleBPM(0.5) }
                 if deck.grid?.isVariable == true {
                     Button("Use one steady tempo", systemImage: "metronome") { deck.flattenGrid() }
                 } else {
@@ -522,7 +526,7 @@ enum Format {
 
     /// Time left. With none left, there's nothing to take away from it.
     static func toGo(_ seconds: Double) -> String {
-        (seconds >= 0.05 ? "-" : "") + tenths(seconds)
+        (seconds.isFinite && seconds >= 0.1 ? "-" : "") + tenths(seconds)
     }
 
     static func tenths(_ seconds: Double) -> String {

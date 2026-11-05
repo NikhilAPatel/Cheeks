@@ -52,7 +52,8 @@ private struct PageHint: ViewModifier {
 
     func body(content: Content) -> some View {
         content.onAppear {
-            guard !UserDefaults.standard.bool(forKey: key), dj.rateAction == nil else { return }
+            // Under ?'s note they were cut off. They can wait for the next time the page comes up.
+            guard !UserDefaults.standard.bool(forKey: key), dj.rateAction == nil, !WhatsThis.shared.isOn else { return }
             UserDefaults.standard.set(true, forKey: key)
             dj.say(message, .info)
         }
@@ -439,19 +440,24 @@ struct MemoryControlRow: View {
         HStack(spacing: 3) {
             Key("SAVE CUE", color: Theme.danger, size: 8, onPress: deck.saveMemoryCueHere)
             Key("SAVE LOOP", color: Theme.loop, size: 8, onPress: deck.saveCurrentLoop)
-            Key(color: Theme.accent, accessibilityName: "Previous page", onPress: { page(-1) }) {
-                Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
-            }
-            .frame(width: 20)
             // Only worth showing with a page to go to. "1/1" on an empty deck read as one saved.
-            Text(deck.memoryPageCount > 1 ? "\(deck.memoryPage + 1)/\(deck.memoryPageCount)" : " ")
-                .font(Theme.digits(10))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(width: 24)
-            Key(color: Theme.accent, accessibilityName: "Next page", onPress: { page(1) }) {
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+            if deck.memoryPageCount > 1 {
+                Key(color: Theme.accent, accessibilityName: "Previous page", onPress: { page(-1) }) {
+                    Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
+                }
+                .frame(width: 20)
+                Text("\(deck.memoryPage + 1)/\(deck.memoryPageCount)")
+                    .font(Theme.digits(10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 24)
+                Key(color: Theme.accent, accessibilityName: "Next page", onPress: { page(1) }) {
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                }
+                .frame(width: 20)
+            } else {
+                // The same room, so SAVE CUE and SAVE LOOP stay where they are when a second page arrives.
+                Color.clear.frame(width: 70, height: 1)
             }
-            .frame(width: 20)
             Key("LIST", color: Theme.accent, size: 8, onPress: { showList = true })
                 .frame(width: 30)
         }
@@ -679,13 +685,19 @@ struct FXPad: View {
                 deck.fxBeats = BeatFX.beatChoices[index]
             }
         }) {
-            Text(effect.rawValue)
-                .font(Theme.silk(8.5))
-                .tracking(0.2)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.55)
-                .lineLimit(effect.rawValue.contains(" ") ? 2 : 1)
-                .padding(.horizontal, 2)
+            VStack(spacing: 2) {
+                Text(effect.rawValue)
+                    .font(Theme.silk(8.5))
+                    .tracking(0.2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.55)
+                    .lineLimit(effect.rawValue.contains(" ") ? 2 : 1)
+                    .padding(.horizontal, 2)
+                // They look like the other effects, and they're the two that stop the deck, and with it a mix.
+                if effect == .brake || effect == .backspin {
+                    Image(systemName: "stop.fill").font(.system(size: 6))
+                }
+            }
         }
     }
 }

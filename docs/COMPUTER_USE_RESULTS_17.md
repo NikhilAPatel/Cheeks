@@ -636,3 +636,59 @@ The notes are kept as written, mistakes included, so you can see what I believed
 - 00:59:20 Second-from-last MIX move: Severe Tire left with 3:05 still to run. So MIX doesn't play tracks to the end; nothing says it won't, and I'd assumed it would. Toast "Echo throw done. Deck 1 is on. More echo throws?" Thumbs up: "Got it. More like that." So the thumbs work; my 00:26:36 tap was probably too late or off target.
 - 01:01:52 Last move watched: FILTER/LOW on deck 1 turn by themselves, and deck 1's label goes from DUB to FILTER while deck 2's stays DUB (fu-41-move-running-filter-borrowed.png). The guide line "Auto DJ can borrow it for a filter" explains that. Before reading it I took it for a label bug (my 00:43:15 note).
 - CORRECTION, DEPTH: deck 1's DEPTH was partly filled at 00:21:57 too (fu-07), the same as deck 2's. So partly filled is the starting value, and deck 1 only went full because I slid up on the ECHO pad at 00:41:30. A slide on the pad changes DEPTH and it stays changed. Not a bug. My 00:56:30 and 00:57:15 notes are wrong about that.
+
+---
+
+## What happened next
+
+Everything below is in the next commit, and the task's round 18 retests it.
+
+### Failures
+- **GC4, `-00:00.0`: fixed.** The minus now goes by what's shown, so there's none until 0.1 s. A test has 0.07 s and 0.1 s in it.
+- **N23, a track loaded on a mix's last track: fixed, as you read it.** With nothing left on the list, it now looks at the waiting deck. Anything there that isn't what the last move left behind is what's next: "Up next: X. The mix carries on." It also says "That's the last track" again after that one, if the list is still empty.
+- **N24, `BEAT SYNC` on the only deck playing: it refuses now.** "Deck 2's leading, with nothing playing to follow. SYNC on deck 1 brings that one to this tempo." with a hand, and nothing moves. With both playing, it follows the other deck as before, and with both stopped too, as nobody can hear it. Real decks stay put here too, though some light the key. Refusing says more.
+- **N25, the crossfader looking like the whole job: their tip's in.** The first time both decks are playing, with nothing else being said and no move on: "Two basslines clash. Turn the new track's LOW down, and swap the two LOWs as you crossfade. The gear's guide has the rest." Once only.
+- **N26, a recording's delete: fixed.** It's an alert with a `Cancel`, the same as a track's.
+- **N27, the bin on good news: fixed.** An `UNDO` no longer means a bin. What's offered says what kind it is, so a saved cue gets a green tick, and a deleted one still gets the bin.
+
+### Your first impressions
+- **Messages over the waveform: the worst of it's gone.** On a phone, deck 1's section name now sits at the bottom of its waveform, beside deck 2's, with the beat blocks between them, where a one-line message doesn't reach. A long message still covers the waveform's top for as long as it's up. Full-layout screens are as they were, as nothing covers them there. GC1 asks.
+- **Tempo behind `JOG`: the key says so.** It reads `JOG` with `TEMPO` under it, small. Nothing moved.
+- **The sampler's sheet: it fits.** On the small iPhone on its side, it now ends 25 pt above the screen's bottom, where it was 39 pt over, so nothing scrolls under a finger unless there are extra rows. A UI test checks that. The other half of that first-time user's trouble was `Record the Master` replacing a pad with nothing to say how to get it back, so stopping now says "Pad 3 has your recording. SET and then the pad can restore its original sound."
+- **The gaps between keys: gone.** Every `Key` now takes a touch 1.5 pt past each edge, half of the usual 3 pt gap, so a press between `BEAT` and `ALL` lands on one of them. Tighter rows overlap by a point, and the later one wins.
+- **The mixer sheet's "screen of nothing":** it now says what `SPLIT` does under the keys. It's still mostly empty on the folded Duo upright, and that's still open.
+- **`SMPL ›` and the rest, and "one button with two kinds of number" (`MIX 14` and `MIX 14%`):** left as they are. `?` explains both, and there's no room for better.
+
+### `GC1`, the overview
+**A slide doesn't count any more, only a touch that stays for 0.25 s.** Your 10 pt slide going from 1:15 to 4:33 is the case that hurt, and holding and then sliding is nearly as quick, as it goes with the finger from then on. A brush along it gets the message. It's still on the owner's list for a real thumb.
+
+### What the first-time user said, and what I did
+- **`MIX`'s moves never carried the `STEMS` tip:** the first move of a mix does now, once a mix. "Loop build into Houston. Put both decks on STEMS to watch it."
+- **"Brake drop starting. Put both decks on STEMS":** not on a brake drop, as there's nothing to see.
+- **A row's tap:** the title and artist say "Press 1 or 2 to load this, or hold the row for more." with a tick, and `?` has a note for it, `TRACK ROW`. I didn't make the tap load anything, as a row's where a thumb lands when stopping a scroll.
+- **`5A` finding nothing in the guide:** every key code now finds the `KEY` note.
+- **`CUE/MST`:** it now says "Turned to the left, the decks you've cued. Turned to the right, the mix", as beside "in your right ear" it read as a contradiction.
+- **Gate:** the `SET` note says what one is.
+- **`Halve BPM` and `Double BPM`:** they're `Halve the Reading` and `Double the Reading`, and they say "Deck 1's track reads 63 BPM now. Its speed hasn't changed." That also replaces "follows at half tempo" when it's stopped being true.
+- **`BACKSPIN` and `BRAKE`:** a small square on each pad, and both notes say what it means and that a mix ends with it.
+- **A deck staying at a synced speed after the other's gone:** that's what real decks do, so it stays. `TEMPO FADER`'s note says so, and how to get back.
+- **`SPLIT`:** on the full layout it says what it does as it lights. On a phone it's under the sheet, so the sheet says it instead.
+- **`DJ library (XML)`:** "Choose the XML your DJ software exported."
+- **First-time tips under `?`'s note:** they wait until `?`'s off.
+- **The waveforms hopping as `JOG` is pressed: fixed.** A test got exactly their 4 pt (110 and 106). The jog page was 8 pt taller than its room on the smallest phone, so everything got pushed up. Its top two keys are shorter there.
+- **7.7 on the deck and 7.8 in `LIST`:** both read the same now.
+- **RGB and `STEMS`:** the setting's note mentions it.
+
+### Looks wrong
+- **`REV` with `SLIP` at the start: fixed.** A deck that's run back to the start and stopped stays there when `REV` goes off.
+- **"No clean way in" after a seek back: fixed.** It comes down at once.
+- **`Stems 100...`: fixed.** It stops at 99% until it's done.
+- **Before restore's name: fixed.** It's the phone's own time, as `Before restore 2026-11-05 003341.json`.
+- **`MEM`'s arrows: fixed.** They only show with a second page, and the room's kept, so nothing else moves when one arrives.
+
+### Left as they are
+- **The Vocal ride's gap.** Going by your new timing, it's about 11 s into the ride. The ride's score has no event between the landing and its echo at 30 beats on, which at 128 BPM is about 14 s. The new track's stems are up and only the old vocal's on top, so I still think it's the new track's own. I don't know which track that was, and I can't prove it. GC8 asks again.
+- **The tempo fader's 7 pt from the platter on the small iPhone,** with 1.34% a point on `WIDE`. A drag there is a real jump, and it's what the first-time user did. I've nothing better to offer in that width yet. It's on the list.
+- **`AUTO` choosing its move, with no way to ask for another.** A feature, for later.
+- **Tips and notes covering what they describe, and the tracks' own wrong names before stems.** Known, and left.
+- **GA:** still blocked, on the owner.

@@ -132,7 +132,7 @@ final class Deck {
     /// Called when the track's been edited, for a deck holding the same track to pick it up.
     @ObservationIgnored var onTrackEdited: (@MainActor () -> Void)?
     /// Called after something destructive, to offer a way back.
-    @ObservationIgnored var offerUndo: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
+    @ObservationIgnored var offerUndo: (@MainActor (String, StatusKind, @escaping @MainActor () -> Void) -> Void)?
 
     // Track
     var track: Track? { didSet { gridChanged() } }
@@ -692,7 +692,14 @@ final class Deck {
         renderer.reverse = reverse
         // A running loop holds in reverse, and its slip is for leaving the loop, not for this.
         guard slipMode, !renderer.loopActive || isLoopAhead else { return }
-        if reverse { renderer.engageSlip() } else { renderer.releaseSlip() }
+        if reverse {
+            renderer.engageSlip()
+        } else if renderer.isPlaying {
+            renderer.releaseSlip()
+        } else {
+            // It's run back to the start and stopped. Taking it to where it would have been moved a stopped deck 7 s by itself.
+            renderer.cancelSlip()
+        }
     }
 
     /// When this track's split started moving, and how far along it was then, as it can start from a part that was saved.

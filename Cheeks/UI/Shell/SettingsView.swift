@@ -52,7 +52,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Display")
                 } footer: {
-                    Text("3-band draws the lows, mids and highs in colours of their own. RGB is one shape, coloured by the balance between them.")
+                    Text("3-band draws the lows, mids and highs in colours of their own. RGB is one shape, coloured by the balance between them. A deck on STEMS shows its stems' colours with either.")
                 }
                 Section {
                     Toggle("Haptics", isOn: $hapticsOn)

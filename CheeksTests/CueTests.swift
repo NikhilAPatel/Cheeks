@@ -103,7 +103,7 @@ final class CueTests: XCTestCase {
     func testDeletingWithDELCanBeUndone() {
         let deck = makeDeck()
         var undo: (@MainActor () -> Void)?
-        deck.offerUndo = { _, action in undo = action }
+        deck.offerUndo = { _, _, action in undo = action }
         deck.updateTrack { $0.memoryCues = [MemoryCue(time: 5, name: "Keep")] }
         deck.shift = true
         deck.pressMemory(deck.memoryItems[0])
@@ -116,7 +116,7 @@ final class CueTests: XCTestCase {
     func testDeletingAHotCueBringsItsNameBackOnUndo() {
         let deck = makeDeck()
         var undo: (@MainActor () -> Void)?
-        deck.offerUndo = { _, action in undo = action }
+        deck.offerUndo = { _, _, action in undo = action }
         deck.updateTrack { t in
             t.hotCues[0] = 5
             t.hotCueInfo[0] = HotCueInfo(name: "Drop")
@@ -322,7 +322,7 @@ final class CueTests: XCTestCase {
         let (deck, library) = deckInLibrary()
         let id = deck.track!.id
         var undo: (() -> Void)?
-        deck.offerUndo = { _, action in undo = action }
+        deck.offerUndo = { _, _, action in undo = action }
         deck.saveMemoryCue(at: 12)
         deck.delete(deck.memoryItems[0])
         undo?()
@@ -873,6 +873,32 @@ final class CueTests: XCTestCase {
         deck.play()
         deck.slipMode = true
         XCTAssertFalse(deck.renderer.slipEngaged, "The waiting loop hasn't got hold of the deck")
+    }
+
+    /// Round 17: reversing back to the start stops the deck, and turning REV off then took it 7 s along, still stopped.
+    func testReverseWithSlipThatStopsAtTheStartStaysThere() {
+        let deck = makeDeck(at: 1)
+        deck.slipMode = true
+        deck.play()
+        deck.reverse = true
+        _ = deck.renderer.renderOffline(frames: Int(sr * 2))
+        XCTAssertFalse(deck.renderer.isPlaying, "It's run back to the start")
+        XCTAssertEqual(deck.renderer.playhead, 0, accuracy: 1)
+        deck.reverse = false
+        _ = deck.renderer.renderOffline(frames: 2048)
+        XCTAssertEqual(deck.renderer.playhead, 0, accuracy: 1, "And a stopped deck doesn't move by itself")
+        XCTAssertFalse(deck.renderer.isPlaying)
+    }
+
+    func testReverseWithSlipStillComesBackWhereItWouldHaveGot() {
+        let deck = makeDeck(at: 20)
+        deck.slipMode = true
+        deck.play()
+        deck.reverse = true
+        _ = deck.renderer.renderOffline(frames: Int(sr))
+        deck.reverse = false
+        _ = deck.renderer.renderOffline(frames: 2048)
+        XCTAssertEqual(deck.renderer.playhead, sr * 21 + 2048, accuracy: 2048)
     }
 
     func testSlipTurnedOffInALoopDropsTheWayBack() {

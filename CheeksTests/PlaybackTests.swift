@@ -178,12 +178,33 @@ final class DeckTests: XCTestCase {
     func testTheFirstMemoryCueSaysItMovesWhereTheTrackLoads() {
         let deck = makeDeck(0, bpm: 124, at: 8)
         var said: String?, undo: (@MainActor () -> Void)?
-        deck.offerUndo = { said = $0; undo = $1 }
+        deck.offerUndo = { said = $0; undo = $2 }
+        var kind: StatusKind?
+        deck.offerUndo = { said = $0; kind = $1; undo = $2 }
         deck.saveMemoryCueHere()
         XCTAssertEqual(said, "Memory cue saved. The track loads here now.")
+        XCTAssertEqual(kind, .done, "Good news, with no bin beside it")
         XCTAssertEqual(deck.track?.memoryCues.count, 1)
         undo?()
         XCTAssertEqual(deck.track?.memoryCues.count, 0, "And it can be taken back")
+    }
+
+    /// A deck that stopped with 0.05 to 0.1 s left read -00:00.0, in red.
+    func testTimeLeftHasNoMinusWithNothingToTakeAway() {
+        XCTAssertEqual(Format.toGo(0), "00:00.0")
+        XCTAssertEqual(Format.toGo(0.07), "00:00.0")
+        XCTAssertEqual(Format.toGo(0.1), "-00:00.1")
+        XCTAssertEqual(Format.toGo(65.26), "-01:05.2")
+        XCTAssertEqual(Format.toGo(.infinity), "--:--.-")
+    }
+
+    func testHalvingTheReadingSaysItIsntASpeedChange() {
+        let deck = makeDeck(0, bpm: 126, at: 8)
+        var said: (String, StatusKind)?
+        deck.onMessage = { said = ($0, $1) }
+        deck.scaleBPM(0.5)
+        XCTAssertEqual(said?.0, "Deck 1's track reads 63 BPM now. Its speed hasn't changed.")
+        XCTAssertEqual(deck.tempo, 0, accuracy: 0.001)
     }
 
     func testSyncMatchesTempoAndPhase() {

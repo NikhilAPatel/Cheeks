@@ -1183,8 +1183,76 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.statusMessage == "No clean way in. Next track starts when this one ends." }, seconds: 10)
         XCTAssertEqual(dj.autoDJ.legend, "MIX", "It isn't thinking")
         a.seek(to: map.seconds(atBar: 40))
+        dj.tickForTesting()
+        XCTAssertNil(dj.statusMessage, "It's no longer true, and it stayed up with MIX counting beside it")
         try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
         XCTAssertEqual(dj.autoDJ.phase, .armed(.echoDrop))
+    }
+
+    /// Round 17: on the last track, nothing looked at the waiting deck. The mix ended in silence with what someone had loaded
+    /// sitting cued, where everywhere else in a mix that changes what's next.
+    func testATrackLoadedDuringTheLastTrackIsWhatsNext() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let other = try map(bpm: 125, firstBar: 0.3)
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: Array(ids.prefix(2)))
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        let old = dj.decks[0], last = dj.decks[1]
+        try await run(dj, until: { last.isPlaying && !old.isPlaying && dj.autoDJ.phase == .idle }, seconds: 400)
+        for _ in 0..<3 { dj.tickForTesting() }
+        XCTAssertNil(dj.autoDJ.mixSet?.next, "What the last move left behind isn't what's next")
+        XCTAssertEqual(dj.autoDJ.mixSet?.line, "Mixing through Tonight. This is the last track.")
+
+        put(other, on: old, name: "One more", id: ids[2])
+        dj.tickForTesting()
+        XCTAssertEqual(dj.autoDJ.mixSet?.next, ids[2])
+        XCTAssertEqual(dj.statusMessage, "Up next: One more. The mix carries on.")
+        XCTAssertEqual(dj.autoDJ.mixSet?.line, "Mixing through Tonight, 1 track to go.")
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        try await run(dj, until: { old.isPlaying && !last.isPlaying }, seconds: 400)
+        XCTAssertEqual(old.track?.id, ids[2])
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 0)
+    }
+
+    /// `MIX`'s moves never carried this, so someone who only ever presses `MIX` never got it. Once a mix.
+    func testAMixSaysOnceWhereToWatchItFrom() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.leavesOut = [.brakeDrop]
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        var moves: [String] = []
+        try await run(dj, until: {
+            if let said = dj.statusMessage, said.contains(" into "), moves.last != said { moves.append(said) }
+            // The capsule takes the question down after 8 s, and a move's words wait for that.
+            dj.rateAction = nil
+            return moves.count >= 2
+        }, seconds: 800)
+        XCTAssertGreaterThanOrEqual(moves.count, 2)
+        XCTAssertTrue(moves[0].hasSuffix("Put both decks on STEMS to watch it."), moves[0])
+        XCTAssertFalse(moves[1].contains("STEMS"), moves[1])
+    }
+
+    /// On the only deck playing, it took what's on air to a stopped deck's tempo: 170 to 125, in one press, with the key unlit.
+    func testSyncOnTheOnlyDeckPlayingHasNothingToFollow() throws {
+        let dj = makeEngine()
+        put(try map(bpm: 125), on: dj.decks[0], name: "A")
+        put(try map(bpm: 170), on: dj.decks[1], name: "B")
+        let two = dj.decks[1]
+        two.play()
+        dj.tickForTesting()
+        XCTAssertEqual(dj.masterIndex, 1)
+        dj.toggleSync(two)
+        XCTAssertEqual(two.effectiveBPM, 170, accuracy: 0.01, "What's on air stays as it is")
+        XCTAssertFalse(two.syncOn)
+        XCTAssertEqual(dj.masterIndex, 1)
+        XCTAssertEqual(dj.statusMessage, "Deck 2's leading, with nothing playing to follow. SYNC on deck 1 brings that one to this tempo.")
+        XCTAssertEqual(dj.statusKind, .refused)
+
+        dj.decks[0].play()
+        dj.tickForTesting()
+        dj.toggleSync(two)
+        XCTAssertEqual(two.effectiveBPM, 125, accuracy: 0.01, "With both playing, it's asking to follow the other")
+        XCTAssertEqual(dj.masterIndex, 0)
     }
 
     func testLoadingSomethingElseOnTheWaitingDeckChangesWhatsNext() async throws {

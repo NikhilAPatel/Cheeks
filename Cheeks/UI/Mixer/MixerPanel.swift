@@ -36,7 +36,10 @@ struct MixerPanel: View {
             Image(systemName: "headphones").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.legend)
             Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE/MST", color: Theme.textPrimary, size: 30, scale: .unipolar)
             Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "LEVEL", color: Theme.textPrimary, size: 30, scale: .unipolar)
-            Key("SPLIT", lit: dj.splitCue, size: 8, feel: .toggle, onPress: { dj.splitCue.toggle() })
+            Key("SPLIT", lit: dj.splitCue, size: 8, feel: .toggle, onPress: {
+                dj.splitCue.toggle()
+                if dj.splitCue { dj.say("SPLIT's on: the mix in the left ear and your cue in the right, for a splitter cable.", .info) }
+            })
                 .frame(height: 20)
                 .padding(.top, 1)
             Key(color: dj.colorFX == .filter ? Theme.textPrimary : Theme.accent, lit: dj.colorFX != .filter,

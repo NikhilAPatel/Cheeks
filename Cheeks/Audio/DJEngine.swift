@@ -5,6 +5,8 @@ import Observation
 /// What a status message is saying, which decides how the capsule looks.
 enum StatusKind {
     case done, info, refused, problem
+    /// Something's gone, with an Undo. Saving offers one too, so an Undo alone doesn't mean this: "Memory cue saved." had a bin on it.
+    case removed
 }
 
 enum CrossfaderCurve: String, CaseIterable, Identifiable {
@@ -116,14 +118,18 @@ final class DJEngine {
             deck.onTrackEdited = { [weak self, weak deck] in
                 self?.decks.filter { $0 !== deck && $0.track?.id == deck?.track?.id }.forEach { $0.refreshTrack() }
             }
-            deck.offerUndo = { [weak self] message, undo in
+            deck.offerUndo = { [weak self] message, kind, undo in
                 self?.statusMessage = message
+                self?.statusKind = kind
                 self?.undoAction = undo
             }
         }
         autoDJ = AutoDJ(core: core, decks: decks, say: { [weak self] message, kind in self?.say(message, kind) }, prepareMixer: { [weak self] incoming in
             self?.openChannel(for: incoming) ?? {}
         })
+        autoDJ.takeBack = { [weak self] message in
+            if self?.statusMessage == message { self?.statusMessage = nil }
+        }
         autoDJ.loadTrack = { [weak self] id, deck in
             guard let self, let track = self.library?.track(id), self.load(track, onto: deck) else { return nil }
             return track.title
@@ -451,6 +457,12 @@ final class DJEngine {
             let leader = master(for: deck)
             guard leader.isLoaded else {
                 say("There's nothing to sync to yet: the other deck's empty.", .refused)
+                return
+            }
+            // On the only deck playing, it took what's on air to the tempo of a stopped deck: 170 to 125, in one press, with a
+            // first-time user and then a tester each caught by it. Real decks don't follow anything nobody can hear.
+            if masterIndex == deck.index, deck.isPlaying, !leader.isPlaying {
+                say("Deck \(deck.index + 1)'s leading, with nothing playing to follow. SYNC on deck \(leader.index + 1) brings that one to this tempo.", .refused)
                 return
             }
             // Syncing the master means following the other deck, so that one has to lead.

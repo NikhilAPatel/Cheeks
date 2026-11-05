@@ -517,10 +517,10 @@ final class OverviewLiveView: LiveView {
         deck.seek(to: Double(fraction) * deck.duration)
     }
 
-    /// A playing deck only jumps for a touch that stays a moment or slides. This strip's right under the top bar and the messages,
-    /// and one stray touch moved a live track by minutes, as a club deck's needle search can be locked against.
+    /// A playing deck only jumps for a touch that stays a moment. This strip's right under the top bar and the messages, and one
+    /// stray touch moved a live track by minutes, as a club deck's needle search can be locked against. A slide used to count
+    /// as well, and a thumb brushing 10 pt along it took a track from 1:15 to 4:33. Holding and then sliding is as quick.
     static let holdToJump = 0.25
-    private static let slideToJump: CGFloat = 8
     private var waitingAt: CGFloat?
     private var latestX: CGFloat = 0
     private var touchCount = 0
@@ -544,11 +544,7 @@ final class OverviewLiveView: LiveView {
 
     func touchMoved(to x: CGFloat) {
         latestX = x
-        if let waitingAt {
-            if abs(x - waitingAt) > Self.slideToJump { jumpNow() }
-        } else {
-            needle(at: x)
-        }
+        if waitingAt == nil { needle(at: x) }
     }
 
     func touchUp() {

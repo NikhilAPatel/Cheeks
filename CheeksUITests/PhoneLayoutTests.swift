@@ -102,6 +102,31 @@ final class PhoneLayoutTests: CheeksUITestCase {
         }
     }
 
+    /// Round 17: on its side it was 39 pt too tall, so a flick moved its rows under a finger, and that cost a first-time user
+    /// two wrong rows, one of which recorded over a pad.
+    func testTheSamplersSheetFitsOnItsSide() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        for _ in 0..<4 {
+            press(button("More pad pages"))
+            usleep(300_000)
+            if button("SET").exists { break }
+        }
+        press(button("SET"))
+        usleep(300_000)
+        press(button("Air Horn"))
+        let footer = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Samples can be'")).firstMatch
+        XCTAssertTrue(footer.waitForExistence(timeout: 3), "The pad's sheet should open")
+        sleep(1)
+        screenshot("sampler-sheet-landscape")
+        let window = app.windows.firstMatch.frame
+        print("UITEST: sampler sheet's last line ends at \(footer.frame.maxY) of \(window.height)")
+        XCTAssertLessThanOrEqual(footer.frame.maxY, window.height, "Everything in it should be on the screen without scrolling")
+        app.buttons["Done"].firstMatch.tap()
+        sleep(1)
+    }
+
     private func percent(_ knob: XCUIElement) -> Int {
         Int((knob.value as? String)?.split(separator: " ").first ?? "") ?? -1
     }

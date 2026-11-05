@@ -92,8 +92,9 @@ struct Key<Label: View>: View {
     var feel: KeyFeel = .key
     var isEnabled = true
     var accessibilityName: String = ""
-    /// How far past its edges a key takes a touch, for one too small to hit easily.
-    var touchMargin: CGFloat = 0
+    /// How far past its edges a key takes a touch. Keys mostly sit 3 pt apart, and a press in that gap did nothing, with
+    /// no word, and read as a fault, so by default it's half of that. More for one too small to hit easily.
+    var touchMargin: CGFloat = Self.halfTheGap
     /// What `?` looks it up by, where the accessibility name changes or isn't enough.
     var help: String? = nil
     /// It moves between pages rather than changing the mix, so it goes on working under `?`, and says what it did.
@@ -148,6 +149,8 @@ struct Key<Label: View>: View {
             }
     }
 
+    static var halfTheGap: CGFloat { 1.5 }
+
     private var helpName: String { help ?? accessibilityName }
 
     private func released() {
@@ -166,7 +169,7 @@ struct Key<Label: View>: View {
 
 extension Key where Label == KeyLegend {
     init(_ title: String, color: Color = Theme.accent, lit: Bool = false, size: CGFloat = 9.5, feel: KeyFeel = .key,
-         isEnabled: Bool = true, accessibilityName: String? = nil, touchMargin: CGFloat = 0, help: String? = nil, actsDuringHelp: Bool = false,
+         isEnabled: Bool = true, accessibilityName: String? = nil, touchMargin: CGFloat = 1.5, help: String? = nil, actsDuringHelp: Bool = false,
          onRefused: (@MainActor () -> Void)? = nil, onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void = {}) {
         self.init(color: color, lit: lit, feel: feel, isEnabled: isEnabled, accessibilityName: accessibilityName ?? title, touchMargin: touchMargin, help: help, actsDuringHelp: actsDuringHelp, onRefused: onRefused, onPress: onPress, onRelease: onRelease) {
             KeyLegend(title: title, size: size)
