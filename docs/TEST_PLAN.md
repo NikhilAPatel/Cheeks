@@ -15,6 +15,8 @@ Load a track on each deck, play one, wait for stems, and press `AUTO`.
 - [ ] **Does it land?** Is the move on the phrase, with the new track arriving on its 1? Try tracks you know well.
 - [ ] **Would you have done that?** Rate takes in the [Listening Room](https://claude.ai/artifact/25J24fKfhoHEMu5QdouQzW) too. Say which moves are worth keeping.
 - [ ] **Your own music:** does it hold up on club tracks, not just the free ones it was tuned on?
+- [ ] **`GO NOW`:** in a mix a long way from its move, press it. Is what it picks in the next few bars still something you'd have done?
+- [ ] **A Loop build between far-apart tempos,** like 128 and 170, where neither tempo moves and the new track lands at its own. Two testers flagged it, and neither could hear it. Does it work, or should it be an echo throw?
 - [ ] **Taking over:** grab a knob during a move. Does it stop following the score straight away, with nothing jumping?
 - [ ] **On the phone:** how long between pressing `AUTO` and the countdown starting? Does the phone get hot?
 

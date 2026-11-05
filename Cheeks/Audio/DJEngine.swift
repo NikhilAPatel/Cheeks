@@ -355,6 +355,12 @@ final class DJEngine {
         say("Deck \(deck.index + 1) is playing. Stop it first.", .refused)
     }
 
+    /// Puts up a message with `UNDO` beside it.
+    func offerUndo(_ message: String, _ kind: StatusKind, undo: @escaping @MainActor () -> Void) {
+        say(message, kind)
+        undoAction = undo
+    }
+
     /// Puts up a message. A refusal also buzzes, so it's felt as well as seen.
     func say(_ message: String, _ kind: StatusKind = .info) {
         statusMessage = message
@@ -527,13 +533,28 @@ final class DJEngine {
     private func noticeNothingComingOut() {
         let heard = decks.first { $0.isPlaying && channelGains[$0.index] > 0.05 }?.index
         defer { heardDeck = heard }
-        guard heard == nil, let was = heardDeck, !decks[was].isPlaying, autoDJ.phase == .idle, autoDJ.mixSet == nil,
-              let left = decks.first(where: \.isPlaying) else { return }
+        guard heard == nil, autoDJ.phase == .idle, autoDJ.mixSet == nil, let left = decks.first(where: \.isPlaying) else {
+            ticksUnheard = 0
+            return
+        }
         let why = crossfaderGain(for: left) < 0.05 ? "the crossfader away from it" : "its fader down"
-        say("Deck \(was + 1) has stopped, and deck \(left.index + 1) is playing with \(why). Nothing's coming out.", .problem)
+        if let was = heardDeck, !decks[was].isPlaying {
+            ticksUnheard = Self.ticksBeforeSayingUnheard + 1
+            say("Deck \(was + 1) has stopped, and deck \(left.index + 1) is playing with \(why). Nothing's coming out.", .problem)
+            return
+        }
+        // A deck started with its fader down, and nothing else on. The deck's own meter moves, as it reads ahead of the fader, and only
+        // the mix's stay empty: a first-time user sat at that for 15 s. Someone cueing it in their headphones means to.
+        ticksUnheard += 1
+        if ticksUnheard == Self.ticksBeforeSayingUnheard, !decks.contains(where: { $0.headphoneCue || $0.cuePreviewing }) {
+            say("Deck \(left.index + 1) is playing with \(why). Nothing's coming out.", .problem)
+        }
     }
 
     @ObservationIgnored private var heardDeck: Int?
+    @ObservationIgnored private var ticksUnheard = 0
+    /// 2 s at 30 a second. Anyone starting a deck and bringing the fader up has done so by then.
+    private static let ticksBeforeSayingUnheard = 60
 
     func performUndo() {
         undoAction?()

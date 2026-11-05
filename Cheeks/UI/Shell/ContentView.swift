@@ -634,7 +634,8 @@ struct StatusCapsule: View {
             if let shown {
                 capsule(shown.text, symbol: shown.symbol, tint: shown.tint)
                     .transition(.asymmetric(insertion: .scale(scale: 0.5, anchor: .top).combined(with: .opacity),
-                                            removal: .scale(scale: 0.8, anchor: .top).combined(with: .opacity)))
+                                            // Quickly: one that's still fading sat under the next and neither could be read, and a tip was lost.
+                                            removal: AnyTransition.opacity.animation(.easeOut(duration: 0.12))))
             }
             // The key's touch is in a copy that's laid out the same and never moves, so a press lands
             // on it from the first frame, while the capsule's still arriving.

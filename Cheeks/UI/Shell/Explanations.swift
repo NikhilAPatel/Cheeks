@@ -24,7 +24,7 @@ enum Explanations {
 
     static let opening = Explanation(
         title: "?",
-        text: "Touch anything to see what it does. While this is lit, your touches won't change the music: controls only explain themselves, and only keys that move between pages still work. Press ? again when you're done.",
+        text: "Touch anything to see what it does. While this is lit, your touches won't change the music: controls only explain themselves, and only what moves between pages still works. Press ? again when you're done.",
         names: ["What does this do?"])
 
     static func named(_ name: String) -> Explanation? { byName[name] }
@@ -86,7 +86,7 @@ enum Explanations {
             Explanation(title: "±6 ±10 ±16 WIDE", text: "How far the tempo fader reaches, in percent. Smaller ranges are easier to set exactly. Each press moves to the next that can hold the speed the deck's at.", names: ["Tempo range"]),
             Explanation(title: "TEMPO %", text: "How far this deck is from the track's own speed.", names: ["Tempo percent"]),
             Explanation(title: "SYNC", text: "Locks this deck to the other's tempo and beat, and from stopped its bars too. Half or double if nearer. The tempo fader takes it off. The only deck playing has nothing to follow. MASTER under it is the deck the other follows.", names: ["SYNC"], alsoFoundBy: "beat sync"),
-            Explanation(title: "MASTER", text: "The deck that leads, which a synced deck follows. Press it to make this one lead. A stopped deck can't lead, so the first one to start playing takes over.", names: ["MASTER"]),
+            Explanation(title: "MASTER", text: "The deck that leads, which a synced deck follows. Press it to make this one lead. A paused deck goes on leading until the other one starts playing.", names: ["MASTER"]),
             Explanation(title: "BEAT JUMP", text: "The arrows move the track back or forward by the number between them, and it stays in time. Press the number to change it. The JUMP pads have 1 beat either way.", names: ["BEAT JUMP", "Jump back", "Jump forward"]),
             Explanation(title: "JUMP SIZE", text: "How many beats the arrows beside it jump: 1, 2, 4, 8, 16 or 32. Each press moves to the next.", names: ["Jump size"]),
             Explanation(title: "Q", text: "Quantize. With it on, cues, loops and jumps land exactly on the beat, however loosely you press.", names: ["Q"]),
@@ -167,7 +167,7 @@ enum Explanations {
             Explanation(title: "HI", text: "The highs: hi-hats and sparkle. Drag down, and all the way removes them. Double-tap for the centre.", names: ["HI"]),
             Explanation(title: "MID", text: "The middle: vocals and most instruments. Drag down, and all the way removes it. Double-tap for the centre.", names: ["MID"]),
             Explanation(title: "LOW", text: "The lows: kick and bass. Drag down, and all the way removes them, which is how you stop two basslines fighting. Double-tap for the centre.", names: ["LOW"]),
-            Explanation(title: "FILTER KNOB", text: "Off at the centre. With FILTER chosen, down leaves only the lows and up only the highs. The key with the arrows, under MIXER on a phone, gives it other effects, and its name changes. Auto DJ can borrow it for a filter.", names: ["Color knob"]),
+            Explanation(title: "FILTER KNOB", text: "Off at the centre. With FILTER chosen, down leaves only the lows and up only the highs. The button with the arrows, under MIXER on a phone, gives it other effects, and its name changes. Auto DJ can borrow it for a filter.", names: ["Color knob"]),
             Explanation(title: "FILTER ↻", text: "Chooses what both FILTER knobs do: FILTER, DUB (echo), SPACE (reverb), NOISE, CRUSH or PITCH. Each press moves to the next.", names: ["Color effect"]),
             Explanation(title: "CUE", text: "Sends this deck to your headphones, so you can hear it before anyone else does. It takes SPLIT and a splitter cable, with the cue in your right ear. One output, like AirPods, can only play the mix.", names: ["Cue channel"]),
             Explanation(title: "CHANNEL FADER", text: "This deck's volume in the mix.", names: ["Channel fader"]),
@@ -177,6 +177,7 @@ enum Explanations {
             Explanation(title: "LEVEL", text: "The headphone volume. It needs SPLIT on.", names: ["LEVEL"]),
             Explanation(title: "SPLIT", text: "For a splitter cable with speakers on one side and headphones on the other: the mix in the left ear and your cue in the right.", names: ["SPLIT"]),
             Explanation(title: "AUTO", text: "Mixes the playing deck into the other, bringing parts in and out, which STEMS shows. It takes over what's set on both decks. Once it starts, a control you touch is yours. Press to stop. MIX in the browser does a whole list.", names: ["Auto DJ"], alsoFoundBy: "transition blend automix"),
+            Explanation(title: "GO NOW", text: "There while a move's a long way off. Looks for a way in over the next few bars instead. If there isn't one it says so, and what it was counting down to stays.", names: ["Go now"], alsoFoundBy: "next sooner skip"),
             Explanation(title: "MIX", text: "A mix through a list, started from the browser, which shows which list and what's left. It says what it's counting or waiting for. A control you touch during a move is yours. Press to stop.", names: ["Mix on the mixer"], alsoFoundBy: "transition blend automix"),
             Explanation(title: "MIXER", text: "The mixer controls with no room here: TRIM, MASTER, the headphone controls, SPLIT and the FILTER knob's effects. It says SPLIT while that's on.", names: ["More mixer controls"]),
             Explanation(title: "LIM", text: "Lights when the mix is so loud that the limiter's holding it back. With two full tracks that's normal now and then. If it stays on, turn TRIM down: on a phone, that's under MIXER.", names: ["LIM"]),
@@ -194,9 +195,10 @@ enum Explanations {
         Section(title: "Browser", entries: [
             Explanation(title: "IN KEY", text: "Shows only tracks in a key that goes with the master deck.", names: ["In key filter"]),
             Explanation(title: "±6% BPM", text: "Shows only tracks within 6% of the master deck's tempo, which can be matched without sounding wrong.", names: ["BPM filter"]),
-            Explanation(title: "NEXT", text: "A good order to play. The top row's the best way on from the master deck, the next is the best way on from that, and so on, with tempo counting for more than key. That deck's track drops off the list, and ticked ones go last.", names: ["Best next first"]),
+            Explanation(title: "NEXT", text: "A good order to play. The top row's the best way on from the master deck, the next from that, and so on. Tempos within reach come first, nearest first. Past that, key decides. What's on a deck and what's ticked go last.", names: ["Best next first"]),
             Explanation(title: "MIX", text: "Auto DJ through the list on screen, in the order showing. With one of its tracks playing it goes on from there, then back for what's above it with no tick. Otherwise it plays the lot. AUTO does one move. Press again to stop.", names: ["Mix through this list", "Stop the mix"]),
             Explanation(title: "CHANGE THE ORDER", text: "Drag a row by its handle to give this playlist a new order, which is the order MIX plays it in. DONE when you're finished.", names: ["Change the order"], alsoFoundBy: "reorder rearrange move drag"),
+            Explanation(title: "CHOOSE SEVERAL", text: "Tap the rows you want, searching between them if you like. ALL takes everything showing. ADD TO puts them in a playlist, in the order they show. DONE leaves without adding anything.", names: ["Choose several"], alsoFoundBy: "select multiple many bulk"),
             Explanation(title: "FILTER LINE", text: "How much of this list the KEY and ±6% filters are leaving out. They stay on until you turn them off. It's only here while one's on.", names: ["Filter line"]),
             Explanation(title: "MIX LINE", text: "Which list the mix is going through, and how many tracks are left. It's only here while a mix is on.", names: ["Mix line"]),
             Explanation(title: "IMPORT", text: "Adds music from the Files app, or a library exported from your DJ software. If Files opens on an empty folder, go back from there to find your music.", names: ["IMPORT"]),

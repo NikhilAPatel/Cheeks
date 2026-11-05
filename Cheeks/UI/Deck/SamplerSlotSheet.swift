@@ -93,6 +93,8 @@ struct SamplerSlotSheet: View {
         } else {
             Haptics.shared.confirm()
             dismiss()
+            // It closes with the pad's sound changed and nothing to say so: a first-time user thought the air horn had gone for good.
+            dj.say("Pad \(slot + 1) plays deck \(deck.index + 1)'s loop now. This sheet can bring back the original sound.", .done)
         }
     }
 }

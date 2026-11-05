@@ -36,7 +36,7 @@ extension Library {
 
     enum BackupError: Error { case unreadable }
 
-    private static let dayFormatter: DateFormatter = {
+    private nonisolated static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
@@ -45,16 +45,20 @@ extension Library {
 
     /// Kept in Documents, so they show up in the Files app. They're deleted along with the app, so
     /// they protect against a bad library file, not a lost phone.
-    static let backupDirectory: URL = {
+    nonisolated static let backupDirectory: URL = {
         let dir = URL.documentsDirectory.appending(path: "Backups", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()
 
-    private static let automaticBackupsKept = 14
-    private static let automaticBackupInterval: TimeInterval = 5 * 60
+    private nonisolated static let automaticBackupsKept = 14
+    private nonisolated static let automaticBackupInterval: TimeInterval = 5 * 60
 
     func backupData() throws -> Data {
+        try Self.backupData(tracks: tracks, playlists: playlists)
+    }
+
+    private nonisolated static func backupData(tracks: [Track], playlists: [Playlist]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -69,21 +73,25 @@ extension Library {
     /// that day finished, so yesterday's is there if today goes wrong. Saves can come quickly in the
     /// middle of a mix, so unless it's asked to, this leaves a copy made in the last few minutes alone.
     func writeAutomaticBackup(now: Date = Date(), evenIfRecent: Bool = false) {
+        Self.writeAutomaticBackup(tracks: tracks, playlists: playlists, now: now, evenIfRecent: evenIfRecent)
+    }
+
+    nonisolated static func writeAutomaticBackup(tracks: [Track], playlists: [Playlist], now: Date = Date(), evenIfRecent: Bool = false) {
         guard !tracks.isEmpty else { return }
-        let url = Self.backupDirectory.appending(path: "Segue DJ Library \(Self.dayFormatter.string(from: now)).json")
+        let url = backupDirectory.appending(path: "Segue DJ Library \(dayFormatter.string(from: now)).json")
         if !evenIfRecent, let made = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-           abs(now.timeIntervalSince(made)) < Self.automaticBackupInterval {
+           abs(now.timeIntervalSince(made)) < automaticBackupInterval {
             return
         }
-        guard let data = try? backupData() else { return }
+        guard let data = try? backupData(tracks: tracks, playlists: playlists) else { return }
         try? data.write(to: url, options: .atomic)
         pruneAutomaticBackups()
     }
 
-    private func pruneAutomaticBackups() {
-        let files = (try? FileManager.default.contentsOfDirectory(at: Self.backupDirectory, includingPropertiesForKeys: nil)) ?? []
+    private nonisolated static func pruneAutomaticBackups() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: backupDirectory, includingPropertiesForKeys: nil)) ?? []
         let dated = files.filter { $0.lastPathComponent.hasPrefix("Segue DJ Library ") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
-        for old in dated.dropFirst(Self.automaticBackupsKept) { try? FileManager.default.removeItem(at: old) }
+        for old in dated.dropFirst(automaticBackupsKept) { try? FileManager.default.removeItem(at: old) }
     }
 
     /// When the newest automatic copy was made, for the settings screen.

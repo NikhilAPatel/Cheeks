@@ -122,6 +122,8 @@ final class AutoDJ {
     /// Bars until the move starts, while it's armed.
     private(set) var barsToGo = 0
     private(set) var mixSet: MixSet?
+    /// It's looking for a quicker way in than the one it's counting down to.
+    private(set) var isGoingNow = false
     /// Starts a track loading on a deck, and says what it's called, or nil if it can't.
     @ObservationIgnored var loadTrack: ((UUID, Deck) -> String?)?
     /// The first bar a planned move may start on. Pressing AUTO wants it soon, so this is only set for a set.
@@ -155,6 +157,11 @@ final class AutoDJ {
     /// Opens the channel for a deck that's coming in, and gives back how to undo that.
     @ObservationIgnored private let prepareMixer: (Deck) -> (() -> Void)
     @ObservationIgnored private var planning: Task<Void, Never>?
+    @ObservationIgnored private var goingNow: Task<Void, Never>?
+    /// The next track it's said won't have its stems in time, which only wants saying once.
+    @ObservationIgnored private var warnedAboutStemsFor: UUID?
+    /// How many times it's taken too long to think, and missed the way in it found.
+    @ObservationIgnored private var goNowMisses = 0
     @ObservationIgnored private var outgoing: Deck?
     @ObservationIgnored private var incoming: Deck?
     @ObservationIgnored private var score: TransitionScore?
@@ -198,6 +205,10 @@ final class AutoDJ {
             }
             deck.onLoopChangedByHand = { [weak self, weak deck] in
                 if let self, let deck { self.noticeLoopChanged(deck) }
+            }
+            deck.isJustAfterAMove = { [weak self] in
+                guard let self, let ended = self.moveEndedAt, CACurrentMediaTime() - ended < Self.tooSoonAfterAMove else { return false }
+                return self.isAskingForRating()
             }
         }
     }
@@ -261,6 +272,7 @@ final class AutoDJ {
     }
 
     func press() {
+        stopLookingForAQuickerWay()
         let wasSet = mixSet != nil
         mixSet = nil
         switch phase {
@@ -289,14 +301,11 @@ final class AutoDJ {
 
     // MARK: Mixing through a list
 
-    /// "Here" stops being true when the list on screen changes, so the browser takes it back then.
-    static let everythingPlayed = "Everything else here has been played. To go round again, stop the deck and press MIX."
-
     /// Mixes through these tracks in order. If a deck's playing, it carries on from that, and from that track's place
     /// in the list if it's on it, and then comes back for what's above it. Otherwise it starts from the top.
     /// `airIsElsewhere`: what's playing isn't on this list at all, so nobody's been through it yet.
     func startSet(named name: String, tracks: [UUID], airIsElsewhere: Bool = false) {
-        var playedAlready = 0
+        var playedAlready = 0, goesRoundAgain = false
         let playing = decks.filter(\.isPlaying)
         guard playing.count <= 1 else {
             // Not "the one you want next": the list decides that, and the stopped deck's track makes way for it.
@@ -314,13 +323,15 @@ final class AutoDJ {
             // rest of Friday" to a first-time user who'd never played Friday.
             queue = airIsElsewhere ? others : others.filter { !hasBeenHeard($0) }
             playedAlready = others.count - queue.count
-            guard !queue.isEmpty else {
-                if others.isEmpty {
-                    say("There's nothing left in \(name) to mix into.", .refused)
-                } else {
-                    say(Self.everythingPlayed, .refused)
-                }
+            guard !others.isEmpty else {
+                say("There's nothing left in \(name) to mix into.", .refused)
                 return
+            }
+            // It's all been played, so this is going round again. It used to say to stop the deck and press MIX, and stopping the music
+            // to carry on with it isn't something anyone would do in the middle of a set.
+            if queue.isEmpty {
+                queue = others
+                goesRoundAgain = true
             }
         } else {
             guard queue.count >= 2 else {
@@ -334,8 +345,9 @@ final class AutoDJ {
         if let air = playing.first {
             getReadyToLeave(air)
             // "2 tracks to go" out of the seven on screen, for a first-time user who hadn't seen what the ticks meant.
-            let howMany = playedAlready > 0 ? "\(queue.count) not played yet" : "\(Format.count(queue.count, "track")) to go"
-            let opening = "\(letItBeHeard(air))Mixing through \(name), \(howMany)."
+            let howMany = playedAlready > 0 && !goesRoundAgain ? "\(queue.count) not played yet" : "\(Format.count(queue.count, "track")) to go"
+            let opening = goesRoundAgain ? "\(letItBeHeard(air))You've played all of \(name), so this goes round again, \(howMany)."
+                : "\(letItBeHeard(air))Mixing through \(name), \(howMany)."
             mixSet = MixSet(name: name, queue: queue, onAir: air.index, opening: opening)
             say(opening, .info)
         } else {
@@ -438,7 +450,8 @@ final class AutoDJ {
             say("Up next: \(waiting.track?.title ?? "that"). The mix carries on.", .info)
             return
         }
-        guard !waiting.isPlaying else {
+        // Holding CUE is how to check what's coming, and the deck goes back when it's let go.
+        guard !waiting.isPlaying || waiting.cuePreviewing else {
             endSet("Mix off: you started deck \(waiting.index + 1) yourself.")
             return
         }
@@ -470,6 +483,7 @@ final class AutoDJ {
             askedForStems.insert(id)
             deck.prepareStems()
         }
+        warnIfStemsWontMakeIt(air, waiting)
         // It gave up from where the deck was then. Further back there may well be a way in.
         if let gaveUpAt = set.gaveUpAt, air.renderer.playhead < gaveUpAt - AudioConfig.sampleRate {
             planAgainFromHere()
@@ -509,7 +523,18 @@ final class AutoDJ {
 
     /// A first-time user's stems weren't ready, and this was all they were told.
     private func whyNoMove(_ air: Deck, _ waiting: Deck) -> String {
-        air.stemsAreOnTheWay || waiting.stemsAreOnTheWay ? "The stems didn't get there in time." : "No clean way in."
+        air.stemsAreOnTheWay || waiting.stemsAreOnTheWay ? Self.stemsLate : "No clean way in."
+    }
+
+    private static let stemsLate = "The stems weren't ready in time, so there's no move."
+
+    /// A first-time user's first AUTO and first MIX both just cut, with nothing beforehand to say how long stems take. Once
+    /// it can tell they won't make it, it says so.
+    private func warnIfStemsWontMakeIt(_ air: Deck, _ next: Deck) {
+        guard let id = next.track?.id, warnedAboutStemsFor != id, let left = [air, next].compactMap(\.stemsTimeLeft).max(),
+              left > air.timeLeft, !air.renderer.loopActive, !isAskingForRating() else { return }
+        warnedAboutStemsFor = id
+        say("The stems need \(Format.roughly(left)), and this track has \(Format.roughly(air.timeLeft)) left. Deck \(next.index + 1) will just start at the end, with no move.", .info)
     }
 
     /// The incoming deck's the one on air now, and the other one's free for what comes next.
@@ -531,24 +556,25 @@ final class AutoDJ {
     /// There was no move ready: stems weren't there in time, or there was no clean way in. The music mustn't stop.
     private func startWithoutAMove(_ deck: Deck, _ why: String) {
         // Its fader can be down, or the crossfader away from it, which a move would have seen to.
+        let crossfaderMoves = !crossfaderIsCentred()
         _ = prepareMixer(deck)
         deck.setTempo(0)
         deck.play()
         handOver(to: deck)
         mixSet?.keepsQuietAboutNext = true
-        say("\(why) Deck \(deck.index + 1) just started.", .info)
+        say("\(why) Deck \(deck.index + 1) just started\(crossfaderMoves ? ", with the crossfader moved to the middle" : "").", .info)
     }
 
     /// AUTO's been pressed and there's no move yet. Running out here left silence with the next track sitting ready, on a
     /// first-time user's first press, so it does what a mix does. Says whether that's the end of it.
     private func startNextIfThisOnesDone(_ from: Deck, _ to: Deck) -> Bool {
         let number = to.index + 1
-        if to.isPlaying {
+        if to.isPlaying, !to.cuePreviewing {
             cancel()
             say("Auto DJ stopped: you started deck \(number) yourself.", .info)
             return true
         }
-        let why = phase == .waitingForStems ? "The stems didn't get there in time." : "No clean way in."
+        let why = phase == .waitingForStems ? Self.stemsLate : "No clean way in."
         if !from.isPlaying {
             let ranOut = from.renderer.reachedEnd
             let stopped = "Auto DJ stopped: deck \(from.index + 1) stopped before the stems were ready."
@@ -643,11 +669,23 @@ final class AutoDJ {
 
     /// Starts planning if both tracks have been mapped.
     private func planIfReady() -> Bool {
-        guard let outgoing, let incoming, let map = outgoing.trackMap, let mapB = incoming.trackMap,
-              let stemsA = outgoing.renderer.stemSources, let stemsB = incoming.renderer.stemSources else { return false }
+        // Someone's pressed the key and wants something to happen. A mix looks further back first.
+        guard let outgoing, let incoming, let choice = choice(from: outgoing, to: incoming, leavingFrom: leaveFrom, fallsBack: mixSet?.lastResort ?? true) else { return false }
         phase = .planning
         plannedA = outgoing.track?.id
         plannedB = incoming.track?.id
+        planning = Task.detached(priority: .userInitiated) { [weak self] in
+            let chosen = choice.choose(isCancelled: { Task.isCancelled })
+            if Task.isCancelled { return }
+            await MainActor.run { [weak self] in self?.planFinished(chosen) }
+        }
+        return true
+    }
+
+    /// What a plan gets chosen from, as things stand. Nil without both tracks' maps and stems.
+    private func choice(from outgoing: Deck, to incoming: Deck, leavingFrom: Int, fallsBack: Bool) -> TransitionChoice? {
+        guard let map = outgoing.trackMap, let mapB = incoming.trackMap,
+              let stemsA = outgoing.renderer.stemSources, let stemsB = incoming.renderer.stemSources else { return nil }
         // A move into this track may have left a key shift on it, which is what its notes will sound like.
         let mapA = map.heard(shiftedBy: outgoing.keyShift)
         let rateA = outgoing.tempoRatio
@@ -662,20 +700,103 @@ final class AutoDJ {
         let lagFor: (Deck, Double, Int) -> Double = { deck, rate, shift in
             abs(rate - 1) > 1e-6 || shift != 0 ? cheeks_deck_stem_lag(deck.renderer.handle, rate) : 0
         }
-        let choice = TransitionChoice(mapA: mapA, mapB: mapB, stemsA: stemsA, stemsB: stemsB,
-                                      deckA: Int32(outgoing.index), deckB: Int32(incoming.index), rateA: rateA, levelA: levelA, levelB: levelB,
-                                      lagA: lagFor(outgoing, rateA, outgoing.keyShift), lagB: lagFor(incoming, playingBPM / mapB.bpm, 0),
-                                      lagShifted: cheeks_deck_stem_lag(incoming.renderer.handle, playingBPM / mapB.bpm),
-                                      earliest: max(soonest, leaveFrom), recentMoves: recentMoves,
-                                      avoid: leavesOut.union(mixSet == nil ? [] : [.brakeDrop]), wantsTimeOnNext: mixSet != nil, taste: ratings.taste,
-                                      // Someone's pressed the key and wants something to happen. A mix looks further back first.
-                                      fallsBackToEchoOut: mixSet?.lastResort ?? true)
-        planning = Task.detached(priority: .userInitiated) { [weak self] in
+        return TransitionChoice(mapA: mapA, mapB: mapB, stemsA: stemsA, stemsB: stemsB,
+                                deckA: Int32(outgoing.index), deckB: Int32(incoming.index), rateA: rateA, levelA: levelA, levelB: levelB,
+                                lagA: lagFor(outgoing, rateA, outgoing.keyShift), lagB: lagFor(incoming, playingBPM / mapB.bpm, 0),
+                                lagShifted: cheeks_deck_stem_lag(incoming.renderer.handle, playingBPM / mapB.bpm),
+                                earliest: max(soonest, leavingFrom), recentMoves: recentMoves,
+                                avoid: leavesOut.union(mixSet == nil ? [] : [.brakeDrop]), wantsTimeOnNext: mixSet != nil, taste: ratings.taste,
+                                fallsBackToEchoOut: fallsBack)
+    }
+
+    // MARK: Going now
+
+    /// How far along counts as now: about 30 s at club tempos.
+    private static let nowBars = 16
+    /// Auditions take a few seconds, and the first way in shouldn't have gone by the time they've found it.
+    private static let barsToThink = 2
+
+    /// A mix can be minutes from its next move, and a first-time user counting down from 98 bars had nothing to say go with. Only
+    /// while it's further off than a quicker plan could be, or when a mix has given up on a move altogether.
+    var canGoNow: Bool {
+        switch phase {
+        case .armed: return barsToGo > Self.nowBars + 8
+        case .idle: return mixSet?.gaveUpAt != nil && mixSet?.next != nil
+        default: return false
+        }
+    }
+
+    /// Looks for a way in over the next few bars. What it's counting down to stays where it is until it's found one, so finding
+    /// nothing costs nothing.
+    func goNow() {
+        guard !isGoingNow else { return }
+        goNowMisses = 0
+        lookForAQuickerWay()
+    }
+
+    private func lookForAQuickerWay() {
+        guard canGoNow else { return }
+        let armed = score != nil
+        guard let from = armed ? outgoing : mixSet.map({ decks[$0.onAir] }), let to = armed ? incoming : decks.first(where: { $0 !== from }),
+              var choice = choice(from: from, to: to, leavingFrom: 0, fallsBack: true) else { return }
+        choice.earliest += Self.barsToThink
+        choice.latest = choice.earliest + Self.nowBars
+        isGoingNow = true
+        let tracks = (from.track?.id, to.track?.id), armFrame = score?.armFrame, fromIndex = from.index, toIndex = to.index
+        goingNow = Task.detached(priority: .userInitiated) { [weak self] in
             let chosen = choice.choose(isCancelled: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [weak self] in self?.planFinished(chosen) }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.foundAQuickerWay(chosen, from: self.decks[fromIndex], to: self.decks[toIndex], tracks: tracks, replacing: armFrame)
+            }
         }
-        return true
+    }
+
+    private func foundAQuickerWay(_ quick: TransitionScore?, from: Deck, to: Deck, tracks: (UUID?, UUID?), replacing armFrame: Double?) {
+        stopLookingForAQuickerWay()
+        // What it was asked about has gone: a move's started, or something else is on a deck.
+        guard from.isPlaying, from.track?.id == tracks.0, to.track?.id == tracks.1, canGoNow || score != nil, score?.armFrame == armFrame,
+              !cheeks_engine_auto_running(core) else { return }
+        let nothingQuicker = { [self] in
+            say(score == nil ? Self.noWayIn : "Nothing quicker works from here. It's still \(Format.count(barsToGo, "bar")).", .info)
+        }
+        guard let quick else { return nothingQuicker() }
+        guard from.renderer.playhead < quick.armFrame else {
+            goNowMisses += 1
+            if goNowMisses < 3, canGoNow { lookForAQuickerWay() } else { nothingQuicker() }
+            return
+        }
+        // What it's replacing is nearly here. The audio core reads a score as it starts it, so this can't load another then.
+        if let armFrame, from.renderer.playhead > armFrame - 2 * quick.a.map.barSeconds * AudioConfig.sampleRate { return nothingQuicker() }
+        // Pressing this is asking it to leave, the same as pressing AUTO or MIX, so a loop holding the deck comes off.
+        getReadyToLeave(from)
+        // Not cancel(): that would shut a crossfader it opened for the deck that's playing, for as long as this takes.
+        if score != nil {
+            cheeks_engine_auto_stop(core)
+            putBackPrepared()
+        }
+        outgoing = from
+        incoming = to
+        plannedA = tracks.0
+        plannedB = tracks.1
+        let next = mixSet?.next
+        mixSet?.gaveUpAt = nil
+        mixSet?.plannedFor = next
+        arm(quick)
+        guard mixSet != nil else { return }
+        if case .armed = phase {
+            // The key's counting anyway, and the question's what the thumbs beside it are for.
+            if !isAskingForRating() { say("\(quick.plan.move.title) in \(Format.count(barsToGo, "bar")), into \(to.track?.title ?? "the next track").", .info) }
+        } else {
+            planAgainFromHere()
+        }
+    }
+
+    private func stopLookingForAQuickerWay() {
+        goingNow?.cancel()
+        goingNow = nil
+        if isGoingNow { isGoingNow = false }
     }
 
     private func planFinished(_ score: TransitionScore?) {
@@ -761,12 +882,15 @@ final class AutoDJ {
             return "deck \(deck.index + 1)'s " + (what.isEmpty ? last : what.joined(separator: ", ") + " and " + last)
         }
         let taken = [settings(on: new), settings(on: old)].compactMap { $0 }
-        return taken.isEmpty ? "" : " It's taken over " + taken.joined(separator: ", and ") + "."
+        // Not "it's taken over": some of those don't go until the move starts, and they were still lit while this said so.
+        return taken.isEmpty ? "" : " It takes over " + taken.joined(separator: ", and ") + "."
     }
 
     /// Puts the incoming deck where the score expects it.
     private func prepare(_ deck: Deck, for score: TransitionScore) {
         let before = Prepared.Settings(deck)
+        // Held through this, letting go would take it from where it's been cued.
+        deck.cuePreviewing = false
         deck.pause()
         deck.syncOn = false
         deck.renderer.setLoop(start: deck.renderer.loopStart, end: deck.renderer.loopEnd, active: false)
@@ -808,7 +932,7 @@ final class AutoDJ {
             cancelForChange("the track changed.")
             return false
         }
-        if incoming.renderer.isPlaying, !scoreCouldHaveStarted(incoming) {
+        if incoming.renderer.isPlaying, !incoming.cuePreviewing, !scoreCouldHaveStarted(incoming) {
             cancelForChange("you started deck \(incoming.index + 1) yourself.")
             return false
         }
@@ -855,6 +979,7 @@ final class AutoDJ {
         switch phase {
         case .waitingForStems:
             guard let outgoing, let incoming, !startNextIfThisOnesDone(outgoing, incoming) else { return }
+            warnIfStemsWontMakeIt(outgoing, incoming)
             if planIfReady() {
                 // "Waiting for the stems" stayed up for up to 13 s after they'd finished.
                 say("The stems are ready. Auto DJ is choosing a move.", .info)
@@ -869,12 +994,18 @@ final class AutoDJ {
             updateBarsToGo()
             if cheeks_engine_auto_running(core) {
                 coreIsRunning = true
+                stopLookingForAQuickerWay()
                 phase = .running(move)
                 lendKnobsToTheScore()
                 openTheChannel()
                 countIn(move)
             } else if let score, let outgoing {
                 let number = outgoing.index + 1
+                // The score's about to need the deck, so a preview's over. It's cued where it comes in.
+                if let incoming, incoming.cuePreviewing, outgoing.renderer.playhead > score.armFrame - score.a.map.barSeconds * AudioConfig.sampleRate {
+                    incoming.cueUp()
+                    incoming.seek(to: score.incomingFrom / AudioConfig.sampleRate)
+                }
                 if !outgoing.isPlaying {
                     cancel()
                     // A mix says so itself, as it goes on to see what's become of the deck.
@@ -912,6 +1043,8 @@ final class AutoDJ {
                 if !cheeks_engine_auto_running(core) || ticksEnding > 15 { finish() }
             }
         case .idle:
+            // A mix that's given up can end, or go on to its next track, while this is looking.
+            if isGoingNow, !canGoNow { stopLookingForAQuickerWay() }
             bringInWhatsLeftAfterAStoppedMove()
             // Back at the centre, by hand, a knob left on FILTER is doing nothing, and the key beside it still says DUB.
             for left in leftBehind where left.deck.filter == 0 { giveKnobBack(left.deck) }
@@ -1020,7 +1153,13 @@ final class AutoDJ {
 
     /// "Touch a control to take it back", and then nothing said it had. A knob calls this on every step it's turned.
     private func noticeTaken(_ deck: Deck, _ kind: CheeksAutoKind, _ control: Int) {
-        guard case .running = phase, ending == nil, !saidItsYours,
+        // From when there's a plan: it's theirs from then on, and "From here" only came after.
+        let hasAMove: Bool
+        switch phase {
+        case .armed, .running: hasAMove = true
+        default: hasAMove = false
+        }
+        guard hasAMove, ending == nil, !saidItsYours,
               lanes.contains(where: { $0.deck === deck && $0.kind == kind && $0.index == control }) else { return }
         saidItsYours = true
         // For the move: an old deck's knobs go back when it's over, which read as a broken promise when this just said "now".
@@ -1203,6 +1342,13 @@ final class AutoDJ {
         reset()
     }
 
+    /// What a mix looks like a long way from its next move, for a snapshot.
+    func showCountingDownForTesting(bars: Int) {
+        mixSet = MixSet(name: "Friday", queue: [UUID()], onAir: 0, next: UUID())
+        phase = .armed(.loopDrop)
+        barsToGo = bars
+    }
+
     /// Calls off a plan without ending the mix, and stops it planning again for this track.
     func stopForTesting() {
         cancel()
@@ -1211,6 +1357,7 @@ final class AutoDJ {
     }
 
     private func reset() {
+        stopLookingForAQuickerWay()
         phase = .idle
         coreIsRunning = false
         outgoing = nil

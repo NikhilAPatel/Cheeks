@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Cheeks
 
@@ -61,6 +62,76 @@ final class BrowserAndRecordingTests: XCTestCase {
     }
 
     /// A first-time user held a row in their playlist and dragged it. It lifted, and nothing changed.
+    /// No two closures compare as equal, so one on a row has SwiftUI rebuild every row showing whenever the browser changes at all:
+    /// about 200 ms frozen on each open and close, with nothing to see but a slide that stuck.
+    /// A row built with a modifier of our own at its top had the list build all 2,000 each time the browser opened or closed: about
+    /// 200 ms frozen each way, in round 19's code, and nothing that looks at the screen could have said why.
+    func testTheListOnlyBuildsTheRowsShowing() async throws {
+        let library = Library()
+        let dj = DJEngine(library: library)
+        dj.stopRealtimeForTesting()
+        // Not saved: nothing here calls `library.update`, which is what writes the library to disk.
+        let saved = library.tracks
+        defer { library.tracks = saved }
+        library.tracks = (0..<1000).map { Track(id: UUID(), title: "Track \($0)", artist: "", fileName: "none", duration: 1, bpm: 124) }
+
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 667, height: 375)
+        window.windowLevel = .alert + 1
+        TrackRow.builtForTesting = 0
+        window.rootViewController = UIHostingController(rootView: ContentView(showLibrary: true).environment(library).environment(dj))
+        window.isHidden = false
+        window.frame = CGRect(x: 0, y: 0, width: 667, height: 375)
+        window.rootViewController?.view.frame = window.bounds
+        window.rootViewController?.view.layoutIfNeeded()
+        try await Task.sleep(for: .seconds(1))
+        window.isHidden = true
+        window.rootViewController = nil
+        XCTAssertGreaterThan(TrackRow.builtForTesting, 0, "It has to have shown some")
+        XCTAssertLessThan(TrackRow.builtForTesting, 100, "It built rows nobody can see")
+    }
+
+    func testATrackRowHoldsNoClosures() {
+        let track = Track(id: UUID(), title: "A", artist: "", fileName: "none", duration: 1, bpm: 124)
+        let row = TrackRow(track: track, referenceDeck: nil, playlistID: nil)
+        let closures = Mirror(reflecting: row).children.filter { "\(type(of: $0.value))".contains("->") }.map { $0.label ?? "?" }
+        XCTAssertEqual(closures, [], "These want to go in RowActions")
+    }
+
+    /// Saving's off the main thread now, so what's on disk has to be the last save, whichever way it went.
+    func testTheLastSaveIsWhatsOnDisk() async throws {
+        let library = Library()
+        let tracks = library.tracks, playlists = library.playlists
+        defer {
+            library.tracks = tracks
+            library.playlists = playlists
+            library.saveNow()
+        }
+        library.playlists = [Playlist(id: UUID(), name: "First")]
+        library.save()
+        try await Task.sleep(for: .milliseconds(420))
+        library.playlists = [Playlist(id: UUID(), name: "Second")]
+        library.saveNow()
+        let names = Library().playlists.map(\.name)
+        XCTAssertTrue(names.contains("Second"), "\(names)")
+        XCTAssertFalse(names.contains("First"), "\(names)")
+    }
+
+    func testSeveralTracksGoInAPlaylistInOrderAndOnlyOnce() {
+        let library = Library()
+        let playlist = library.createPlaylist(named: "Friday")
+        defer { library.playlists.removeAll { $0.id == playlist } }
+        let a = UUID(), b = UUID(), c = UUID()
+        library.add(b, to: playlist)
+        XCTAssertEqual(library.add([a, b, c, a], to: playlist), [a, c], "What's there stays where it is")
+        XCTAssertEqual(library.playlists.first { $0.id == playlist }?.trackIDs, [b, a, c])
+        XCTAssertEqual(library.add([a], to: playlist), [])
+        XCTAssertEqual(library.add([a], to: UUID()), [], "There's no such playlist")
+        library.remove([a, c], from: playlist)
+        XCTAssertEqual(library.playlists.first { $0.id == playlist }?.trackIDs, [b])
+    }
+
     func testAPlaylistsTracksCanBeMoved() throws {
         let library = Library()
         let ids = (0..<4).map { _ in UUID() }

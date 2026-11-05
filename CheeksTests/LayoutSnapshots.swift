@@ -94,6 +94,13 @@ final class LayoutSnapshots: XCTestCase {
         try await snapAll("decks-in-a-move", ContentView(opensBrowserWhenEmpty: false))
         dj.decks.forEach { $0.stemLevels = [1, 1, 1, 1] }
 
+        // A long way from its next move, and what gets it there sooner.
+        dj.autoDJ.showCountingDownForTesting(bars: 98)
+        try await snapAll("decks-go-now", ContentView(opensBrowserWhenEmpty: false))
+        try await snapAll("browser-go-now", ContentView(showLibrary: true))
+        dj.autoDJ.press()
+        dj.statusMessage = nil
+
         dj.say("Echo throw done. Deck 2 is on.", .done)
         dj.rateAction = { _ in }
         try await snapAll("rating", ContentView(opensBrowserWhenEmpty: false))

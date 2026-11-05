@@ -116,7 +116,8 @@ struct Key<Label: View>: View {
             .background(KeyFace(color: color, lit: lit, pressed: pressed, cornerRadius: cornerRadius))
             .scaleEffect(pressed ? 0.955 : 1)
             .animation(Theme.press, value: pressed)
-            .animation(.easeOut(duration: 0.12), value: lit)
+            // Going dark it goes at once, with its word. Fading, a grey RELOOP sat on bright orange, too dim to read.
+            .animation(lit ? .easeOut(duration: 0.12) : nil, value: lit)
             .opacity(isEnabled ? 1 : 0.4)
             .modifier(Shake(amount: Double(refused)))
             .animation(.linear(duration: 0.32), value: refused)

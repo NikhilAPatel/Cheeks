@@ -14,7 +14,16 @@ struct BrowserView: View {
     var keyboardHeight: CGFloat = 0
     @State private var lastList = LastList()
     /// The list's showing its handles, to change a playlist's order.
-    @State private var rearranging = false
+    /// A state's binding is the same one each time. `.constant` makes a new one on every update, which the list takes as edit mode
+    /// changing, so it set up every row showing again: about 200 ms frozen each time the browser opened or closed.
+    @State private var listEditMode = EditMode.inactive
+    private var rearranging: Bool {
+        get { listEditMode == .active }
+        nonmutating set { listEditMode = newValue ? .active : .inactive }
+    }
+    /// What's ticked, while several tracks are being chosen. It carries on through a search, so what's chosen can come from anywhere.
+    @State private var chosen: Set<UUID>?
+    @State private var rowActions = RowActions()
     // How the list is showing is worth keeping: the browser closes every time someone goes back to the decks.
     @AppStorage("browserPlaylist") private var chosenPlaylist = ""
     @State private var search = ""
@@ -173,7 +182,11 @@ struct BrowserView: View {
             Button("Create") {
                 let name = newPlaylistName.trimmingCharacters(in: .whitespaces)
                 // Straight into it, or nothing on the screen says anything happened.
-                if !name.isEmpty { source = .playlist(library.createPlaylist(named: name)) }
+                if !name.isEmpty {
+                    let new = library.createPlaylist(named: name)
+                    addChosen(to: new, named: name)
+                    source = .playlist(new)
+                }
                 newPlaylistName = ""
             }
             Button("Cancel", role: .cancel) { newPlaylistName = "" }
@@ -192,8 +205,14 @@ struct BrowserView: View {
         .task(id: isOpen && bestNext ? nextFromNow : nil) { await catchUpWithNext() }
         // A playlist opens in the order it was built, which is the order MIX plays, whatever All Tracks was sorted by. A
         // first-time user's built order had gone from view, with nothing to say why. All Tracks gets its own sort back.
+        // Deleted from a row's menu while it's ticked, it went on being counted.
+        .onChange(of: library.tracks.count) { _, _ in
+            guard chosen != nil else { return }
+            chosen?.formIntersection(library.tracks.map(\.id))
+        }
         .onChange(of: chosenPlaylist) { old, new in
             rearranging = false
+            chosen = nil
             if old.isEmpty {
                 allSort = sort
                 allAscending = ascending
@@ -212,6 +231,7 @@ struct BrowserView: View {
             search = ""
             searchFocused = false
             rearranging = false
+            chosen = nil
         }
     }
 
@@ -248,6 +268,7 @@ struct BrowserView: View {
         // Animating a change to a long list freezes the screen for half a second, with a dim row of the old list showing.
         let isLong = max(list.count, lastList.tracks?.count ?? 0) > 200
         let _ = lastList.tracks = list
+        let _ = rowActions.set(changeTheOrder: { showItsOwnOrderToRearrange() }, chooseSeveral: { startChoosing(from: $0) }, toggleChosen: { toggleChosen($0) })
         if list.isEmpty {
             emptyState
         } else {
@@ -265,7 +286,7 @@ struct BrowserView: View {
                     }
                 }
                 .listStyle(.plain)
-                .environment(\.editMode, .constant(rearranging ? .active : .inactive))
+                .environment(\.editMode, $listEditMode)
                 .environment(\.defaultMinListRowHeight, 36)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.immediately)
@@ -275,22 +296,17 @@ struct BrowserView: View {
                 // A different list starts from its top. Now the list keeps its place, a search from far down opened part-way through its results.
                 .onChange(of: whatsListed) { _, _ in
                     if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
-                    dj.autoDJ.takeBack?(AutoDJ.everythingPlayed)
                     if !showsItsOwnOrder { rearranging = false }
-                }
-                // A row lifted, went nowhere and gave a first-time user nothing to go on.
-                .dropDestination(for: String.self) { _, _ in
-                    dj.say(canRearrange ? "To change the order, hold a row and choose Change the Order." : "Drop it on a deck, or press 1 or 2.", .info)
-                    return false
                 }
             }
         }
     }
 
     private func tableRow(_ row: Row) -> some View {
-        // A phone's browser covers the decks, so outside a playlist there's nothing to say to a dropped row, or anywhere to drop it.
-        TrackRow(track: row.track, referenceDeck: referenceDeck, playlistID: playlistID, canDrag: !rearranging && (!layout.isCompact || canRearrange),
-                 changeTheOrder: canRearrange ? { showItsOwnOrderToRearrange() } : nil)
+        // A phone's browser covers the decks, so there's nowhere to drop a row. It lifted, went nowhere and said nothing to a first-time
+        // user, and nothing's asked about a drop on the list itself. Holding it opens its menu, which has Change the Order.
+        TrackRow(track: row.track, referenceDeck: referenceDeck, playlistID: playlistID, canDrag: !rearranging && chosen == nil && !layout.isCompact,
+                 canChangeTheOrder: canRearrange, isChosen: chosen.map { $0.contains(row.track.id) }, actions: rowActions)
             .listRowBackground(row.number % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
             .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
             .listRowSeparator(.hidden)
@@ -315,8 +331,40 @@ struct BrowserView: View {
         inKeyOnly = false
         nearBPMOnly = false
         search = ""
+        chosen = nil
         Haptics.shared.toggle(true)
         withAnimation(Theme.panel) { rearranging = true }
+    }
+
+    private func startChoosing(from id: UUID) {
+        rearranging = false
+        Haptics.shared.toggle(true)
+        withAnimation(Theme.panel) { chosen = [id] }
+    }
+
+    private func toggleChosen(_ id: UUID) {
+        let on = chosen?.contains(id) != true
+        Haptics.shared.toggle(on)
+        if on { chosen?.insert(id) } else { chosen?.remove(id) }
+    }
+
+    /// In the order they're showing, then what a search has since hidden, in the library's order. Comes with `UNDO`, as a
+    /// slip here puts a lot of tracks somewhere they'd have to be taken out of one at a time.
+    private func addChosen(to id: UUID, named name: String) {
+        guard let chosen else { return }
+        let showing = tracks.map(\.id).filter(chosen.contains)
+        let hidden = chosen.subtracting(showing)
+        let added = library.add(showing + library.tracks.map(\.id).filter(hidden.contains), to: id)
+        let there = chosen.count - added.count
+        withAnimation(Theme.panel) { self.chosen = nil }
+        if added.isEmpty {
+            dj.say(there == 1 ? "That's already in \(name)." : "Those are already in \(name).", .info)
+            return
+        }
+        let also = there > 0 ? " \(there) already there." : ""
+        dj.offerUndo("Added \(Format.count(added.count, "track")) to \(name).\(also)", .done) { [library] in
+            library.remove(added, from: id)
+        }
     }
 
     private func rearrange(_ rows: [Row], from: IndexSet, to offset: Int) {
@@ -456,7 +504,8 @@ struct BrowserView: View {
         HStack(spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(Theme.textTertiary)
-                TextField("Search title or artist", text: $search)
+                // Upright, nothing else on the screen says which playlist this is.
+                TextField(library.playlists.first { $0.id == playlistID }.map { "Search \(library.shownName(of: $0))" } ?? "Search title or artist", text: $search)
                     .focused($searchFocused)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -564,11 +613,17 @@ struct BrowserView: View {
     private var listLines: some View {
         let filtered = filterLine
         let set = dj.autoDJ.mixSet
-        if filtered != nil || set != nil || rearranging {
+        if filtered != nil || set != nil || rearranging || chosen != nil {
             VStack(spacing: 0) {
                 if rearranging { rearrangingLine }
+                if let chosen { choosingLine(chosen) }
                 if let filtered { line(filtered, dot: Theme.warn, help: "Filter line") }
-                if let set { line(set.line, dot: Theme.accent, help: "Mix line") }
+                if let set {
+                    HStack(spacing: 0) {
+                        line(set.line, dot: Theme.accent, help: "Mix line")
+                        GoNowKey(width: 54, height: 18).padding(.trailing, 8)
+                    }
+                }
             }
             // The screen runs under the home indicator, and that went through this.
             .padding(.bottom, homeIndicatorRoom)
@@ -595,6 +650,43 @@ struct BrowserView: View {
             Spacer(minLength: 0)
             Key("DONE", lit: true, size: 8, accessibilityName: "Done changing the order", help: "Change the order", onPress: {
                 withAnimation(Theme.panel) { rearranging = false }
+            })
+            .frame(width: 44, height: 20)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+    }
+
+    private func choosingLine(_ chosen: Set<UUID>) -> some View {
+        let showing = (lastList.tracks ?? []).map(\.id)
+        let allIn = !showing.isEmpty && chosen.isSuperset(of: showing)
+        let targets = library.playlists.filter { !library.isHistory($0) && $0.id != playlistID }
+        return HStack(spacing: 5) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.accent)
+            Text(chosen.isEmpty ? "Tap the tracks you want." : "\(Format.count(chosen.count, "track")) chosen.")
+                .font(Theme.text(10.5, .medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                .whatsThis("Choose several")
+            Spacer(minLength: 0)
+            Key(allIn ? "NONE" : "ALL", size: 8, accessibilityName: allIn ? "Choose none of these" : "Choose all of these", help: "Choose several", onPress: {
+                if allIn { self.chosen?.subtract(showing) } else { self.chosen?.formUnion(showing) }
+            })
+            .frame(width: 40, height: 20)
+            Menu {
+                Button("New Playlist…", systemImage: "plus") { showNewPlaylist = true }
+                ForEach(targets) { playlist in
+                    Button(library.shownName(of: playlist)) { addChosen(to: playlist.id, named: library.shownName(of: playlist)) }
+                }
+            } label: {
+                KeyLegend(title: "ADD TO", size: 8)
+                    .foregroundStyle(chosen.isEmpty ? Theme.textTertiary : .white)
+                    .frame(width: 52, height: 20)
+                    .background(KeyFace(color: Theme.accent, lit: !chosen.isEmpty))
+            }
+            .disabled(chosen.isEmpty || WhatsThis.shared.isOn)
+            .whatsThis("Choose several")
+            .accessibilityLabel("Add to")
+            Key("DONE", lit: true, size: 8, accessibilityName: "Done choosing", help: "Choose several", onPress: {
+                withAnimation(Theme.panel) { self.chosen = nil }
             })
             .frame(width: 44, height: 20)
         }
@@ -801,6 +893,21 @@ struct ArtworkPreview: View {
     }
 }
 
+/// What a row can ask the browser to do. In a box, and never as closures on the row: no two closures compare as equal, so
+/// SwiftUI rebuilt every row showing whenever anything about the browser changed, which froze the screen for about 200 ms
+/// each time it opened or closed.
+final class RowActions {
+    private(set) var changeTheOrder: () -> Void = {}
+    private(set) var chooseSeveral: (UUID) -> Void = { _ in }
+    private(set) var toggleChosen: (UUID) -> Void = { _ in }
+
+    func set(changeTheOrder: @escaping () -> Void, chooseSeveral: @escaping (UUID) -> Void, toggleChosen: @escaping (UUID) -> Void) {
+        self.changeTheOrder = changeTheOrder
+        self.chooseSeveral = chooseSeveral
+        self.toggleChosen = toggleChosen
+    }
+}
+
 /// One track. Tap a number to load it, drag it onto a deck, or swipe it across.
 struct TrackRow: View {
     @Environment(Library.self) private var library
@@ -809,18 +916,48 @@ struct TrackRow: View {
     let referenceDeck: Deck?
     let playlistID: UUID?
     var canDrag = true
-    /// Where a list has an order someone can change.
-    var changeTheOrder: (() -> Void)?
+    /// Whether this list has an order someone can change.
+    var canChangeTheOrder = false
+    /// Whether it's ticked, while several are being chosen.
+    var isChosen: Bool?
+    var actions = RowActions()
     @Environment(\.screenLayout) private var layout
     @State private var askingToDelete = false
 
+    #if DEBUG
+    /// How many rows have been built, for the test that a list only builds what's showing.
+    static var builtForTesting = 0
+    #endif
+
+    private static func noteBuilt() {
+        #if DEBUG
+        builtForTesting += 1
+        #endif
+    }
+
     var body: some View {
+        let _ = Self.noteBuilt()
         let compatible = referenceDeck?.track?.id != track.id && Camelot.isCompatible(track.key, referenceDeck?.effectiveKey)
         let loadedOn = dj.decks.first { $0.track?.id == track.id }
+        // A list only builds the rows showing if it can tell without building one that it's one row, and a modifier of our own hides
+        // that. It built all 2,000 each time the browser opened or closed, about 200 ms frozen. A stack is always one, whatever's in it.
+        VStack(spacing: 0) {
         HStack(spacing: 8) {
-            TrackArtwork(track: track).frame(width: 28, height: 28)
-                .overlay { if layout.isCompact { ArtworkPreview(track: track) } }
-            if !layout.isCompact { TrackPreview(track: track).frame(width: 90, height: 24) }
+            if let isChosen {
+                // In place of what it's beside, so nothing moves along the row.
+                Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 19))
+                    .foregroundStyle(isChosen ? Theme.accent : Theme.textTertiary)
+                    .frame(width: 28, height: 28)
+                    .accessibilityLabel(isChosen ? "Chosen, \(track.title)" : "Choose \(track.title)")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { actions.toggleChosen(track.id) }
+            } else {
+                TrackArtwork(track: track).frame(width: 28, height: 28)
+                    .overlay { if layout.isCompact { ArtworkPreview(track: track) } }
+            }
+            // While choosing, a tap here is a tap on the row, and it started an audition.
+            if !layout.isCompact { TrackPreview(track: track).frame(width: 90, height: 24).allowsHitTesting(isChosen == nil) }
             VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
                 if library.isMissing(track) {
@@ -854,6 +991,10 @@ struct TrackRow: View {
             // The first thing a first-time user tries on a row, and it did nothing at all.
             .onTapGesture {
                 guard !WhatsThis.shared.isOn else { return }
+                if isChosen != nil {
+                    actions.toggleChosen(track.id)
+                    return
+                }
                 Haptics.shared.tick()
                 dj.say("Press 1 or 2 to load this, or hold the row for more.", .info)
             }
@@ -889,7 +1030,12 @@ struct TrackRow: View {
         }
         .frame(height: 36)
         .contentShape(Rectangle())
+        .gesture(isChosen == nil ? nil : TapGesture().onEnded {
+            guard !WhatsThis.shared.isOn else { return }
+            actions.toggleChosen(track.id)
+        })
         .modifier(LiftsIfItCan(on: canDrag, track: track))
+        }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Deck 1") { _ = dj.load(track, onto: dj.decks[0]) }.tint(Theme.accent)
         }
@@ -915,10 +1061,13 @@ struct TrackRow: View {
             }
             if let playlistID {
                 let isHistory = library.playlists.first { $0.id == playlistID }.map(library.isHistory) == true
-                Button(isHistory ? "Remove from History" : "Remove from Playlist", systemImage: "minus.circle") { library.remove(track.id, from: playlistID) }
+                Button(isHistory ? "Remove from History" : "Remove from Playlist", systemImage: "minus.circle") { takeOut(of: playlistID) }
             }
-            if let changeTheOrder {
-                Button("Change the Order", systemImage: "arrow.up.arrow.down", action: changeTheOrder)
+            if isChosen == nil {
+                Button("Choose Several", systemImage: "checkmark.circle") { actions.chooseSeveral(track.id) }
+            }
+            if canChangeTheOrder {
+                Button("Change the Order", systemImage: "arrow.up.arrow.down") { actions.changeTheOrder() }
             }
             Button("Re-analyse", systemImage: "waveform.badge.magnifyingglass") {
                 library.reanalyze(track) { [dj] done in
@@ -945,6 +1094,17 @@ struct TrackRow: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes it from Segue DJ, with its cues, loops and stems. A file you picked in Files stays there.")
+        }
+    }
+
+    /// It's where a finger ends up, sliding from a hold to drag a row. It went with no word and no way back, and the first anyone
+    /// would know is a track missing from a set later on.
+    private func takeOut(of playlistID: UUID) {
+        guard let playlist = library.playlists.first(where: { $0.id == playlistID }) else { return }
+        let before = playlist.trackIDs
+        library.remove(track.id, from: playlistID)
+        dj.offerUndo("Took \(track.title) out of \(library.shownName(of: playlist)).", .removed) { [library] in
+            library.setTracks(before, of: playlistID)
         }
     }
 

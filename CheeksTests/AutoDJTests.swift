@@ -40,6 +40,7 @@ final class AutoDJTests: XCTestCase {
             left -= 0.1
             await Task.yield()
             if case .planning = dj.autoDJ.phase { try await Task.sleep(nanoseconds: 20_000_000) }
+            if dj.autoDJ.isGoingNow { try await Task.sleep(nanoseconds: 20_000_000) }
         }
         XCTAssertTrue(done(), "Didn't get there in \(seconds) s of audio. Phase: \(dj.autoDJ.phase), said: \(dj.statusMessage ?? "nothing")")
     }
@@ -681,7 +682,7 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 5)
         XCTAssertFalse(a.isPlaying)
         XCTAssertTrue(b.isPlaying, "The music carries on")
-        XCTAssertEqual(dj.statusMessage, "The stems didn't get there in time. Deck 2 just started.")
+        XCTAssertEqual(dj.statusMessage, "The stems weren't ready in time, so there's no move. Deck 2 just started, with the crossfader moved to the middle.")
         XCTAssertGreaterThan(b.fader, 0.4, "And can be heard")
         XCTAssertEqual(dj.crossfader, 0)
     }
@@ -2125,9 +2126,10 @@ final class AutoDJTests: XCTestCase {
             put(try map(), on: dj.decks[0], name: "Playing", id: ids[row])
             dj.decks[0].play()
             dj.autoDJ.startSet(named: "Tonight", tracks: ids)
-            XCTAssertNil(dj.autoDJ.mixSet, "Row \(row)")
-            XCTAssertEqual(dj.statusMessage, "Everything else here has been played. To go round again, stop the deck and press MIX.")
-            XCTAssertEqual(dj.statusKind, .refused)
+            XCTAssertNotNil(dj.autoDJ.mixSet, "Row \(row)")
+            XCTAssertEqual(dj.autoDJ.mixSet?.queue.count, 4, "What's playing doesn't come round again until it's finished")
+            XCTAssertEqual(dj.statusMessage, "You've played all of Tonight, so this goes round again, 4 tracks to go.")
+            dj.autoDJ.press()
         }
     }
 
@@ -2197,6 +2199,298 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(last.line, "Mixing through Tonight. This is the last track.")
     }
 
+    // MARK: Going now
+
+    /// A mix with its first track playing and a long way to go to its move.
+    private func mixCountingDown() async throws -> (dj: DJEngine, ids: [UUID]) {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        XCTAssertGreaterThan(dj.autoDJ.barsToGo, 24, "Nothing to be impatient about")
+        XCTAssertTrue(dj.autoDJ.canGoNow)
+        return (dj, ids)
+    }
+
+    /// "I got impatient and wanted to go to the next track now": `MIX 98`, a first-time user, and nothing offered it.
+    func testGoNowBringsAMixsNextMoveToWithinAFewBars() async throws {
+        let (dj, ids) = try await mixCountingDown()
+        dj.autoDJ.goNow()
+        XCTAssertTrue(dj.autoDJ.isGoingNow)
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 10)
+        XCTAssertTrue(isArmed(dj), "\(dj.autoDJ.phase), said: \(dj.statusMessage ?? "nothing")")
+        XCTAssertLessThanOrEqual(dj.autoDJ.barsToGo, 23)
+        XCTAssertFalse(dj.autoDJ.canGoNow, "It's as soon as it's going to get")
+        XCTAssertEqual(dj.statusMessage?.contains(" bars, into "), true, dj.statusMessage ?? "nothing")
+        XCTAssertNotNil(dj.autoDJ.mixSet, "It's the same mix")
+        // And the mix goes on from there.
+        try await run(dj, until: { self.isRunning(dj) }, seconds: 60)
+        try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 120)
+        dj.rateAction = nil
+        XCTAssertEqual(dj.autoDJ.mixSet?.onAir, 1)
+        XCTAssertTrue(dj.decks[1].isPlaying)
+        XCTAssertFalse(dj.decks[0].isPlaying)
+        try await run(dj, until: { dj.decks[0].track?.id == ids[2] }, seconds: 5)
+    }
+
+    func testGoNowLeavesThePlanAsItWasWhenNothingQuickerWorks() async throws {
+        let (dj, _) = try await mixCountingDown()
+        let bars = dj.autoDJ.barsToGo, cued = dj.decks[1].position
+        // Every way in pushes the limiter, so none of them passes.
+        dj.decks[1].channelTrim = 30
+        dj.autoDJ.goNow()
+        dj.decks[1].channelTrim = 1
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 40)
+        XCTAssertTrue(isArmed(dj))
+        XCTAssertEqual(dj.statusMessage?.hasPrefix("Nothing quicker works from here. It's still "), true, dj.statusMessage ?? "nothing")
+        XCTAssertGreaterThan(dj.autoDJ.barsToGo, 24, "It's still counting down to the same thing, from \(bars)")
+        XCTAssertEqual(dj.decks[1].position, cued, accuracy: 0.01)
+        XCTAssertTrue(dj.autoDJ.canGoNow, "It can be tried again")
+    }
+
+    func testStoppingAMixWhileItLooksForAQuickerWayIsAnEnd() async throws {
+        let (dj, _) = try await mixCountingDown()
+        dj.autoDJ.goNow()
+        dj.autoDJ.press()
+        XCTAssertFalse(dj.autoDJ.isGoingNow)
+        XCTAssertNil(dj.autoDJ.mixSet)
+        for _ in 0..<40 {
+            _ = dj.renderOffline(frames: 4410)
+            dj.tickForTesting()
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertFalse(cheeks_engine_auto_armed(dj.coreForTesting))
+        XCTAssertFalse(dj.decks[1].isPlaying)
+    }
+
+    /// Going now mustn't call anything off on the way, and that includes the crossfader it opened for what's playing.
+    func testGoNowKeepsWhatTheMixHasOpened() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        _ = dj.autoDJ.loadTrack?(ids[0], dj.decks[0])
+        dj.decks[0].play()
+        dj.crossfader = 1
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.crossfader, 0, accuracy: 0.01, "It can't be heard otherwise")
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        dj.autoDJ.goNow()
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 10)
+        XCTAssertLessThanOrEqual(dj.autoDJ.barsToGo, 23)
+        XCTAssertEqual(dj.crossfader, 0, accuracy: 0.01)
+    }
+
+    func testAMixThatGaveUpOnAMoveCanStillBeToldToGo() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        // Every way in pushes the limiter, so it looks everywhere and gives up.
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.decks[1].channelTrim = 30
+        try await run(dj, until: { dj.autoDJ.canGoNow && dj.autoDJ.phase == .idle }, seconds: 200)
+        XCTAssertEqual(dj.statusMessage, "No clean way in. Next track starts when this one ends.")
+        // Nor does it go, while nothing's changed.
+        dj.autoDJ.goNow()
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 40)
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertTrue(dj.autoDJ.canGoNow)
+        // With the trim back it does.
+        dj.decks[1].channelTrim = 1
+        dj.autoDJ.goNow()
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 10)
+        XCTAssertTrue(isArmed(dj), "\(dj.autoDJ.phase), said: \(dj.statusMessage ?? "nothing")")
+        XCTAssertLessThanOrEqual(dj.autoDJ.barsToGo, 23)
+    }
+
+    /// It's on the mixer, lit, with no mix on, and it would have gone on looking.
+    func testAMixThatEndsWhileItLooksForAQuickerWayStopsLooking() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.decks[1].channelTrim = 30
+        try await run(dj, until: { dj.autoDJ.canGoNow && dj.autoDJ.phase == .idle }, seconds: 200)
+        dj.autoDJ.goNow()
+        XCTAssertTrue(dj.autoDJ.isGoingNow)
+        dj.decks[0].pause()
+        dj.tickForTesting()
+        dj.tickForTesting()
+        XCTAssertNil(dj.autoDJ.mixSet)
+        XCTAssertFalse(dj.autoDJ.isGoingNow)
+    }
+
+    /// A loop on the deck: the plan went straight back to waiting for it, when pressing this was asking it to leave.
+    func testGoNowTakesALoopOffADeckAMixHadGivenUpOn() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(bpm: 122, firstBar: 0.2), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.decks[1].channelTrim = 30
+        try await run(dj, until: { dj.autoDJ.canGoNow && dj.autoDJ.phase == .idle }, seconds: 200)
+        dj.decks[1].channelTrim = 1
+        let a = dj.decks[0], frame = a.renderer.playhead
+        dj.autoDJ.goNow()
+        a.renderer.setLoop(start: frame, end: frame + 8 * Synth.sampleRate, active: true)
+        a.loopActive = true
+        try await run(dj, until: { !dj.autoDJ.isGoingNow }, seconds: 40)
+        XCTAssertTrue(isArmed(dj), "\(dj.autoDJ.phase), said: \(dj.statusMessage ?? "nothing")")
+        XCTAssertFalse(a.renderer.loopActive)
+    }
+
+    // MARK: Round 20
+
+    /// It's how you'd check a track you're about to hear, and it ended the mix, with 6 tracks to go.
+    func testHoldingCueOnTheWaitingDeckDoesntEndAMix() async throws {
+        let (dj, _) = try await mixCountingDown()
+        let b = dj.decks[1]
+        let cued = b.position
+        b.cueDown()
+        XCTAssertTrue(b.renderer.isPlaying, "It's a preview")
+        for _ in 0..<10 {
+            _ = dj.renderOffline(frames: 4410)
+            dj.tickForTesting()
+        }
+        XCTAssertTrue(isArmed(dj), dj.statusMessage ?? "")
+        XCTAssertNotNil(dj.autoDJ.mixSet)
+        b.cueUp()
+        dj.tickForTesting()
+        XCTAssertTrue(isArmed(dj))
+        XCTAssertFalse(b.renderer.isPlaying)
+        XCTAssertEqual(b.position, cued, accuracy: 0.05, "It's back where it comes in")
+    }
+
+    func testAPreviewHeldTooLongGivesWayToTheMove() async throws {
+        let dj = try ready(only: .bassSwap)
+        dj.autoDJ.press()
+        try await run(dj, until: { self.isArmed(dj) })
+        let b = dj.decks[1]
+        b.cueDown()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertFalse(b.cuePreviewing, "Letting go now would stop the move's own deck")
+        XCTAssertEqual(dj.autoDJ.phase, .running(.bassSwap), dj.statusMessage ?? "")
+        b.cueUp()
+        try await run(dj, until: { dj.decks[1].renderer.isPlaying }, seconds: 30)
+        XCTAssertEqual(dj.autoDJ.phase, .running(.bassSwap), dj.statusMessage ?? "")
+    }
+
+    /// The same late press as pressing AUTO, on the other key that hands back: it took the question.
+    func testExitJustAfterAMoveLeavesTheQuestion() async throws {
+        let dj = try ready(only: .echoDrop)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle })
+        let question = dj.statusMessage
+        XCTAssertNotNil(dj.rateAction)
+        dj.decks[0].renderer.setLoop(start: 0, end: 0, active: false)
+        dj.decks[0].reloop()
+        XCTAssertEqual(dj.statusMessage, question)
+        XCTAssertNotNil(dj.rateAction)
+        // With no question up, it's the usual word.
+        dj.rateAction = nil
+        dj.decks[0].reloop()
+        XCTAssertEqual(dj.statusMessage?.hasPrefix("There's no loop to go back to yet."), true, dj.statusMessage ?? "")
+    }
+
+    /// A first-time user's first AUTO and first MIX both just cut, with nothing beforehand to say how long stems take.
+    func testAutoSaysWhenTheStemsWontMakeIt() async throws {
+        let dj = try ready()
+        let a = dj.decks[0], b = dj.decks[1]
+        let map = b.trackMap
+        b.trackMap = nil
+        b.stemStatus = .separating(0.5)
+        b.stemsBegan = (CACurrentMediaTime() - 60, 0.1)
+        a.seek(to: a.duration - 20)
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
+        dj.rateAction = nil
+        dj.tickForTesting()
+        XCTAssertEqual(dj.statusMessage, "The stems need 1 min, and this track has 20 s left. Deck 2 will just start at the end, with no move.")
+        // Once.
+        dj.statusMessage = nil
+        dj.tickForTesting()
+        XCTAssertNil(dj.statusMessage)
+        b.trackMap = map
+    }
+
+    func testAutoDoesntWarnWhenTheStemsHaveTime() async throws {
+        let dj = try ready()
+        let b = dj.decks[1]
+        b.trackMap = nil
+        b.stemStatus = .separating(0.9)
+        b.stemsBegan = (CACurrentMediaTime() - 60, 0.1)
+        dj.autoDJ.press()
+        let said = dj.statusMessage
+        dj.tickForTesting()
+        XCTAssertEqual(dj.statusMessage, said)
+    }
+
+    /// The deck's own meter moves, as it reads ahead of the fader, and only the mix's stay empty. The crossfader got a sentence.
+    func testADeckPlayingWithItsFaderDownSaysSo() throws {
+        let dj = try ready()
+        let a = dj.decks[0]
+        a.pause()
+        dj.tickForTesting()
+        dj.statusMessage = nil
+        a.fader = 0
+        a.play()
+        for _ in 0..<59 { dj.tickForTesting() }
+        XCTAssertNil(dj.statusMessage, "There's time to bring it up")
+        dj.tickForTesting()
+        XCTAssertEqual(dj.statusMessage, "Deck 1 is playing with its fader down. Nothing's coming out.")
+        dj.statusMessage = nil
+        for _ in 0..<120 { dj.tickForTesting() }
+        XCTAssertNil(dj.statusMessage, "Once")
+    }
+
+    func testADeckCuedInTheHeadphonesWithItsFaderDownSaysNothing() throws {
+        let dj = try ready()
+        let a = dj.decks[0]
+        a.pause()
+        dj.tickForTesting()
+        dj.statusMessage = nil
+        a.fader = 0
+        a.headphoneCue = true
+        a.play()
+        for _ in 0..<120 { dj.tickForTesting() }
+        XCTAssertNil(dj.statusMessage, "They mean to")
+    }
+
+    /// Pressed during a plan, it stayed down through the move with no word, and "From here" only came later.
+    func testAControlTouchedBeforeTheMoveStartsSaysItsYours() async throws {
+        let dj = try ready(only: .bassSwap)
+        dj.autoDJ.press()
+        try await run(dj, until: { self.isArmed(dj) })
+        dj.statusMessage = nil
+        dj.decks[1].eqLow = 0.5
+        XCTAssertEqual(dj.statusMessage, "That's yours for this move. Auto DJ carries on with the rest.")
+    }
+
+    func testKeySyncSaysWhatItDid() throws {
+        let dj = makeEngine()
+        let a = dj.decks[0], b = dj.decks[1]
+        put(try map(), on: a, name: "A")
+        put(try map(), on: b, name: "B")
+        a.updateTrack { $0.key = "8A" }
+        b.updateTrack { $0.key = "8A" }
+        a.keyShift = 2
+        a.keySync(to: b)
+        XCTAssertEqual(a.keyShift, 0)
+        XCTAssertEqual(dj.statusMessage, "Deck 1's own key, 8A, goes with deck 2's 8A, so it needs no shift.")
+        b.updateTrack { $0.key = nil }
+        a.keySync(to: b)
+        XCTAssertEqual(dj.statusMessage, "KEY SYNC needs both decks' keys, and they aren't both known yet.")
+    }
+
+    func testAnUndoPutsAPlaylistBackInItsOrder() {
+        let library = Library()
+        let playlist = library.createPlaylist(named: "Friday")
+        defer { library.playlists.removeAll { $0.id == playlist } }
+        let ids = [UUID(), UUID(), UUID()]
+        library.add(ids, to: playlist)
+        library.remove(ids[1], from: playlist)
+        library.setTracks(ids, of: playlist)
+        XCTAssertEqual(library.playlists.first { $0.id == playlist }?.trackIDs, ids)
+    }
+
     // MARK: Round 19
 
     /// 12 pt at WIDE took a synced deck from 170 to 149.28, and all that showed it was a key going dark and a marker going orange.
@@ -2247,14 +2541,14 @@ final class AutoDJTests: XCTestCase {
         dj.autoDJ.press()
         try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
         let message = try XCTUnwrap(dj.statusMessage)
-        XCTAssertTrue(message.contains(" It's taken over deck 2's SYNC, EQ and stems, and deck 1's effects. AUTO's counting down the bars."), message)
+        XCTAssertTrue(message.contains(" It takes over deck 2's SYNC, EQ and stems, and deck 1's effects. AUTO's counting down the bars."), message)
     }
 
     func testAutoOnlySaysWhatItsTakenOverIfThereIsAnything() async throws {
         let dj = try ready(only: .echoDrop)
         dj.autoDJ.press()
         try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
-        XCTAssertFalse(dj.statusMessage?.contains("taken over") == true, dj.statusMessage ?? "")
+        XCTAssertFalse(dj.statusMessage?.contains("takes over") == true, dj.statusMessage ?? "")
     }
 
     /// Meant to hand a move back, 1.5 s too late, it started the next one back into the track that had just gone.
@@ -2295,7 +2589,7 @@ final class AutoDJTests: XCTestCase {
         dj.decks[1].stemStatus = .separating(0.78)
         dj.decks[0].seek(to: dj.decks[0].track!.duration - 1)
         try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 5)
-        XCTAssertEqual(dj.statusMessage, "The stems didn't get there in time. Deck 2 just started.")
+        XCTAssertEqual(dj.statusMessage, "The stems weren't ready in time, so there's no move. Deck 2 just started.")
     }
 
     /// A first-time user pressed it and saw nothing change, as the marker was already on a beat.

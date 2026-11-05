@@ -258,6 +258,7 @@ struct CompactMixer: View {
                 }
             }
             .frame(height: 22)
+            GoNowKey(height: 22)
             LimiterLight()
             CentreMeters().frame(maxHeight: .infinity)
         }

@@ -273,6 +273,8 @@ struct TransitionChoice {
     var lagShifted = 0.0
     /// The first bar of the outgoing track a move could start on.
     var earliest: Int
+    /// The last bar it may start on. Someone's said now, so a better way in further along is no use to them.
+    var latest: Int?
     /// The moves played lately, oldest first, so the same few don't keep coming up.
     var recentMoves: [TransitionMove] = []
     /// Moves not to use. A mix has no one there to take it back, so it leaves out what's only for when nothing else will do.
@@ -299,7 +301,7 @@ struct TransitionChoice {
         var penalty: [TransitionMove: Double] = [:]
         for (move, amount) in zip(recentMoves.reversed(), Self.repeatPenalty) { penalty[move, default: 0] += amount }
         let plans = TransitionPlanner.plans(from: mapA, to: mapB, playingBPM: playingBPM, earliest: earliest)
-            .filter { !avoid.contains($0.move) }
+            .filter { !avoid.contains($0.move) && $0.exit <= latest ?? .max }
             .map { plan -> TransitionPlan in
                 var plan = plan
                 plan.score += (taste[plan.move] ?? 0) - (penalty[plan.move] ?? 0)
@@ -333,7 +335,7 @@ struct TransitionChoice {
     /// another just starting.
     private func echoOut(_ isCancelled: () -> Bool) -> TransitionScore? {
         let track = PlannerTrack(mapA), next = PlannerTrack(mapB)
-        let lines = track.lines.filter { $0 >= earliest }
+        let lines = track.lines.filter { $0 >= earliest && $0 <= latest ?? .max }
         // Where the beat comes in, if that's early on. A long beatless intro after a club track felt "way too slow".
         let entry = next.lines.first { $0 < next.bars / 3 && next.kick($0, $0 + 8) > 0.5 } ?? 0
         // From a full section if it can: leaving from a breakdown means the track was already gone.

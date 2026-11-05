@@ -215,6 +215,8 @@ final class Deck {
     var isPlayingOrAboutTo: Bool { isPlaying || startsWhenLoaded }
     var cuePoint: Double = 0
     @ObservationIgnored var cuePreviewing = false
+    /// A move's just finished, and it's asking how that was.
+    @ObservationIgnored var isJustAfterAMove: () -> Bool = { false }
     var quantize = true
     var slipMode = false {
         didSet {

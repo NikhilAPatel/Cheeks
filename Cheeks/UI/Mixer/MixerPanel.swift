@@ -58,6 +58,8 @@ struct MixerPanel: View {
             AutoKey()
                 .frame(height: 22)
                 .padding(.top, 1)
+            GoNowKey(height: 20)
+                .padding(.top, 1)
             Spacer(minLength: 2)
             LimiterLight()
             CentreMeters()
@@ -85,10 +87,27 @@ struct AutoKey: View {
         Key(lit: auto.isActive, feel: .toggle, accessibilityName: "Auto DJ", help: auto.mixSet == nil ? nil : "Mix on the mixer", onPress: { auto.press() }) {
             VStack(spacing: 0) {
                 KeyLegend(title: auto.keyName, size: auto.keyDetail == nil ? 8 : 7)
-                if let detail = auto.keyDetail { Text(detail).font(Theme.silk(5)).lineLimit(1).minimumScaleFactor(0.8) }
+                if let detail = auto.keyDetail { Text(detail).font(Theme.silk(6)).lineLimit(1).minimumScaleFactor(0.7) }
             }
         }
         .accessibilityValue(auto.keyDetail ?? "")
+    }
+}
+
+/// Only there while a move's a long way off, or a mix has given up on one. It goes after what's beside it, so nothing moves under a finger.
+struct GoNowKey: View {
+    @Environment(DJEngine.self) private var dj
+    var width: CGFloat?
+    var height: CGFloat
+
+    var body: some View {
+        let auto = dj.autoDJ!
+        if auto.canGoNow || auto.isGoingNow {
+            Key(color: Theme.accent, lit: auto.isGoingNow, accessibilityName: "Go now", onPress: { auto.goNow() }) {
+                KeyLegend(title: auto.isGoingNow ? "CHOOSING" : "GO NOW", size: auto.isGoingNow ? 5.5 : 7)
+            }
+            .frame(width: width, height: height)
+        }
     }
 }
 

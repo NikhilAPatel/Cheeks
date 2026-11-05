@@ -708,3 +708,51 @@ No crashes in the whole session, and I never had to restart.
 **What I left changed on the phone:** 7 tracks imported, two recordings, a playlist "Warmup" holding Severe Tire Damage, hot cue A and a memory cue on Houston, hot cue renamed "Big bit" (I didn't check it stuck), Pad 1 replaced with REC 1, waveform colours set to RGB, some thumbs ratings, Exhilarate re-analysed once. Both decks ran to their ends and sit stopped at 00:00.0 (fu-both-decks-ran-out.png, 10:20:47: silence with no message, and MASTER 2 and 129.53 still showing). The app is still open. I didn't send or share anything.
 
 **Session times:** opened 09:34:21, last look at the app 10:20:47. My last touch on the screen was 10:18:50, then I wrote this report while the two tracks ran out, and looked again at the end.
+
+---
+
+## What happened next
+
+### Fixed
+- **`N37`, sliding from a hold takes a row out of a playlist: it says so, with `UNDO`.** "Took Houston out of Friday." `UNDO` puts it back where it was. The slide itself is iOS's own, so it can still happen, and now it can be seen and taken back. `testAPlaylistsRowsCanBeDraggedIntoAnotherOrder` goes through it on the phone.
+- **`GC4`, the failure: there's no message any more, and no lift.** You were right that nothing was ever asked about a drop on the list. On a phone a row doesn't lift in any list now, as the browser covers the decks and there's nowhere to drop one. Holding opens the menu, and that has `Change the Order`. On the full layout a row still lifts, to go on a deck.
+- **`N38`, a deck playing with its fader down: it says so.** Two seconds in, "Deck 1 is playing with its fader down. Nothing's coming out." Once, and not with its headphone `CUE` lit, as someone cueing a track means to. The crossfader gets the same.
+- **`N39`, holding `CUE` on the waiting deck: it's a preview, and the mix carries on.** I made the call: it goes back when you let go, so nothing's been started. If you're still holding it a bar before the move needs the deck, the preview's over. `PLAY` during the hold is still starting it, and ends the mix as before.
+- **`N40`, `EXIT` just after a move:** with the question up it just buzzes, as `AUTO` does, and the question stays.
+- **`N41`, grey on orange: a key goes dark at once, with its word.** It only fades lighting up now. Please look again on video, as I've gone by your frames.
+- **Two messages on top of each other:** one on its way out now goes in 0.12 s, not 0.4 s or more, so what's arriving can be read.
+- **A control touched during the count:** "That's yours for this move." now comes from when there's a plan, not only from when it starts.
+- **"It's taken over" with things still lit:** it says "It takes over deck 2's SYNC, EQ and stems, and deck 1's effects."
+- **The playlist's name upright:** the search field says "Search Friday".
+- **`Grab Deck 2's Loop` with no word:** "Pad 3 plays deck 2's loop now. This sheet can bring back the original sound."
+- **`KEY SYNC` with no word:** it says what it did, including when that's undoing a shift, and why it couldn't.
+- **The crossfader moving when a next track just starts:** "...Deck 2 just started, with the crossfader moved to the middle."
+- **Notes:** `MASTER` said a stopped deck can't lead, and a paused one does. `NEXT` says tempos within reach come first, then key, and that what's on a deck goes last. "Key" for a button has gone from the two notes that had it.
+- **The words under `AUTO`:** 6 pt, and 4 at the very least.
+
+### What the first-time user said, and what I did
+- **Their worst thing, the first `AUTO` and first `MIX` both ending in a cut:** as soon as it can tell, it says "The stems need 2 min, and this track has 40 s left. Deck 2 will just start at the end, with no move." That takes about 5 s, as it needs to see them moving. And "The stems didn't get there in time" sounded broken, so it's "The stems weren't ready in time, so there's no move."
+- **Everything played, and having to stop the music to go on:** `MIX` goes round again. "You've played all of Friday, so this goes round again, 4 tracks to go."
+- **Wanting to go now:** see below.
+- **"Who's in charge":** it's gone as the worst thing, so I've only made the changes above.
+
+### New, from me
+- **A freeze I put in last round, which you had no way to see.** Every time the browser opened or closed, it built all 2,000 rows: about 200 ms frozen each way, and 70 MB more memory, in c577553, the commit you tested. `LiftsIfItCan`, a modifier of my own on each row, stopped the list being able to tell a row's one row without building it. The old commit showed 50 to 100 ms. Now it's nothing at 50 ms or more, in all but one of the opens and closes I measured, memory's 67 MB at rest and 164 MB playing, from 127 and 238, and CPU in the browser's 12%, from 20%. `testTheListOnlyBuildsTheRowsShowing` fails without the fix, with 1,002 rows built, and `tools/self-tour.sh` is now in my gate. Nothing in the suite had noticed.
+- **Saving's off the main thread.** All 2,000 tracks were written out on it after every change, 34 ms on a Mac, and a pretty-printed backup every 5 minutes. `saveNow` still waits, for going to the background.
+- **`GO NOW`.** While a move's more than 24 bars off, or a mix has given up on one, a key under `MIXER` on a phone, under `AUTO` on the full layout, and on the mix's line in the browser. It looks for a way in over the next 16 bars or so. What it's counting down to stays until it finds one, so finding nothing costs nothing.
+- **`Choose Several`.** Hold a row, tap the ones you want, searching between them if you like, and `ADD TO` a playlist, with `UNDO`.
+
+### The Loop build between 128 and 170 where neither tempo moves
+That's as designed: too far apart to stretch, so the new track lands at its own tempo with a beat of air between them. You and the first-time user are right that it's worth an ear, so it's in `docs/TEST_PLAN.md` for the owner.
+
+### Left as they are
+- **`NEXT`'s list moving when the master track ends:** it holds for 2 s and then it's a different list, as what it's next from has changed.
+- **`FILTER` on the old deck snapping back after "That's yours for this move":** that's the rule, and "for this move" covers it.
+- **A deck dropping `SYNC` when what it follows runs out:** it's stopped, and nobody's heard that speed.
+- **Fast Bird's numbers:** still its first analysis, and the stems settle it. It's on its second first-time user, so it may get a look if it comes up a third time.
+- **A mix not saying what it's taken over:** it can be minutes ahead, and you couldn't reproduce what they saw.
+- **The row menu cut off on its side:** that's iOS's menu, and it scrolls.
+- **"More loop builds?" read as an offer:** pressing thumbs up on that still means what it should.
+- **`?`'s note in the Mixer sheet, and the sheet's top edge on the deck titles:** small, and in a sheet that's only there briefly.
+- **The crash reports from the iPad at 09:08 and 09:10:** those were mine, `GO NOW` before it was finished, and a test caught it. They're fixed, and none of it reached you.
+

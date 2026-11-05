@@ -395,12 +395,7 @@ struct DeckHeader: View {
 
     /// Only ever a rough idea, and it's worked out afresh each time the percentage moves.
     private var stemsTimeLeft: String? {
-        guard let left = deck.stemsTimeLeft else { return nil }
-        if left >= 90 { return "\(Int((left / 60).rounded())) min" }
-        if left >= 45 { return "1 min" }
-        // It sat at "5 s" for several seconds at the end of a split.
-        if left < 7.5 { return "a moment" }
-        return "\(Int((left / 5).rounded()) * 5) s"
+        deck.stemsTimeLeft.map(Format.roughly)
     }
 
     /// The stems page shows this itself, so it's only needed from everywhere else.
@@ -532,6 +527,15 @@ struct GeneratedArt: View {
 }
 
 enum Format {
+    /// A time that's only ever a rough idea.
+    static func roughly(_ seconds: Double) -> String {
+        if seconds >= 90 { return "\(Int((seconds / 60).rounded())) min" }
+        if seconds >= 45 { return "1 min" }
+        // It sat at "5 s" for several seconds at the end of a split.
+        if seconds < 7.5 { return "a moment" }
+        return "\(Int((seconds / 5).rounded()) * 5) s"
+    }
+
     /// "1 track", "2 tracks".
     static func count(_ number: Int, _ noun: String) -> String {
         "\(number) \(noun)\(number == 1 ? "" : "s")"

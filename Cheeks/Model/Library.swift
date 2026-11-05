@@ -21,10 +21,13 @@ final class Library {
     /// Whether a mix is going on right now.
     @ObservationIgnored var isBusy: (@MainActor () -> Bool)?
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
+    /// One at a time and in order, so the last save is what's on disk. Off the main thread: writing out 2,000 tracks took 34 ms on a
+    /// Mac every time a cue was saved or a track loaded, and a backup takes longer, in the middle of a set.
+    @ObservationIgnored private let writes = DispatchQueue(label: "com.nikhilpatel.seguedj.library-writes", qos: .utility)
 
     static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "caf", "alac"]
 
-    private static let databaseURL = URL.applicationSupportDirectory.appending(path: "library.json")
+    private nonisolated static let databaseURL = URL.applicationSupportDirectory.appending(path: "library.json")
 
     init() {
         try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
@@ -66,18 +69,27 @@ final class Library {
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
+            guard !Task.isCancelled, let self else { return }
+            self.pendingSave = nil
+            self.writes.async(execute: self.writingWhatsHere())
         }
     }
 
-    /// Writes immediately — call when the app goes to the background.
+    /// Writes before it returns, after anything still being written: call when the app goes to the background.
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil
-        guard let data = try? JSONEncoder().encode(Snapshot(tracks: tracks, playlists: playlists)) else { return }
-        try? data.write(to: Self.databaseURL, options: .atomic)
-        writeAutomaticBackup()
+        writes.sync(execute: writingWhatsHere())
+    }
+
+    /// What's in the library as of now, as a job that doesn't need the main thread.
+    private func writingWhatsHere() -> @Sendable () -> Void {
+        let snapshot = Snapshot(tracks: tracks, playlists: playlists)
+        return {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: Self.databaseURL, options: .atomic)
+            Self.writeAutomaticBackup(tracks: snapshot.tracks, playlists: snapshot.playlists)
+        }
     }
 
     // MARK: Tracks
@@ -286,6 +298,18 @@ final class Library {
         save()
     }
 
+    /// Several at once, in this order, written out once. Says how many weren't already there.
+    @discardableResult
+    func add(_ trackIDs: [UUID], to playlistID: UUID) -> [UUID] {
+        guard let i = playlists.firstIndex(where: { $0.id == playlistID }) else { return [] }
+        var there = Set(playlists[i].trackIDs)
+        let new = trackIDs.filter { there.insert($0).inserted }
+        guard !new.isEmpty else { return [] }
+        playlists[i].trackIDs += new
+        save()
+        return new
+    }
+
     /// Takes a track to this place in the playlist, counted as the list is before it moves.
     func move(_ trackID: UUID, in playlistID: UUID, to offset: Int) {
         guard let i = playlists.firstIndex(where: { $0.id == playlistID }),
@@ -294,9 +318,24 @@ final class Library {
         save()
     }
 
+    /// Puts a playlist's tracks back as they were, for `UNDO`.
+    func setTracks(_ trackIDs: [UUID], of playlistID: UUID) {
+        guard let i = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        playlists[i].trackIDs = trackIDs
+        save()
+    }
+
     func remove(_ trackID: UUID, from playlistID: UUID) {
         guard let i = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
         playlists[i].trackIDs.removeAll { $0 == trackID }
+        save()
+    }
+
+    /// Several at once, written out once. One at a time, a whole list took thousands of passes over it on the main thread.
+    func remove(_ trackIDs: [UUID], from playlistID: UUID) {
+        guard let i = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        let going = Set(trackIDs)
+        playlists[i].trackIDs.removeAll(where: going.contains)
         save()
     }
 

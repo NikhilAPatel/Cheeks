@@ -203,6 +203,50 @@ final class PhoneLayoutTests: CheeksUITestCase {
     }
 
     /// A first-time user held a row in their playlist and dragged it. It lifted, and nothing changed.
+    func testSeveralTracksCanGoInAPlaylistAtOnce() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        defer { XCUIDevice.shared.orientation = .landscapeLeft }
+        openBrowser()
+        let rows = app.collectionViews.firstMatch.cells
+        waitFor(rows.firstMatch)
+        XCTAssertGreaterThanOrEqual(rows.count, 2, "It takes two")
+        rows.element(boundBy: 0).press(forDuration: 1.2)
+        let several = app.buttons["Choose Several"].firstMatch
+        waitFor(several, seconds: 3)
+        several.tap()
+        let done = button("Done choosing")
+        waitFor(done, seconds: 3)
+        sleep(1)
+        XCTAssertTrue(app.staticTexts["1 track chosen."].exists, "The row it came from is the first one in")
+        screenshot("several-one")
+        // Anywhere on a row but its load keys.
+        rows.element(boundBy: 1).coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).tap()
+        sleep(1)
+        XCTAssertTrue(app.staticTexts["2 tracks chosen."].exists)
+        screenshot("several-two")
+        // And into a new playlist, which opens with them in it.
+        let add = button("Add to")
+        press(add)
+        let new = app.buttons["New Playlist…"].firstMatch
+        waitFor(new, seconds: 3)
+        new.tap()
+        let name = app.alerts.textFields.firstMatch
+        waitFor(name, seconds: 3)
+        name.typeText("Several test")
+        app.alerts.buttons["Create"].tap()
+        sleep(1)
+        XCTAssertFalse(done.exists, "It's over")
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertTrue(app.staticTexts["Added 2 tracks to Several test."].exists)
+        screenshot("several-added")
+        // A slip here would be a lot to take out one at a time.
+        press(button("Undo"))
+        sleep(1)
+        XCTAssertEqual(rows.count, 0, "They've gone from the playlist")
+    }
+
     func testAPlaylistsRowsCanBeDraggedIntoAnotherOrder() throws {
         guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
         XCUIDevice.shared.orientation = .portrait
@@ -268,6 +312,19 @@ final class PhoneLayoutTests: CheeksUITestCase {
         press(done)
         sleep(1)
         XCTAssertFalse(done.exists, "It's over")
+
+        // Sliding from a hold lands here, trying to drag a row. It went with no word and no way back.
+        let reordered = titles()
+        rows.element(boundBy: 0).press(forDuration: 1.2)
+        let remove = app.buttons["Remove from Playlist"].firstMatch
+        waitFor(remove, seconds: 3)
+        remove.tap()
+        sleep(1)
+        XCTAssertEqual(rows.count, 1)
+        screenshot("playlist-removed")
+        press(button("Undo"))
+        sleep(1)
+        XCTAssertEqual(titles(), reordered, "It's back where it was")
 
         press(menu)
         let delete = app.buttons["Delete Playlist"].firstMatch

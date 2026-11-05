@@ -298,7 +298,12 @@ extension Deck {
     func reloop() {
         endMomentaryPads()
         guard renderer.loopEnd > renderer.loopStart else {
-            onMessage?("There's no loop to go back to yet. Press a loop size, or IN and OUT.", .refused)
+            // Meant to hand back a build, just too late. The question's already saying it's over, and this took its place.
+            if isJustAfterAMove() {
+                Haptics.shared.deny()
+            } else {
+                onMessage?("There's no loop to go back to yet. Press a loop size, or IN and OUT.", .refused)
+            }
             return
         }
         onLoopChangedByHand?()
@@ -435,11 +440,24 @@ extension Deck {
 
     /// Shifts this deck by the smallest step that puts it in a key compatible with `master`.
     func keySync(to master: Deck) {
-        guard let mine = track?.key, let theirs = master.effectiveKey else { return }
+        // A first-time user pressed this, it undid their minus with no word, and they took the minus to be broken.
+        guard let mine = track?.key, let theirs = master.effectiveKey else {
+            onMessage?("KEY SYNC needs both decks' keys, and they aren't both known yet.", .refused)
+            return
+        }
         let candidates = (-6...6).sorted { abs($0) < abs($1) }
-        guard let shift = candidates.first(where: { Camelot.isCompatible(Camelot.shifted(mine, by: $0), theirs) }) else { return }
+        let other = master.index + 1
+        guard let shift = candidates.first(where: { Camelot.isCompatible(Camelot.shifted(mine, by: $0), theirs) }) else {
+            onMessage?("Nothing within 6 semitones goes with deck \(other)'s \(theirs).", .refused)
+            return
+        }
         keyShift = shift
         Haptics.shared.confirm()
+        if shift == 0 {
+            onMessage?("Deck \(index + 1)'s own key, \(mine), goes with deck \(other)'s \(theirs), so it needs no shift.", .done)
+        } else {
+            onMessage?("Deck \(index + 1)'s \(shift > 0 ? "up" : "down") \(abs(shift)) to \(Camelot.shifted(mine, by: shift)), to go with deck \(other)'s \(theirs).", .done)
+        }
     }
 
     // MARK: Jog wheel / waveform touch
