@@ -412,7 +412,16 @@ struct DeckHeader: View {
         Menu {
             // First, as it's what someone comes here in a hurry for. Last, it was below the fold on a phone on its side.
             if deck.tempo != 0 {
-                Button("Back to Its Own Speed", systemImage: "arrow.uturn.backward") { deck.backToOwnSpeed() }
+                Button("Back to Its Own Speed", systemImage: "arrow.uturn.backward") {
+                    let was = deck.tempo, wasSynced = deck.syncOn
+                    deck.backToOwnSpeed()
+                    // It's under the finger that opened the menu, and a playing deck jumped from 140 to 148 with no word.
+                    guard deck.isPlaying else { return }
+                    deck.offerUndo?("Deck \(deck.index + 1)'s back at its own speed.", .info) {
+                        deck.setTempo(was)
+                        deck.syncOn = wasSynced
+                    }
+                }
             }
             Section("Beat grid: " + String(format: "%.2f", deck.bpm) + " BPM at normal speed") {
                 // It's what the track's read as, and not its speed. "Halve BPM" sounds like a speed control.
@@ -538,7 +547,7 @@ enum Format {
 
     /// "1 track", "2 tracks".
     static func count(_ number: Int, _ noun: String) -> String {
-        "\(number) \(noun)\(number == 1 ? "" : "s")"
+        "\(number.formatted()) \(noun)\(number == 1 ? "" : "s")"
     }
 
     /// Time left. With none left, there's nothing to take away from it.

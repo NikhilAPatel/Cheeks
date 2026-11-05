@@ -151,7 +151,7 @@ struct ChannelStrip: View {
             Knob(value: $deck.eqHigh, label: "HI", size: knobSize)
             Knob(value: $deck.eqMid, label: "MID", size: knobSize)
             Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-            Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
+            Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "\(deck.colorFX.rawValue) knob")
             Key(color: Theme.accent, lit: deck.headphoneCue, feel: .toggle, accessibilityName: "Cue channel \(deck.index + 1)", help: "Cue channel", onPress: { dj.toggleCue(deck) }) {
                 HStack(spacing: 2) {
                     Image(systemName: "headphones").font(.system(size: 8, weight: .bold))

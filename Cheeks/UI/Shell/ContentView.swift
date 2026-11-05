@@ -620,13 +620,15 @@ extension StatusKind {
 struct StatusCapsule: View {
     @Environment(DJEngine.self) private var dj
     @State private var lateQuestion: LateQuestion?
+    /// What's said is for reading, so it follows the system's text size where the panel's legends can't, as far as it can hang over the decks.
+    @ScaledMetric(relativeTo: .footnote) private var messageSize: CGFloat = 11.5
 
     private var shown: (text: String, symbol: String?, tint: Color)? {
         if let error = dj.engineError { return (error, StatusKind.problem.symbol, StatusKind.problem.tint) }
         if let message = dj.statusMessage {
             return (message, dj.statusKind.symbol, dj.statusKind.tint)
         }
-        return dj.savingRecordings > 0 ? ("Saving your mix…", nil, Theme.accent) : nil
+        return dj.isSavingARecording ? ("Saving your mix…", nil, Theme.accent) : nil
     }
 
     var body: some View {
@@ -648,7 +650,7 @@ struct StatusCapsule: View {
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.statusMessage)
-        .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.savingRecordings)
+        .animation(.spring(response: 0.42, dampingFraction: 0.74), value: dj.isSavingARecording)
         .task(id: dj.statusSerial) {
             guard let message = dj.statusMessage else { return }
             try? await Task.sleep(for: .seconds(Self.secondsUp(message, hasKeys: hasKeys)))
@@ -700,13 +702,14 @@ struct StatusCapsule: View {
                 }
                 // On the Duo a long one lost its end at any size, and the end's the part you act on: "The decks are…". Upright on the
                 // folded Duo there's 381 pt to say it in, and two lines weren't always enough either.
-                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                Text(text).font(Theme.text(min(messageSize, 17), .medium)).foregroundStyle(.white).lineLimit(messageSize > 13 ? 5 : 3).fixedSize(horizontal: false, vertical: true)
             }
             .opacity(touchOnly ? 0 : 1)
             if dj.undoAction != nil {
                 if touchOnly {
                     Color.clear.frame(width: 46, height: 18).overlay {
-                        TouchSurface(onDown: { _ in undo() }).padding(-6)
+                        // It's small and near the top, and goes by itself: 3 misses on the Duo in round 21. 44 pt tall, going downwards, as above it are the top bar's keys.
+                        TouchSurface(onDown: { _ in undo() }).padding(.horizontal, -8).padding(.top, -6).padding(.bottom, -20)
                     }
                 } else {
                     // A key like every other on this bar, acting on first contact. These sit right at

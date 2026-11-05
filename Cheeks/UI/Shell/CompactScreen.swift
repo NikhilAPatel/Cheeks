@@ -14,6 +14,15 @@ enum ScreenLayout: Equatable {
     }
 
     var isCompact: Bool { self != .full }
+
+    /// An iPad's window can be any size, and the decks have fixed widths: at 500×400 they lay over the mixer with their pads cut off.
+    /// So it stops at the smallest phone upright, which is what's been laid out for. A phone has no such thing to set.
+    @MainActor
+    static func keepWindowsBigEnough() {
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            scene.sizeRestrictions?.minimumSize = CGSize(width: 375, height: 667)
+        }
+    }
 }
 
 private struct ScreenLayoutKey: EnvironmentKey {
@@ -279,7 +288,7 @@ private struct CompactStripTall: View {
             }
             HStack(spacing: 2) {
                 Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-                Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
+                Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "\(deck.colorFX.rawValue) knob")
             }
             CueChannelKey(deck: deck).frame(height: 18)
             ChannelFader(value: $deck.fader, label: "Channel \(deck.index + 1) fader")
@@ -303,7 +312,7 @@ private struct CompactStripWide: View {
                 }
                 HStack(spacing: 2) {
                     Knob(value: $deck.eqLow, label: "LOW", size: knobSize)
-                    Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "Color knob")
+                    Knob(value: $deck.filter, label: deck.colorFX.rawValue, color: Theme.accent, size: knobSize, help: "\(deck.colorFX.rawValue) knob")
                 }
             }
             if deck.index == 0 { faderColumn }

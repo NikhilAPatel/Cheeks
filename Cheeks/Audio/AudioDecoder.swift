@@ -122,7 +122,7 @@ final class PCM16Stereo {
 }
 
 enum AudioDecoder {
-    enum DecodeError: Error { case unsupportedFormat }
+    enum DecodeError: Error { case unsupportedFormat, noAudio, noRoom }
 
     /// Decodes any format AVFoundation reads (mp3, aac, wav, aiff, flac, alac) to 16-bit stereo at `sampleRate`.
     static func decode(url: URL, sampleRate: Double) throws -> PCM16Stereo {
@@ -142,8 +142,10 @@ enum AudioDecoder {
             throw DecodeError.unsupportedFormat
         }
 
+        let expected = Int(Double(file.length) * ratio) + 4096
+        guard MemoryRoom.fits(expected * 2 * MemoryLayout<Int16>.stride) else { throw DecodeError.noRoom }
         let pcm = PCM16Stereo(frames: 0)
-        pcm.resetForAppending(capacity: Int(Double(file.length) * ratio) + 4096)
+        pcm.resetForAppending(capacity: expected)
 
         var reachedEnd = false
         while true {
@@ -177,6 +179,8 @@ enum AudioDecoder {
             }
             if status == .endOfStream || status == .error || (n == 0 && reachedEnd) { break }
         }
+        // It opens and there's nothing in it. Left alone, this was an empty deck with nothing said.
+        guard pcm.frames > 0 else { throw DecodeError.noAudio }
         return pcm
     }
 }

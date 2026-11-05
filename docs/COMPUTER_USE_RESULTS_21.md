@@ -704,3 +704,51 @@ Not counted:
 - About 12:38:55: my tap for thumbs down landed off the screen, which was my error.
 - About 12:41:50: the Segue DJ folder in the file picker bounced me back twice with no message. That's probably the picker, not the app.
 - The 12:19:20 note about ACAPELLA: going by my memory of the taps, I never pressed it a second time. I pressed ALL.
+
+## What happened next
+
+### The two failures
+- **`N42`, holding `CUE` near an Echo throw.** Your reading was nearly right, and it's a little simpler. The score starts the new deck at beat 0 of its clock for an Echo throw, a Bass swap and a Vocal ride, 2 bars ahead of the move and with every stem down, so nobody can tell it's going. A press of `CUE` from then on wasn't a hold on a stopped deck but `CUE` on a playing one, which stops it and goes to the cue. So it took about 3 bars on the key, as that's when the clock starts. Past the handover it stopped both. **From a bar before the clock until the move's over, `CUE` on the new deck now does nothing, and says "Deck 2's coming in, so CUE does nothing until the move's over. MIX calls it off."** A hold that the clock catches some other way, as when the old deck jumps there, stops being a preview, so letting go doesn't stop anything. `PLAY` still stops the new deck, as that's what it looks like it does, and the key still calls the move off.
+- **`N43`, a row's load key ticking the row.** The tap covered the whole row, and a `Key`'s touch is UIKit's, which a SwiftUI gesture around it still gets. It now covers everything but the load keys. It's in the UI test that goes through this mode.
+
+### Looks wrong
+- **The key just after a move in a mix:** it doesn't end the mix now. "That move's just finished, and the mix carries on. Press MIX again to stop it," or only a buzz if the question's up. Pressed again, it does.
+- **"That's yours for this move" after a seek:** that was the deck's own knobs being put back when the plan was called off, which looks the same as someone turning them. It only showed if one had been moved before the plan, which is why it came 1 time in 2.
+- **A load just as the clock starts:** a load now counts from when it starts, not when it's finished, so the clock doesn't start on a deck that's on its way out. With the clock really going, as it is for most of a Loop build, the move ends, the old track carries on and so does the mix, with "Up next".
+- **The tie over the stems:** "The stems need about as long as this track has left, 3 min. If they miss it, deck 2 just starts at the end, with no move."
+- **Two numbers for one wait:** they were one number, 2 s apart. The message stays up while the key counts, and I'd been through this before with `AUTO`'s own message and then put a number in `GO NOW`'s. It's "Echo throw next, into Houston. MIX's counting down to it." now.
+- **Number format:** "2,005 tracks chosen."
+- **`?` on the fourth knob:** it has a note for each thing it can be, headed for what it's on.
+- **`UNDO`:** its touch was 30 pt tall, and it's 44 pt now, going downwards, as what's above it is the top bar.
+
+### What the first-time user said
+- **Their worst, `MIX` replacing what they'd just loaded:** a track someone's loaded on the waiting deck goes next when `MIX` is pressed, and the list goes on from there. Not one that's been on air, as that's only what the last move left there. With nothing playing it's still from the top of the list, as that's how to go round again.
+- **"Auto DJ stopped: deck 2 is in a loop" after 2:50:** a loop's how to buy the stems time, and yours did. It waits for the loop now, and says "The stems are ready. Auto DJ goes when deck 2's loop ends."
+- **Holding `CUE` moving `MASTER`:** it doesn't now.
+- **The `BPM` arrow:** `Back to Its Own Speed` is under the finger that opened the menu, so on a playing deck it says so, with `UNDO`.
+- **"No recordings yet" just after Stop and save:** I can see how. Saving a 9-minute one takes a few seconds, and you only tried a 14 s one. It says "Saving your mix…" now.
+- **`IMPORT` glowing for ever:** it's only lit with nothing in the library.
+- **"so it needs WIDE":** "Deck 2 stays on WIDE: it's 24.7% from its own speed, and nothing narrower reaches that."
+- **The grey `Play`:** "Play's off while a deck's playing, as a recording plays out loud, over the mix. Stop both decks to listen to one."
+- **"grid" finding nothing in the guide, and "IN KEY":** the `BPM` note says "beat grid", and the note's headed `KEY FILTER`.
+
+### New, from me
+While you ran this, I went through what hands-on rounds can't reach, and it found real problems. They're in this commit, and you've not seen them:
+- **At the largest text size the deck screen fell apart,** with labels colliding and `CUE` off its button. Every round's been at the default. The panel's legends and readouts are a fixed size now, as print is, and messages, `?` notes and Settings still grow.
+- **A reset of iOS's audio left it silent until it was reopened.** Coming back from a call could fail once and stay silent, and it could take the sound back from another app while in the background. All fixed, and it now says when something else has the sound. A speaker or headphones going keeps the music playing from the phone, with a word.
+- **A track or stems too big for memory could get the app killed.** It refuses now, and says so.
+- **What can't be read is refused at import,** which no longer freezes the app, and the playlist it goes in is the one showing when you picked.
+- **A full disk says so,** once a minute.
+- **An iPad window can't go below the smallest phone upright.**
+- **The screen turns off 10 minutes after the music stops.** It stayed on for as long as the app was open.
+
+### Left as they are
+- **`EXIT` more than 3 s after a move taking the question away:** that's a real press with a real answer. Only a press just after the move can be taken for one meant for it.
+- **`GO NOW`'s name:** it's as soon as it can be done well, and the first-time user found it and used it four times. The note says so.
+- **`GO NOW` having no reply:** the key lights and says `CHOOSING` at the press, in the code, and your OCR reads twice a second at 5.5 pt. It's in the next round, with a screenshot.
+- **The sheet on its side, with `Restore the Original Sound` off the bottom:** it scrolls.
+- **iOS's own menus, and messages over the waveforms:** both real, and both bigger than a round. Messages have nowhere else to go on a phone on its side.
+- **`TRIM` not coming back after the same drag down and up:** it stops at the bottom, and the rest of the drag does nothing, as on any knob. Double-tap's the centre.
+- **`SYNC` going dark on deck 2:** a move takes `SYNC` off the new deck, and one ran in those 22 minutes.
+- **"Up next" going back to another track:** you couldn't reproduce it, and they'd tapped twice on a list that re-sorts 2 s after a load, so the second tap landed on another row.
+- **Pinch-zoom staying on:** its note says double-tap puts it back.

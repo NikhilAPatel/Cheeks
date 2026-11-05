@@ -171,7 +171,12 @@ struct BrowserView: View {
             guard case .success(let urls) = result else { return }
             switch importKind {
             case .audio:
-                sayWhatCameOf(urls.map { library.importFile(at: $0) })
+                // What's listed could have changed by the time they're in, and it's this playlist they're for.
+                let intoPlaylist = playlistID
+                Task {
+                    let outcomes = await library.importFiles(urls) { done, total in dj.say("Adding \(done) of \(total)…", .info) }
+                    sayWhatCameOf(outcomes, into: intoPlaylist)
+                }
             case .djLibrary:
                 if let url = urls.first { importDJLibrary(url) }
             }
@@ -236,9 +241,10 @@ struct BrowserView: View {
     }
 
     /// Importing while looking at a playlist puts them in it. It used to go on saying the playlist was empty, and looked as if it had failed.
-    private func sayWhatCameOf(_ outcomes: [Library.ImportOutcome]) {
+    private func sayWhatCameOf(_ outcomes: [Library.ImportOutcome], into playlistID: UUID?) {
         let added = outcomes.compactMap { if case .added(let id) = $0 { id } else { nil } }
         let thereAlready = outcomes.compactMap { if case .alreadyThere(let id) = $0 { id } else { nil } }
+        let failed = outcomes.count - added.count - thereAlready.count
         // A track you've already got still goes in the playlist you're importing into: that's what was asked for.
         if let playlistID, !library.playlists.contains(where: { $0.id == playlistID && library.isHistory($0) }) {
             (added + thereAlready).forEach { library.add($0, to: playlistID) }
@@ -249,11 +255,12 @@ struct BrowserView: View {
         }
         if !added.isEmpty {
             let also = !thereAlready.isEmpty ? " \(Format.count(thereAlready.count, "track")) already in your library." : ""
-            dj.say("Added \(Format.count(added.count, "track")).\(also)", .done)
+            let lost = failed > 0 ? " \(Format.count(failed, "file")) couldn't be read." : ""
+            dj.say("Added \(Format.count(added.count, "track")).\(also)\(lost)", failed > 0 ? .info : .done)
         } else if !thereAlready.isEmpty {
             dj.say(thereAlready.count == 1 ? "That track's already in your library." : "Those tracks are already in your library.", .info)
         } else {
-            dj.say("That file couldn't be imported.", .problem)
+            dj.say(failed == 1 ? "That file couldn't be read, so it wasn't added." : "Those files couldn't be read, so they weren't added.", .problem)
         }
     }
 
@@ -553,7 +560,8 @@ struct BrowserView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .frame(height: 24)
-                .background(KeyFace(color: Theme.accent, lit: true))
+                // Lit for good, it looked like the next thing to press with 7 tracks in.
+                .background(KeyFace(color: Theme.accent, lit: library.tracks.isEmpty))
             }
             .disabled(WhatsThis.shared.isOn)
             .whatsThis("IMPORT")
@@ -943,6 +951,8 @@ struct TrackRow: View {
         // that. It built all 2,000 each time the browser opened or closed, about 200 ms frozen. A stack is always one, whatever's in it.
         VStack(spacing: 0) {
         HStack(spacing: 8) {
+        // Everything but the load keys, as a tap on one ticked its row as well, and now and then took the press away from it.
+        HStack(spacing: 8) {
             if let isChosen {
                 // In place of what it's beside, so nothing moves along the row.
                 Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
@@ -1017,6 +1027,12 @@ struct TrackRow: View {
                     .foregroundStyle(Theme.textTertiary)
                     .frame(width: 34, alignment: .trailing)
             }
+        }
+        .contentShape(Rectangle())
+        .gesture(isChosen == nil ? nil : TapGesture().onEnded {
+            guard !WhatsThis.shared.isOn else { return }
+            actions.toggleChosen(track.id)
+        })
             HStack(spacing: 3) {
                 ForEach(dj.decks, id: \.index) { deck in
                     Key("\(deck.index + 1)", lit: deck.track?.id == track.id, size: 10.5, feel: .none, isEnabled: !deck.isPlaying, help: "Load on deck",
@@ -1030,10 +1046,6 @@ struct TrackRow: View {
         }
         .frame(height: 36)
         .contentShape(Rectangle())
-        .gesture(isChosen == nil ? nil : TapGesture().onEnded {
-            guard !WhatsThis.shared.isOn else { return }
-            actions.toggleChosen(track.id)
-        })
         .modifier(LiftsIfItCan(on: canDrag, track: track))
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {

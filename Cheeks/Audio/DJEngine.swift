@@ -1,6 +1,7 @@
 import Accelerate
 import AVFoundation
 import Observation
+import UIKit
 
 /// What a status message is saying, which decides how the capsule looks.
 enum StatusKind {
@@ -22,7 +23,8 @@ enum CrossfaderCurve: String, CaseIterable, Identifiable {
 final class DJEngine {
     let decks: [Deck]
     let sampler: Sampler
-    @ObservationIgnored private let engine = AVAudioEngine()
+    /// Only replaced if the system's audio restarts (`rebuildAudio`). Everything that matters is in the core.
+    @ObservationIgnored private var engine = AVAudioEngine()
     @ObservationIgnored private let core: OpaquePointer
     /// The AUTO key.
     @ObservationIgnored private(set) var autoDJ: AutoDJ!
@@ -50,6 +52,23 @@ final class DJEngine {
     private(set) var limiterWorking = false
     /// The engine's load in percent, in steps of 5, once it's high enough to mention. Otherwise 0.
     var engineError: String?
+    /// A call, or another app, has the sound. Set until something takes it back.
+    @ObservationIgnored private var soundIsTaken = false
+    /// Trying again, after the sound wouldn't start.
+    @ObservationIgnored private var audioRetry: Task<Void, Never>?
+    @ObservationIgnored private var engineChangeObserver: NSObjectProtocol?
+    /// The sound isn't taken back from behind whatever's on the screen, as that's what has it now.
+    @ObservationIgnored var isInTheBackground: () -> Bool = { UIApplication.shared.applicationState == .background }
+    @ObservationIgnored var secondsBetweenAudioTries: Double = 2
+    /// Whether the screen's being kept on, as it's only worth telling UIKit when that changes.
+    @ObservationIgnored private(set) var keepsTheScreenOn = false
+    @ObservationIgnored private var lastBusyAt = CACurrentMediaTime()
+    /// When the library last said it couldn't save. Everything that changes saves, so it doesn't say so every time.
+    @ObservationIgnored private var saidCouldntSaveAt: Double = -.infinity
+    #if DEBUG
+    @ObservationIgnored var audioStartsToFailForTesting = 0
+    var engineForTesting: AVAudioEngine { engine }
+    #endif
     /// Seconds between the render callback and the speaker, for drawing what's actually being heard.
     @ObservationIgnored private(set) var outputLatency: Double = 0
 
@@ -64,6 +83,9 @@ final class DJEngine {
     /// Tracks that were audible for 10+ seconds during the current recording.
     private(set) var setlist: [SetlistEntry] = []
     private(set) var savingRecordings = 0
+    /// From Stop and save, while what's left of it's still on its way to the file, until it's in the list.
+    private(set) var recordingsDraining = 0
+    var isSavingARecording: Bool { savingRecordings > 0 || recordingsDraining > 0 }
     var recordingFormat: RecordingFormat = RecordingFormat(rawValue: UserDefaults.standard.string(forKey: "recordingFormat") ?? "") ?? .aac {
         didSet { UserDefaults.standard.set(recordingFormat.rawValue, forKey: "recordingFormat") }
     }
@@ -176,6 +198,7 @@ final class DJEngine {
         library.onAnalyzed = { [weak self] id in
             self?.decks.filter { $0.track?.id == id }.forEach { $0.refreshTrack() }
         }
+        library.onSaveFailed = { [weak self] in self?.noticeSaveFailed() }
         // Recordings interrupted by a crash or the app being killed get saved now.
         for caf in Recordings.unfinished() { finalize(caf, recovered: true) }
         nowPlaying = NowPlaying(engine: self)
@@ -219,10 +242,19 @@ final class DJEngine {
 
     /// Sets up the session and starts the engine. Stays off the main thread, as both can take a moment.
     func startAudio() {
-        audioQueue.async { [engine, weak self] in
+        soundIsTaken = false
+        var mustFail = false
+        #if DEBUG
+        if audioStartsToFailForTesting > 0 {
+            audioStartsToFailForTesting -= 1
+            mustFail = true
+        }
+        #endif
+        audioQueue.async { [engine, mustFail, weak self] in
             let session = AVAudioSession.sharedInstance()
             var failure: String?
             do {
+                if mustFail { throw CocoaError(.featureUnsupported) }
                 try session.setCategory(.playback, mode: .default)
                 try session.setPreferredSampleRate(AudioConfig.sampleRate)
                 try session.setPreferredIOBufferDuration(0.005)
@@ -232,12 +264,13 @@ final class DJEngine {
                     try engine.start()
                 }
             } catch {
-                failure = "Audio: \(error.localizedDescription)"
+                print("The sound didn't start: \(error)")
+                failure = DJEngine.soundIsElsewhere
             }
             let latency = session.outputLatency + session.ioBufferDuration
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.engineError = failure
+                    self?.audioTried(failed: failure != nil)
                     self?.outputLatency = latency
                     self?.decks.forEach { $0.outputLatency = latency }
                 }
@@ -245,23 +278,100 @@ final class DJEngine {
         }
     }
 
+    /// Its OSStatus was all this used to say, once, and the sound stayed off until something else happened to start it.
+    nonisolated private static let soundIsElsewhere = "A call or another app has the sound. It comes back by itself, from where it stopped."
+
+    private func audioTried(failed: Bool) {
+        audioRetry?.cancel()
+        audioRetry = nil
+        engineError = failed || soundIsTaken ? Self.soundIsElsewhere : nil
+        // Right after a call, the session can refuse for a moment. Coming back to the app tries again anyway.
+        guard failed, !soundIsTaken, !isInTheBackground() else { return }
+        let seconds = secondsBetweenAudioTries
+        audioRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.startAudio()
+        }
+    }
+
     private func observeSession() {
         let center = NotificationCenter.default
         center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-            let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            MainActor.assumeIsolated {
-                if raw == AVAudioSession.InterruptionType.ended.rawValue { self?.startAudio() }
-            }
+            let type = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let options = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            MainActor.assumeIsolated { self?.interruptionChanged(type: type, options: options) }
         }
-        center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.startAudio() }
-        }
+        observeEngine()
         center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             // Setting the category reports a route change of its own, which mustn't start a loop.
             let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             guard raw != AVAudioSession.RouteChangeReason.categoryChange.rawValue else { return }
+            MainActor.assumeIsolated {
+                if raw == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self?.sayIfItsNowOnTheSpeaker() }
+                self?.startAudio()
+            }
+        }
+        center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rebuildAudio() }
+        }
+    }
+
+    private func observeEngine() {
+        let center = NotificationCenter.default
+        if let engineChangeObserver { center.removeObserver(engineChangeObserver) }
+        engineChangeObserver = center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.startAudio() }
         }
+    }
+
+    /// The decks stay as they are through a call. Nothing's rendered, so they haven't moved, and they carry on from there when it's over.
+    func interruptionChanged(type: UInt?, options: UInt?) {
+        if type == AVAudioSession.InterruptionType.began.rawValue {
+            soundIsTaken = true
+            audioRetry?.cancel()
+            audioRetry = nil
+            engineError = Self.soundIsElsewhere
+        } else if type == AVAudioSession.InterruptionType.ended.rawValue {
+            // Without shouldResume, what took the sound hasn't finished with it, so going to the background doesn't mean taking it back.
+            // Coming back to the app does (`scenePhase`).
+            let resume = AVAudioSession.InterruptionOptions(rawValue: options ?? 0).contains(.shouldResume)
+            if resume || !isInTheBackground() { startAudio() }
+        }
+    }
+
+    /// The system's audio restarted, and everything it gave out went with it: without this it's silent until the app's reopened.
+    /// Nothing else is lost, as the decks are all in the core, and this is only the way out to the speaker.
+    func rebuildAudio() {
+        let old = engine
+        audioQueue.async { old.stop() }
+        engine = AVAudioEngine()
+        buildGraph()
+        observeEngine()
+        startAudio()
+    }
+
+    private func sayIfItsNowOnTheSpeaker() {
+        audioQueue.async { [weak self] in
+            let speaker = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.noticeOutputGone(nowOnSpeaker: speaker) }
+            }
+        }
+    }
+
+    /// The music doesn't stop when an output goes: a speaker dropping out for a moment mustn't take the set with it, or end a mix.
+    /// So it comes out of the phone instead, and someone with headphones in needs to know why.
+    func noticeOutputGone(nowOnSpeaker: Bool) {
+        guard nowOnSpeaker, decks.contains(where: \.isPlaying) else { return }
+        say("The output it was using has gone, so the music's coming out of this \(UIDevice.current.localizedModel).", .info)
+    }
+
+    func noticeSaveFailed() {
+        let now = CACurrentMediaTime()
+        guard now - saidCouldntSaveAt > 60 else { return }
+        saidCouldntSaveAt = now
+        say("Your library couldn't be saved, so recent changes could be lost. This \(UIDevice.current.localizedModel) may be out of space.", .problem)
     }
 
     // MARK: Mixer
@@ -455,7 +565,9 @@ final class DJEngine {
         }
         // The top bar read "MASTER 2 –" for an empty deck, with a track on deck 1.
         if !current.isLoaded, !current.isPlaying, let loaded = decks.first(where: { $0.isLoaded }) { masterIndex = loaded.index }
-        if let playing = decks.first(where: { $0.isPlaying && $0.isLoaded && !$0.syncOn }) ?? decks.first(where: { $0.isPlaying && $0.isLoaded }) {
+        // Holding CUE is having a listen, and it moved MASTER, and whatever was following it.
+        let starters = decks.filter { $0.isPlaying && $0.isLoaded && !$0.cuePreviewing }
+        if let playing = starters.first(where: { !$0.syncOn }) ?? starters.first(where: { _ in true }) {
             masterIndex = playing.index
             if playing.syncOn {
                 playing.syncOn = false
@@ -562,7 +674,23 @@ final class DJEngine {
         statusMessage = nil
     }
 
+    /// The screen stays on through a set, and for a while after, so that it doesn't go dark on someone between tracks. Not for good:
+    /// it used to be on whenever the app was open, and a phone left on a table with it open stayed lit until it ran flat.
+    func keepTheScreenOnForASet(now: Double = CACurrentMediaTime()) {
+        let busy = isRecording || decks.contains { deck in
+            if deck.isPlaying { return true }
+            if case .separating = deck.stemStatus { return true }
+            return false
+        }
+        if busy { lastBusyAt = now }
+        let wanted = now - lastBusyAt < 10 * 60
+        guard wanted != keepsTheScreenOn else { return }
+        keepsTheScreenOn = wanted
+        UIApplication.shared.isIdleTimerDisabled = wanted
+    }
+
     private func tick() {
+        keepTheScreenOnForASet()
         decks.forEach { $0.tick() }
         autoDJ.tick()
         sampler.tick()
@@ -657,11 +785,13 @@ final class DJEngine {
         recordingStarted = nil
         let caf = recordingURL
         recordingURL = nil
+        recordingsDraining += 1
         // The tail of the ring reaches the file and the file closes before it's converted.
         recordingDrain?.finish { [weak self] in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     if let caf { self?.finalize(caf, recovered: false) }
+                    self?.recordingsDraining -= 1
                 }
             }
         }

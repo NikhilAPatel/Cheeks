@@ -32,7 +32,7 @@ struct CheeksApp: App {
             .persistentSystemOverlays(.hidden)
             .defersSystemGestures(on: .all)
             .onAppear {
-                UIApplication.shared.isIdleTimerDisabled = true
+                ScreenLayout.keepWindowsBigEnough()
                 LaunchLog.mark("first screen appeared")
                 // The main thread's free again once this runs, so touches work from here.
                 DispatchQueue.main.async {

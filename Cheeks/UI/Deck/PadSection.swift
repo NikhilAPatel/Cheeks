@@ -579,6 +579,8 @@ struct StemControlRow: View {
             }
         case .tooLong:
             Text("TOO LONG").silk(8, color: Theme.danger)
+        case .noRoom:
+            Text("NO ROOM").silk(8, color: Theme.danger)
         }
     }
 }

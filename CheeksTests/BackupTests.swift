@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Cheeks
 
@@ -84,7 +85,7 @@ final class BackupTests: XCTestCase {
     func testImportingTheFileBringsAMissingTrackBack() throws {
         let library = emptyLibrary()
         let id = UUID()
-        let name = "relink-\(id.uuidString).mp3"
+        let name = "relink-\(id.uuidString).wav"
         var track = Track(id: id, title: "Back", artist: "", fileName: "gone-\(id.uuidString).mp3", originalFileName: name, bpm: 124)
         track.hotCues = [2: 30]
         library.tracks = [track]
@@ -92,7 +93,13 @@ final class BackupTests: XCTestCase {
         XCTAssertTrue(library.isMissing(track))
 
         let file = FileManager.default.temporaryDirectory.appending(path: name)
-        try Data(repeating: 1, count: 128).write(to: file)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2))
+        do {
+            let audio = try AVAudioFile(forWriting: file, settings: format.settings)
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 128))
+            buffer.frameLength = 128
+            try audio.write(from: buffer)
+        }
         defer { try? FileManager.default.removeItem(at: file) }
         library.importFile(at: file)
 

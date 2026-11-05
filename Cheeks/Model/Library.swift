@@ -12,6 +12,11 @@ final class Library {
     var missingFiles: Set<UUID> = []
     /// Called when analysis has finished with a track, so a deck holding it can pick up the results.
     @ObservationIgnored var onAnalyzed: (@MainActor (UUID) -> Void)?
+    /// A save didn't reach the disk. What was there's still there, as a write goes to a new file first.
+    @ObservationIgnored var onSaveFailed: (@MainActor () -> Void)?
+    #if DEBUG
+    nonisolated(unsafe) static var savesFailForTesting = false
+    #endif
     @ObservationIgnored private var whenReanalysed: [UUID: @MainActor (Track?) -> Void] = [:]
     private var analysisQueue: [UUID] = []
     /// Tracks that only need catching up with newer analysis. These wait while the decks are busy,
@@ -85,10 +90,17 @@ final class Library {
     /// What's in the library as of now, as a job that doesn't need the main thread.
     private func writingWhatsHere() -> @Sendable () -> Void {
         let snapshot = Snapshot(tracks: tracks, playlists: playlists)
-        return {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            try? data.write(to: Self.databaseURL, options: .atomic)
-            Self.writeAutomaticBackup(tracks: snapshot.tracks, playlists: snapshot.playlists)
+        return { [weak self] in
+            do {
+                #if DEBUG
+                if Self.savesFailForTesting { throw CocoaError(.fileWriteOutOfSpace) }
+                #endif
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: Self.databaseURL, options: .atomic)
+                Self.writeAutomaticBackup(tracks: snapshot.tracks, playlists: snapshot.playlists)
+            } catch {
+                Task { @MainActor [weak self] in self?.onSaveFailed?() }
+            }
         }
     }
 
@@ -127,22 +139,66 @@ final class Library {
             if move { try? FileManager.default.removeItem(at: source) } // don't re-process it every launch
             return .alreadyThere(known)
         }
+        let id = idForImporting(source)
+        guard Self.bringIn(source, to: destination(of: source, id: id), move: move) else { return .failed }
+        return broughtIn(source, id: id)
+    }
 
-        // A track restored from a backup, or whose file went missing, gets its audio back.
-        let waiting = trackAwaitingFile(named: source.lastPathComponent)
-        let id = waiting?.id ?? UUID()
-        let fileName = "\(id.uuidString).\(source.pathExtension.lowercased())"
-        let destination = LibraryFiles.musicDirectory.appending(path: fileName)
+    /// Files chosen in the picker, off the main thread: a copy's as long as the file, and longer if it's still in iCloud.
+    /// They used to go one after another on the main thread, with everything stopped, music included if the render needed anything from it.
+    func importFiles(_ sources: [URL], progress: (Int, Int) -> Void = { _, _ in }) async -> [ImportOutcome] {
+        var outcomes: [ImportOutcome] = []
+        for (index, source) in sources.enumerated() {
+            if sources.count > 1 { progress(index + 1, sources.count) }
+            let scoped = source.startAccessingSecurityScopedResource()
+            defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+            if let known = trackAlreadyImported(source) {
+                outcomes.append(.alreadyThere(known))
+                continue
+            }
+            let id = idForImporting(source)
+            let destination = destination(of: source, id: id)
+            let arrived = await Task.detached(priority: .userInitiated) { Self.bringIn(source, to: destination, move: false) }.value
+            outcomes.append(arrived ? broughtIn(source, id: id) : .failed)
+        }
+        return outcomes
+    }
+
+    /// A track restored from a backup, or whose file went missing, gets its audio back.
+    private func idForImporting(_ source: URL) -> UUID {
+        trackAwaitingFile(named: source.lastPathComponent)?.id ?? UUID()
+    }
+
+    private func destination(of source: URL, id: UUID) -> URL {
+        LibraryFiles.musicDirectory.appending(path: "\(id.uuidString).\(source.pathExtension.lowercased())")
+    }
+
+    #if DEBUG
+    nonisolated(unsafe) static var lastBroughtInOnTheMainThread = false
+    #endif
+
+    /// What can't be read is refused now, while whoever chose it can be told, and not when it's on a deck in the middle of a set.
+    /// It's the call a load makes, so it's the same answer.
+    private nonisolated static func bringIn(_ source: URL, to destination: URL, move: Bool) -> Bool {
+        #if DEBUG
+        lastBroughtInOnTheMainThread = Thread.isMainThread
+        #endif
+        guard let audio = try? AVAudioFile(forReading: source), audio.length > 0 else { return false }
         do {
             if move {
                 try FileManager.default.moveItem(at: source, to: destination)
             } else {
                 try FileManager.default.copyItem(at: source, to: destination)
             }
+            return true
         } catch {
-            return .failed
+            return false
         }
-        if waiting != nil {
+    }
+
+    private func broughtIn(_ source: URL, id: UUID) -> ImportOutcome {
+        let fileName = destination(of: source, id: id).lastPathComponent
+        if self.track(id) != nil {
             update(id) { $0.fileName = fileName }
             missingFiles.remove(id)
             return .added(id)

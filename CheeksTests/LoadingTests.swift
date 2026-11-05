@@ -89,7 +89,13 @@ final class LoadingTests: XCTestCase {
     func testImportingAKnownTrackSaysWhichOneItIs() throws {
         let (_, library) = makeDeck()
         let source = FileManager.default.temporaryDirectory.appending(path: "Known \(UUID().uuidString).wav")
-        try Data(count: 4096).write(to: source)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: AudioConfig.sampleRate, channels: 2))
+        do {
+            let audio = try AVAudioFile(forWriting: source, settings: format.settings)
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096))
+            buffer.frameLength = 4096
+            try audio.write(from: buffer)
+        }
         files.append(source)
         guard case .added(let id) = library.importFile(at: source) else { return XCTFail("It's new") }
         files.append(LibraryFiles.musicDirectory.appending(path: "\(id.uuidString).wav"))

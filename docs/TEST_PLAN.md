@@ -54,7 +54,12 @@ Say which of these feel wrong, and how (too strong, too weak, too buzzy, late).
 - [ ] The phone stays reasonably cool. Xcode's CPU gauge stays under ~40% with both decks playing.
 - [ ] Locking the screen or switching apps: audio keeps playing. Coming back: the UI shows the right state.
 - [ ] A phone call or Siri interruption: audio stops, then resumes cleanly afterwards (press play if needed).
-- [ ] Unplugging headphones mid-track doesn't crash the app.
+- [ ] Unplugging headphones mid-track doesn't crash the app. The music carries on from the phone and it says so. That's on purpose, so that a speaker dropping out doesn't end a set, but check it doesn't feel wrong.
+- [ ] Settings, Developer, Reset Media Services, with a deck playing: the sound comes back by itself with the deck where it was. It restarts the audio server, and nothing but a real phone can do that.
+- [ ] Another app's music started over a playing deck, from Control Center or the app: the capsule says so if you come back. Pausing that app brings the set back. Leaving it playing and coming back also does.
+- [ ] A call while a set's playing, declined, then one answered: the capsule says where the sound's gone while it can be seen, and the deck carries on from the same place afterwards.
+- [ ] Larger Text in Settings, at the largest: the decks look the same as ever, and messages, `?` notes and Settings get bigger.
+- [ ] The screen goes dark by itself 10 minutes after the music stops, and doesn't while it's playing.
 - [ ] Load a 60-minute mix, play it and seek around. No crash.
 
 ### Decks

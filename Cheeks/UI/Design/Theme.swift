@@ -93,11 +93,12 @@ enum Theme {
 
     // MARK: Type
 
-    /// Legends printed on the panel: a technical grotesque, tracked out slightly.
-    static func silk(_ size: CGFloat) -> Font { .custom("DINAlternate-Bold", size: size) }
+    /// Legends printed on the panel: a technical grotesque, tracked out slightly. Fixed, as print is. With `size:` they followed the
+    /// system's text size, and at its largest a pad's letter sat on its time and `CUE` came off its button, on a screen with nowhere to go.
+    static func silk(_ size: CGFloat) -> Font { .custom("DINAlternate-Bold", fixedSize: size) }
 
     /// Readouts on the screens: numbers that hold their position as they change.
-    static func digits(_ size: CGFloat) -> Font { .custom("DINAlternate-Bold", size: size).monospacedDigit() }
+    static func digits(_ size: CGFloat) -> Font { .custom("DINAlternate-Bold", fixedSize: size).monospacedDigit() }
 
     /// Track titles and browser text, which should read as native.
     static func text(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight) }

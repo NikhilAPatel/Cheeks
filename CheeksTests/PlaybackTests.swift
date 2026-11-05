@@ -113,7 +113,7 @@ final class DeckTests: XCTestCase {
         deck.stepTempoRange()
         XCTAssertEqual(deck.tempoRange, 100, "Nothing narrower can")
         XCTAssertEqual(deck.tempo, -23.8)
-        XCTAssertEqual(said?.0, "Deck 1's 23.8% from its own speed, so it needs WIDE.")
+        XCTAssertEqual(said?.0, "Deck 1 stays on WIDE: it's 23.8% from its own speed, and nothing narrower reaches that.")
         XCTAssertEqual(said?.1, .refused)
         deck.setTempo(-12)
         deck.stepTempoRange()

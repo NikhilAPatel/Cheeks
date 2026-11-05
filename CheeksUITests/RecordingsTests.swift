@@ -34,7 +34,7 @@ final class RecordingsTests: CheeksUITestCase {
         press(button("Recordings"))
         let play = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Play Mix'")).firstMatch
         waitFor(play)
-        let reason = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'stop both decks'")).firstMatch
+        let reason = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Stop both decks'")).firstMatch
         XCTAssertTrue(reason.exists, "The reason should be there before anyone has to ask")
         XCTAssertTrue(play.isEnabled, "A press gets a reply, so it isn't disabled")
         screenshot("recordings-deck-playing")

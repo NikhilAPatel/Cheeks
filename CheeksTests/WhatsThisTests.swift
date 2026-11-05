@@ -34,7 +34,7 @@ final class WhatsThisTests: XCTestCase {
     /// Everything a first-time user couldn't work out by looking, in hands-on round 9.
     func testWhatRoundNineCouldntWorkOutHasANote() {
         let asked = ["Q", "SLIP", "KEY", "KEY SYNC", "MASTER", "Master volume", "BEAT JUMP", "Jump size", "Mem pads", "Slicer pads", "Roll pads", "Jump pads",
-                     "DEL", "SPLIT", "CUE/MST", "LEVEL", "LIM", "Color effect", "Color knob", "Tempo range", "RELOOP", "Stem status", "Phase strip",
+                     "DEL", "SPLIT", "CUE/MST", "LEVEL", "LIM", "Color effect", "FILTER knob", "DUB knob", "SPACE knob", "NOISE knob", "CRUSH knob", "PITCH knob", "Tempo range", "RELOOP", "Stem status", "Phase strip",
                      "Best next first", "FX stems", "Echo out", "Shorter"]
         for name in asked {
             XCTAssertNotNil(Explanations.named(name), name)

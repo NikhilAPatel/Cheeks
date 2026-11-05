@@ -543,7 +543,7 @@ extension Deck {
 
     func toggleStem(_ stem: Stem) {
         prepareStems()
-        guard stemStatus != .tooLong else { return }
+        guard !saidItCantBeSplit() else { return }
         stemsBeforeSolo = nil
         // All the way down it's silent already, so a tap is asking for it back. Auto DJ can leave one like this.
         if stemLevels[stem.rawValue] < Self.silentStem {
@@ -553,6 +553,19 @@ extension Deck {
             stemsOn[stem.rawValue].toggle()
         }
         sayItWaitsForTheSplit()
+    }
+
+    /// A pad that does nothing looks broken. Running out of room has said so already, as it's only just tried.
+    private func saidItCantBeSplit() -> Bool {
+        switch stemStatus {
+        case .tooLong:
+            onMessage?("This track's too long to split into stems.", .refused)
+            return true
+        case .noRoom:
+            return true
+        default:
+            return false
+        }
     }
 
     /// The pad lights at once, and until the split's done there's nothing to take away, so the waveform and the meters don't
@@ -566,7 +579,7 @@ extension Deck {
     /// Solo a stem; soloing the already-soloed stem restores what was on before.
     func soloStem(_ stem: Stem) {
         prepareStems()
-        guard stemStatus != .tooLong else { return }
+        guard !saidItCantBeSplit() else { return }
         let alreadySolo = stemsOn.indices.allSatisfy { stemsOn[$0] == ($0 == stem.rawValue) }
         if alreadySolo {
             stemsOn = stemsBeforeSolo ?? [true, true, true, true]
@@ -581,7 +594,7 @@ extension Deck {
 
     func setStems(_ on: Set<Stem>) {
         prepareStems()
-        guard stemStatus != .tooLong else { return }
+        guard !saidItCantBeSplit() else { return }
         stemsBeforeSolo = nil
         stemsOn = Stem.allCases.map { on.contains($0) }
         // A combination means hearing those stems, so they come up to full, wherever they were.
@@ -745,13 +758,20 @@ extension Deck {
     /// that's been split before comes straight back from the cache.
     func prepareStems() {
         // Separates the audio already loaded on the deck, so there's no second decode.
-        guard let track, !isLoading, stemStatus == .unavailable, let mix = renderer.mixSource else { return }
+        guard let track, !isLoading, stemStatus == .unavailable || stemStatus == .noRoom, let mix = renderer.mixSource else { return }
         guard mix.duration <= AudioConfig.maxStemSeconds else {
             stemStatus = .tooLong
             return
         }
+        let isSaved = StemCache.shared.contains(track.id)
+        let stemBytes = mix.frames * Stem.allCases.count * 2 * MemoryLayout<Int16>.stride
+        guard MemoryRoom.fits(stemBytes + (isSaved ? 0 : MemoryRoom.stemModelBytes)) else {
+            stemStatus = .noRoom
+            onMessage?("There's no room in memory for this track's stems just now, so it plays whole.", .info)
+            return
+        }
         // A split that's already saved only takes a moment to read, which isn't worth announcing.
-        stemStatus = StemCache.shared.contains(track.id) ? .reading : .separating(nil)
+        stemStatus = isSaved ? .reading : .separating(nil)
         stemsBegan = nil
         let id = track.id
         // Results from a separation started before another track was loaded are dropped.

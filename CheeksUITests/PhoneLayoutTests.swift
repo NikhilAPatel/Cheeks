@@ -226,6 +226,14 @@ final class PhoneLayoutTests: CheeksUITestCase {
         sleep(1)
         XCTAssertTrue(app.staticTexts["2 tracks chosen."].exists)
         screenshot("several-two")
+        // A row's load key loads, and leaves its tick alone: 4 of 4 ticked it, in round 21, and one of those didn't load.
+        let third = rows.element(boundBy: rows.count > 2 ? 2 : 1)
+        let key = third.buttons["2"].firstMatch
+        waitFor(key, seconds: 3)
+        key.press(forDuration: 0.05)
+        sleep(2)
+        XCTAssertTrue(app.staticTexts["2 tracks chosen."].exists, "It didn't tick the row")
+        XCTAssertTrue(third.buttons["2"].firstMatch.isSelected, "And it did load")
         // And into a new playlist, which opens with them in it.
         let add = button("Add to")
         press(add)

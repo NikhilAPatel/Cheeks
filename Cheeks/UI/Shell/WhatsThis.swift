@@ -172,6 +172,9 @@ struct WhatsThisNote: View {
         .allowsHitTesting(false)
     }
 
+    /// A note's for reading, so it follows the system's text size where the panel's legends can't.
+    @ScaledMetric(relativeTo: .footnote) private var noteSize: CGFloat = 13
+
     /// Messages hang from the top, and that's where the note went. It hid the end of "Deck 2 has stopped, and deck 1 is playing with
     /// the…", the most important one a first-time user got, and it had gone by the time they'd closed this.
     private func alignment(wide: Bool, touch: CGPoint) -> Alignment {
@@ -186,7 +189,7 @@ struct WhatsThisNote: View {
     private func note(_ shown: Explanation) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(shown.title).font(Theme.silk(11)).tracking(0.5).foregroundStyle(Theme.accent)
-            Text(shown.text).font(Theme.text(13)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text(shown.text).font(Theme.text(min(noteSize, 22))).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 11)
@@ -214,7 +217,7 @@ struct ControlsGuide: View {
                     ForEach(section.entries) { entry in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(entry.title).font(Theme.silk(11)).tracking(0.5).foregroundStyle(Theme.accent)
-                            Text(entry.text).font(Theme.text(13))
+                            Text(entry.text).font(.footnote)
                         }
                         .padding(.vertical, 1)
                     }

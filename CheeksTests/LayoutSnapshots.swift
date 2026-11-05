@@ -26,7 +26,14 @@ final class LayoutSnapshots: XCTestCase {
         Screen(name: "small-up", size: CGSize(width: 375, height: 667), insets: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0)),
         Screen(name: "folded", size: CGSize(width: 678, height: 466), insets: .zero),
         Screen(name: "ipad13-up", size: CGSize(width: 1032, height: 1376), insets: .zero, scale: 2),
+        // What an iPad's windows can be, and no phone is. Only by name: CHEEKS_SNAPSHOT_SCREEN=pad-third, say.
+        Screen(name: "pad-third", size: CGSize(width: 320, height: 834), insets: .zero, scale: 2),
+        Screen(name: "pad-half", size: CGSize(width: 507, height: 834), insets: .zero, scale: 2),
+        Screen(name: "pad-wide", size: CGSize(width: 694, height: 834), insets: .zero, scale: 2),
+        Screen(name: "window-short", size: CGSize(width: 1000, height: 400), insets: .zero, scale: 2),
+        Screen(name: "window-tiny", size: CGSize(width: 500, height: 400), insets: .zero, scale: 2),
     ]
+    private static let namedOnly: Set<String> = ["pad-third", "pad-half", "pad-wide", "window-short", "window-tiny"]
 
     func testSnapshots() async throws {
         let env = ProcessInfo.processInfo.environment
@@ -45,8 +52,10 @@ final class LayoutSnapshots: XCTestCase {
 
         func snapAll(_ name: String, _ view: @autoclosure () -> some View) async throws {
             if let only, !only.contains(name) { return }
-            for screen in Self.screens where onlyScreens == nil || onlyScreens!.contains(screen.name) {
-                try await snap(view().environment(library).environment(dj), screen, to: dir.appending(path: "\(screen.name)-\(name).png"))
+            // CHEEKS_SNAPSHOT_TEXT: the largest text anyone can choose.
+            let text: DynamicTypeSize = env["CHEEKS_SNAPSHOT_TEXT"] != nil ? .accessibility5 : .large
+            for screen in Self.screens where onlyScreens?.contains(screen.name) ?? !Self.namedOnly.contains(screen.name) {
+                try await snap(view().environment(library).environment(dj).dynamicTypeSize(text), screen, to: dir.appending(path: "\(screen.name)-\(name).png"))
             }
         }
 

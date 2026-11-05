@@ -66,7 +66,7 @@ That's six takes, mostly from one pair, so these are early signs.
 - **It gives each track its time.** Someone pressing `AUTO` wants it soon, but a mix starts looking to leave once a track's last big section is under way, or 60% of the way through one that never lets up (`TransitionPlanner.setExit`). If no plan passes from there, it looks 16 bars further back each time, but no further than a third of the way in.
 - **It keeps the moves varied.** The last four moves count against playing them again. It leaves out the brake drop, which the owner found way too jarring, as nobody's there to take it back.
 - **When nothing passes,** it echoes out on a phrase from where it would have left, and the new track starts where its beat comes in, at its own tempo. It overlaps nothing and builds to nothing, so only the limiter can stop it. It's what a DJ does with two tracks that don't go. On the owner's 22 tracks that takes joins from 19 of 21 to 21 of 21. Nobody's heard one yet. Pressing `AUTO` uses it too, in place of refusing.
-- **Someone taking over ends it.** Loading another track on the waiting deck, starting it, or stopping the playing deck all do. Moving the playing deck just makes it plan again.
+- **Someone taking over ends it.** Starting the waiting deck or stopping the playing deck does. Moving the playing deck just makes it plan again. Loading another track on the waiting deck only changes what's next, and a track that's been loaded there when `MIX` is pressed goes next.
 
 If there's no clean way in, or stems aren't ready in time, the next track starts when the last one ends, so the music doesn't stop.
 

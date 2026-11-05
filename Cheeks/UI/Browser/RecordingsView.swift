@@ -22,15 +22,16 @@ struct RecordingsView: View {
                 // A grey button with nothing to say why lost a first-time user about 11 minutes. The status capsule's under this sheet.
                 if decksPlaying, !recordings.isEmpty {
                     Label {
-                        Text("A recording plays out loud, over the mix. To listen to one, stop both decks.")
+                        Text("Play's off while a deck's playing, as a recording plays out loud, over the mix. Stop both decks to listen to one.")
                     } icon: {
                         Image(systemName: "hand.raised.fill").foregroundStyle(Theme.warn).symbolEffect(.bounce, value: refusals)
                     }
                     .font(.footnote)
                 }
                 if recordings.isEmpty {
-                    ContentUnavailableView("No recordings yet", systemImage: "record.circle",
-                                           description: Text((dj.isRecording ? "You're recording now, and it'll be here once you stop." : "Tap REC at the top of the screen to record your mix.")
+                    // Saving a long one takes a few seconds, and this said there weren't any just after Stop and save.
+                    ContentUnavailableView(dj.isSavingARecording ? "Saving your mix…" : "No recordings yet", systemImage: "record.circle",
+                                           description: Text((dj.isSavingARecording ? "It'll be here in a moment." : dj.isRecording ? "You're recording now, and it'll be here once you stop." : "Tap REC at the top of the screen to record your mix.")
                                                              + " Recordings also appear in the Files app under Segue DJ › Recordings, with a tracklist next to each one."))
                 }
                 ForEach(recordings, id: \.self) { url in
@@ -44,7 +45,7 @@ struct RecordingsView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .onAppear(perform: reload)
-            .onChange(of: dj.savingRecordings) { _, _ in reload() }
+            .onChange(of: dj.isSavingARecording) { _, _ in reload() }
             .onDisappear { player.stop() }
             // `presenting:` hands the file to the buttons, so it can't be cleared before they run.
             .alert("Rename recording", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),

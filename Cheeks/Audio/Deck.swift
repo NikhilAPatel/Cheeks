@@ -96,6 +96,8 @@ enum StemStatus: Equatable {
     case ready(String)
     /// Track is longer than `AudioConfig.maxStemSeconds`; four stems wouldn't fit in memory.
     case tooLong
+    /// There isn't the memory for them just now. It can try again, as the other deck may have let go of some.
+    case noRoom
 }
 
 /// One player deck: transport, beat grid, cues, loops, sync, stems and its mixer channel.
@@ -217,6 +219,8 @@ final class Deck {
     @ObservationIgnored var cuePreviewing = false
     /// A move's just finished, and it's asking how that was.
     @ObservationIgnored var isJustAfterAMove: () -> Bool = { false }
+    /// Why CUE can't do anything just now, when a move has this deck.
+    @ObservationIgnored var whyCueIsTaken: () -> String? = { nil }
     var quantize = true
     var slipMode = false {
         didSet {
@@ -426,7 +430,11 @@ final class Deck {
                     self.isLoading = false
                     self.startsWhenLoaded = false
                     self.loadingTrack = nil
-                    self.loadError = "Couldn't open this file"
+                    if case AudioDecoder.DecodeError.noRoom = error {
+                        self.loadError = "This track's too long to fit in memory"
+                    } else {
+                        self.loadError = "Couldn't open this file"
+                    }
                 }
             }
         }
@@ -612,6 +620,10 @@ final class Deck {
     func cueDown() {
         startsWhenLoaded = false
         guard isLoaded else { return }
+        if let why = whyCueIsTaken() {
+            onMessage?(why, .refused)
+            return
+        }
         if isPlaying && !cuePreviewing {
             pause()
             seek(to: cuePoint)
@@ -686,7 +698,7 @@ final class Deck {
     func stepTempoRange() {
         let fits = Self.tempoRanges.filter { $0 >= abs(tempo) }
         guard fits.count > 1, let widest = fits.last else {
-            onMessage?(String(format: "Deck %d's %.1f%% from its own speed, so it needs WIDE.", index + 1, abs(tempo)), .refused)
+            onMessage?(String(format: "Deck %d stays on WIDE: it's %.1f%% from its own speed, and nothing narrower reaches that.", index + 1, abs(tempo)), .refused)
             return
         }
         let next = fits.first { $0 > tempoRange } ?? fits.first ?? widest

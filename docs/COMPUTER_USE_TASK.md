@@ -7,11 +7,11 @@
 **Rules:**
 - **Don't change any code**, even if you can see the fix. A precise description is what's wanted.
 - Record every test as PASS, FAIL or BLOCKED, based on what you actually saw. If you couldn't check it, it's BLOCKED, and say why.
-- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-21/`.
+- If something's blocked or the app crashes, record it and carry on. Get the crash report with `ls -t ~/Library/Logs/DiagnosticReports | grep -i cheeks | head -1` and copy it to `docs/test-results-22/`.
 - Also note anything that merely looks wrong, even if the test passes.
 - The sentence after each test is what the last test found. It's there so you can tell whether it changed, not to tell you what to see.
 
-**What to hand back:** `docs/COMPUTER_USE_RESULTS_21.md` in the format at the end, with screenshots in `docs/test-results-21/`. Commit only those to `master`, with the message `Add hands-on test results, part 21`. **Don't push.**
+**What to hand back:** `docs/COMPUTER_USE_RESULTS_22.md` in the format at the end, with screenshots in `docs/test-results-22/`. Commit only those to `master`, with the message `Add hands-on test results, part 22`. **Don't push.**
 
 **Other sessions:** before you start, check nobody else is running tests on your simulator. `tools/ui-tests.sh` reinstalls the app and ended the last run partway through.
 
@@ -37,7 +37,7 @@ DATA=$(xcrun simctl get_app_container "$SIM" com.nikhilpatel.seguedj data)
 cp /tmp/cheeks-music/*.mp3 "$DATA/Documents/"
 
 xcrun simctl launch "$SIM" com.nikhilpatel.seguedj
-mkdir -p docs/test-results-21
+mkdir -p docs/test-results-22
 ```
 
 **The small iPhone:** use `iPhone SE Cheeks` (59B64076-E0E9-491A-AA6F-A82A60C3D2D2, iOS 27.2), which the owner's given the touch tool access to. It needs a fresh install. Never use `iPhone SE (3rd generation)`: by name that's another project's simulator.
@@ -54,7 +54,7 @@ mkdir -p docs/test-results-21
   ```sh
   xcrun simctl spawn "$SIM" log show --last 5m --predicate 'process == "Cheeks" AND (messageType == error OR messageType == fault)' --style compact
   ```
-- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-21/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
+- **Screenshots:** `xcrun simctl io "$SIM" screenshot --display=primary-1 docs/test-results-22/NAME.png` for the inner screen. Please downscale them to about 1600 px wide before committing, to keep the repo small.
 - **Reading the meters from video:** crop widths must be even. An odd width gets rounded by ffmpeg on 4:2:0 video, which shears every frame, and round 6's first figures were wrong because of it. Run a control that's known to be red before believing a 0%.
 - **Check a reload really happened:** `playCount` in `library.json` goes up by one each time. A very busy Mac can take over 1 s to open the browser, so a load key tap sent too soon lands on the old layout. Allow about 1.5 s after `BROWSE`, and at least 5 s after a load key before seeking.
 - **Load average is unreliable on this Mac:** it read 40 to 940 while the busiest processes added up to a few cores. Go by what the processes use.
@@ -90,57 +90,52 @@ cp ~/Library/Caches/cheeks-autodj/music/jam1280420.mp3 ~/Library/Caches/cheeks-a
 
 **The disk:** the Duo's stuck recorder is gone. Keep an eye on free disk all the same, and stop at 40 GB, as before.
 
-### HA. Blocked last time
-These need a full layout you can press: the Duo opened in Device Hub (the last `hingeState:` in SpringBoard's log says `OpenFlat`), or touch access to the iPad, which is the owner's to grant. If you have neither, say BLOCKED and carry on. Don't reboot the Duo to try.
-1. **The browser on video on the Duo.** With 2,000 tracks (before launching: `python3 tools/test-music/big_library.py "$DATA/Library/Application Support/library.json" 2000`, and copy two real files in as well, or the tour stops) and both decks playing, open and close it ten times. Worst gap between changed frames, and how many? *iPad stand-in last time: 0.155 s.*
-2. **The logo, frame by frame,** on the Duo: it shouldn't double or jump at the handover.
-3. **The launch sweep,** five launches on the Duo: the meters should run up and back once as the logo lifts.
-4. **Pressing during the slide on the full layout.** `BROWSE` twice quickly, and a press in the slide: `PLAY`, a pad, and a row's `1`, freezing the app with SIGSTOP to land inside it, as before. Never a wrong cue. *Nobody's pressed on this since the slide changed.*
+### HA. On the Duo, if it's open
+Check `hingeState:` first. If it's still `Closed`, say BLOCKED and carry on, and don't reboot it to try. The same as last time on the iPad, for the Duo's own screen: **the browser on video** with 2,000 tracks and both decks playing, ten opens and closes, *worst 0.155 s on the iPad*. **The logo, frame by frame.** **The launch sweep,** five launches.
 
 ### HB. What failed or was new last time
-1. **N37: taking a row out of a playlist.** Your own steps: on the folded Duo or wherever it worked, hold a row, slide to `Remove from Playlist`, let go. "Took Houston out of Friday." with `UNDO`. `UNDO` puts it back in the same place, in a long list too. *Last time: gone, with no word, 2 times out of 3.*
-2. **GC4: a phone's row doesn't lift.** In a playlist and in All Tracks, on each phone. Holding opens the menu. Is there any way left of getting a row to float around? *Last time: it lifted, went nowhere and said nothing.*
-3. **N38: a deck playing with its fader down.** Both decks stopped, deck 1's fader at the bottom, `PLAY`. About 2 s later: "Deck 1 is playing with its fader down. Nothing's coming out." Once. Not if you bring the fader up in that time, and not with deck 1's headphone `CUE` lit. The same with the crossfader away. *Last time: nothing, for 9 s and up.*
-4. **N39: holding `CUE` on the waiting deck.** A mix on, deck 2 waiting. Hold deck 2's `CUE`: it plays, the mix stays on and `MIX` keeps counting. Let go: it stops, back where it was. Do the same with `AUTO` counting. Still holding a bar before the move starts: the preview ends by itself and the move runs properly. `PLAY` during the hold is starting it, and ends the mix. *Last time: "Mix off: you started deck 2 yourself."*
-5. **N40: `EXIT` just after a move.** Within 3 s of the end of a build, with the question up: a buzz, and the question stays. *Last time: "There's no loop to go back to yet."*
-6. **N41: grey on orange.** On video, on letting go of a held `SLICE` or `ROLL` pad. *Last time: a grey `RELOOP` on bright orange for a moment.*
+1. **N42: `CUE` on the waiting deck near a move.** Hold it from about 10 bars: it's a preview, and it ends itself between 3 and 2 bars. From 3 bars or less on the key, and all through the move, on an Echo throw, a Bass swap and a Loop build: nothing happens to the deck, it buzzes, and "Deck 2's coming in, so CUE does nothing until the move's over. MIX calls it off." With `AUTO` it says `AUTO`. The move runs, and letting go does nothing. `PLAY` on that deck still stops it: "Mix off: deck 2 was stopped. Deck 1 carries on." *Last time: 3 of 5 ended the move, and once left 17.6 s of silence.*
+2. **N43: a row's load key in `Choose Several`.** On the Duo, as last time. 4 presses of `1` and `2`, plain and 0.2 s: each loads, and the tick and the count stay as they were. Tapping everywhere else on a row still ticks it: the picture, the title, the BPM, the key, the time. Near the load keys too: does anything get lost in between? *Last time: 4 of 4 ticked it, and one didn't load.*
+3. **The key just after a move in a mix.** Within 3 s of a move ending, with the question up: a buzz, and the mix stays on. With it gone: "That move's just finished, and the mix carries on. Press MIX again to stop it." Pressed again: it ends. *Last time: "Mix off", at 0.6 s.*
+4. **A load just as the clock starts.** In a mix, press a row's load key on the waiting deck about 2 s before the clock, and just after it on a Loop build, when the deck's still stopped. "Up next: …" each time, the mix carries on, the old track's clean, and it never runs out with what you loaded sitting ready. *Last time: "Mix off: the track changed", and silence 12 s later.*
+5. **"That's yours" after a seek.** Turn the waiting deck's `LOW` down, press `MIX`, let it plan, then hold the overview to go past the exit. It replans, and doesn't say that. The `LOW` comes back as you left it. *Last time: it said so, 1 of 2.*
+6. **`GO NOW`.** "Echo throw next, into Houston. MIX's counting down to it," with no number. **Screenshot the key straight after the press,** on the decks and in the browser. Is it lit, and does it say `CHOOSING`? *Your OCR never caught it, and it said nothing for up to 5 s.* Taking a loop off a mix that's given up, which you didn't reach.
+7. **Not reached last time:** `KEY SYNC` with no key known, adding to a playlist from History, and the bottom of a 2,000-row list.
 
 ### HC. New this round
-1. **`GO NOW`.** Start a mix from the top of a long track. While the key reads more than 24 bars, there's a `GO NOW` key under `MIXER` (under `AUTO` on the full layout), and on the mix's line along the bottom of the browser. Press it: `CHOOSING`, then something like "Loop build in 18 bars, into Houston.", the count drops to about 20 at most, the next track's cued, and the mix carries on after that move. Press it in the browser as well. Try it with `AUTO` when that's counting a long way off. Stopping the mix while it's `CHOOSING` is the end of it. So is loading something else on the waiting deck, and the mix then goes on with that. With a mix that's given up (the key reads just `MIX`, "No clean way in"), it's there too, and takes a loop off the deck if it finds a way. Does it fit upright, where the meters beside it shrink? Would a first-time user find it? *Last time: `MIX 98`, and nothing to say go with.*
-2. **`Choose Several`.** Hold a row: `Choose Several`. That row's ticked, with ticks in place of the pictures, and a line along the bottom. Tap rows anywhere but their load keys. Search for something else, tick more: the count keeps them. `ALL` and `NONE` on what's showing. `ADD TO`, a playlist: "Added 3 tracks to Friday." with `UNDO`, and they're in the order they were showing. With some already there: "1 already there." `ADD TO`, `New Playlist…`: it opens with them in it. `DONE` adds nothing. Delete a ticked track from its menu: the count goes down. Leaving the browser ends it. From History too. `1` and `2` still load, and the swipes still work.
-3. **Speed.** I found the browser freezing for about 200 ms each way, and 70 MB of memory, in the commit you tested last time. With 2,000 tracks on the small iPhone, both decks playing: open and close it ten times on video, and give the worst gap between changed frames. Scroll the list quickly, right to the bottom and back: does it keep up? Does it keep its place? Do swipes and holds still work on a row, and the picture's preview? Memory at rest and playing, beside what's running.
-4. **Saving.** It's off the main thread now. Save a cue, wait 1 s, kill the app with `simctl terminate`, relaunch: it's there. Save a cue, send it to the background at once, kill it: it's there. Check the file's whole with a big library, with lots of changes quickly.
-5. **The stems not making it.** On a just-loaded track, with under a minute left on the other: `AUTO`. Within about 10 s: "The stems need 2 min, and this track has 40 s left. Deck 2 will just start at the end, with no move." Once. At the end: "The stems weren't ready in time, so there's no move. Deck 2 just started." `MIX` the same way. With plenty of time, no such word. If the crossfader moves, the last message says so. *Last time: the first-time user's worst thing.*
-6. **`MIX` going round again.** With a track playing and everything else ticked: "You've played all of Friday, so this goes round again, 4 tracks to go." The music doesn't stop, and it plays them. *Last time: told to stop the deck.*
-7. **Words.**
-   - "It takes over deck 2's SYNC, EQ and stems, and deck 1's effects." Does that read right, with some still lit?
-   - During the count, with `AUTO` or `MIX`: touch a control the move's going to use. "That's yours for this move."
-   - `KEY SYNC`: with a shift, with none needed, with no key known yet.
-   - `Grab Deck 2's Loop`: it says so, and the sheet's way back works.
-   - Upright in a playlist, the search field says "Search Friday".
-   - `MASTER`'s note against what you see on a stopped deck. `NEXT`'s note against the order you see.
-   - The words under `AUTO`, now 6 pt: do they fit? `AT THE END` and `STEMS 14%` are the longest.
-   - Two messages one after the other, with a press as the first one goes: can you read the new one straight away?
+1. **`MIX` with a track loaded on the waiting deck.** With a track playing, load something you've not played on the other deck, press `MIX`: it stays there and it's what's next, "Up next: …", and the list goes on after it, with what you chose not coming round twice. From a playlist it isn't on as well. With one that's been played on the waiting deck, the list decides. *Last time: it went straight back off, and it was the first-time user's worst thing.*
+2. **A loop while `AUTO` waits for stems.** `AUTO` on a just-loaded track, then a 4-beat loop on the playing deck while it says `STEMS n%`. When they're ready: "The stems are ready. Auto DJ goes when deck 1's loop ends." The key says `WAITING`, for as long as you like. `EXIT`: "…choosing a move", and it goes. *Last time: "Auto DJ stopped: deck 2 is in a loop", after 2:50.*
+3. **Holding `CUE` and `MASTER`.** Both stopped, `MASTER 2`. Hold deck 1's `CUE`: still `MASTER 2`. `PLAY` on deck 1: `MASTER 1`. A deck on `SYNC` doesn't move during the hold.
+4. **The `BPM` menu.** A playing deck off its own speed, `Back to Its Own Speed`: "Deck 1's back at its own speed." with `UNDO`, and `UNDO` puts it back, `SYNC` too. A stopped deck: no word.
+5. **`?` on the fourth knob,** with each of the six chosen. The heading goes with the name on the knob, and does the note match what you see on the meters?
+6. **`UNDO`'s touch.** Press just under the key, about 20 pt down, and just beside it: it counts. Anything above it, on the top bar, doesn't, and that key does what it should.
+7. **Saving a long recording.** 5 minutes or more, Stop and save, Recordings at once: "Saving your mix…", and not "No recordings yet". Then it's there.
+8. **`IMPORT`:** lit with an empty library and dark with tracks in, and it still works. **Numbers:** "2,005 tracks chosen."
+9. **What I found myself, and you've not seen:**
+   - **Larger text.** If you can change it (`xcrun simctl ui "$SIM" content_size accessibility-extra-extra-extra-large`, and put it back with `large` afterwards): the deck screen looks the same as ever, on each layout. Messages, `?` notes and Settings get bigger. Does anything collide or get cut off? Which screen's worst?
+   - **A bad file.** Put a text file named `bad.mp3` and an empty `empty.mp3` in the simulator's Files, and import them with a good one: "2 files couldn't be read.", the good one comes in, and nothing freezes. If you can't get the picker to take them, say so.
+   - **An iPad window.** If you can get Stage Manager or Split View on the iPad: nothing below 375×667, and everything fits at that size.
+   - **The screen going dark:** can't be seen in a simulator. Don't report it.
 
 ## Not run for a while
-These weren't asked for last round. From **Part 1**: **A1, B1, C1 to C3, C5, C6, D2 to D4** and **D11**. From **Part 2**: **G, H** and **I**. Last round's passed.
+These weren't asked for in the last few rounds. From **Part 1**: **A2, A3** (the CPU table), **B2 to B6, C4, C7 to C9, D1, D5 to D10, D12** and **E**. From **Part 2**: **F, J** and **K**. Last time they all passed. Say so if they've changed, and don't spend long on what hasn't.
 
 ## The first-time user
 Forget everything above. Uninstall, install, and open the app as someone who's never seen it and has some music in Files. Stay away from the repo's docs and code, and say what you can't un-know.
 
-**How to start it:** the `Explore` subagent type gets no CLAUDE.md or memories, and it has Bash and the touch tool. Say in its first brief that it may write screenshots and a report to one folder, or it won't. Keep its early screenshots, as it can't look back at them itself. **On `iPhone 17` upright this time,** if it's free, or on the Duo unfolded if that's open: that's how most people hold a phone, and nobody's learned the app that way on an ordinary one. Make sure no backups are in its Files.
+**How to start it:** the `Explore` subagent type gets no CLAUDE.md or memories, and it has Bash and the touch tool. Say in its first brief that it may write screenshots and a report to one folder, or it won't. Keep its early screenshots, as it can't look back at them itself. **On the iPad Air this time,** or on the Duo unfolded if that's open: nobody's learned the app on the full layout for a while, and it's where the first screen's the most to take in. Make sure no backups are in its Files.
 
 **Give it the full 45 minutes.** Let it find its own way, and look out for these:
-- How long until it can say what Auto DJ does to a track? Last time 10:09.
-- Is its first `AUTO` and first `MIX` still a let-down? Both ended in a cut last time, with nothing to say how long stems take.
-- Does it find `GO NOW`, or `Choose Several`?
-- What's still doing nothing with no word?
+- How long until it can say what Auto DJ does to a track? Last time 9:52.
+- Does it still feel the app's acting on its decks without asking? That was its worst thing last time.
+- Does it get its own choice of next track to stick, in a mix and at the start of one?
+- What's still doing nothing with no word? Is a message ever in the way of what it's about?
 
 1. Every moment you weren't sure what to do, what you tried first, and how long each stage took. Screenshot each, as `fu-*`.
 2. **Use `?` as you go.** What's still a mystery after it? Which note was wrong, or didn't help?
 
 ### Pressing harder
-**A long run.** 15 minutes, with `MIX` and `AUTO` running, and taking over as many ways as you can, including pressing things just as a panel slides, and with `DUB` chosen throughout. **Hand back in a build's last bars at least twice,** with `AUTO` and with `EXIT`, and a Bass swap at least once. `GO NOW` at least twice, and hold `CUE` on the waiting deck at least twice, once right up to the move. A recording running throughout, so you can check for gaps, and music on throughout. Afterwards the decks should always be usable, with nothing left silent, looping or filtered that the screen doesn't show. Crashes, dropouts, or a stop you can't explain? On the Duo if it's open, and on the small iPhone if not. **At least one seek past a mix's exit,** one load on the waiting deck, one load on a mix's last track, one mix started on a track with its saved loop on, and `AUTO` pressed just after a move ends.
+**A long run.** 15 minutes, with `MIX` and `AUTO` running, and taking over as many ways as you can, including pressing things just as a panel slides, and with `DUB` chosen throughout. **Hand back in a build's last bars at least twice,** with `AUTO` and with `EXIT`, and a Bass swap at least once. `GO NOW` at least twice, and hold `CUE` on the waiting deck at least twice, once right up to the move. A recording running throughout, so you can check for gaps, and music on throughout. Afterwards the decks should always be usable, with nothing left silent, looping or filtered that the screen doesn't show. Crashes, dropouts, or a stop you can't explain? On the Duo if it's open, and on the small iPhone if not. **At least one seek past a mix's exit,** one load on the waiting deck just ahead of the clock, one load on a mix's last track, one mix started on a track with its saved loop on, `AUTO` and `MIX` pressed just after a move ends, and `CUE` on the new deck at each stage of a move.
 
 ---
 
@@ -255,10 +250,10 @@ Answer honestly, as someone seeing it fresh. Criticism is the useful part.
 
 ## Results format
 
-Write `docs/COMPUTER_USE_RESULTS_21.md` like this:
+Write `docs/COMPUTER_USE_RESULTS_22.md` like this:
 
 ```markdown
-# Hands-on results, part 21, <date>
+# Hands-on results, part 22, <date>
 
 Commit tested: <git rev-parse --short HEAD>
 Device: <simulator and screen size>
@@ -272,7 +267,7 @@ Tooling limits: <what you couldn't do>
 - Steps: ...
 - Expected: ...
 - Actual: ...
-- Screenshot: docs/test-results-21/...
+- Screenshot: docs/test-results-22/...
 - Crash report (if any): ...
 
 ## Looks wrong
