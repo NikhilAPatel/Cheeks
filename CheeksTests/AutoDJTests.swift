@@ -595,9 +595,9 @@ final class AutoDJTests: XCTestCase {
         dj.decks[1].stemStatus = .separating(0.42)
         dj.autoDJ.press()
         XCTAssertEqual(dj.autoDJ.phase, .waitingForStems)
-        XCTAssertEqual(dj.autoDJ.legend, "AUTO 42%")
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO STEMS 42%")
         dj.decks[1].stemStatus = .separating(nil)
-        XCTAssertEqual(dj.autoDJ.legend, "AUTO 0%")
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO STEMS 0%")
         dj.autoDJ.press()
         XCTAssertEqual(dj.autoDJ.legend, "AUTO")
     }
@@ -710,7 +710,7 @@ final class AutoDJTests: XCTestCase {
         b.stemStatus = .ready("AI")
         dj.autoDJ.tick()
         XCTAssertEqual(dj.autoDJ.phase, .planning)
-        XCTAssertEqual(dj.autoDJ.legend, "AUTO…")
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO CHOOSING")
         XCTAssertEqual(dj.statusMessage, "The stems are ready. Auto DJ is choosing a move.")
     }
 
@@ -723,7 +723,7 @@ final class AutoDJTests: XCTestCase {
         try await run(dj, until: { dj.autoDJ.phase == .waitingForTheEnd || dj.autoDJ.phase == .idle }, seconds: 3)
         XCTAssertEqual(dj.statusMessage, "No clean way in from here. Deck 2 starts when this one ends.")
         XCTAssertTrue(dj.autoDJ.isActive, "The key stays lit, as there's something still to come")
-        XCTAssertEqual(dj.autoDJ.legend, "AUTO…")
+        XCTAssertEqual(dj.autoDJ.legend, "AUTO AT THE END")
         try await run(dj, until: { dj.autoDJ.phase == .idle }, seconds: 8)
         XCTAssertTrue(b.isPlaying)
         XCTAssertEqual(dj.statusMessage, "No clean way in. Deck 2 just started.")
@@ -748,11 +748,11 @@ final class AutoDJTests: XCTestCase {
         let auto: AutoDJ = dj.autoDJ
         auto.press()
         try await run(dj) { self.isRunning(dj) }
-        XCTAssertEqual(auto.legend, "AUTO \(TransitionScore.leadBars)", "The clock's running, and the move's still to come")
+        XCTAssertEqual(auto.legend, "AUTO \(TransitionScore.leadBars) BARS", "The clock's running, and the move's still to come")
         XCTAssertFalse(dj.statusMessage?.contains("starting") == true, "\(dj.statusMessage ?? "")")
         try await run(dj, until: { auto.barsToGo == 0 }, seconds: 10)
         XCTAssertEqual(auto.legend, "AUTO")
-        XCTAssertEqual(dj.statusMessage, "Loop build starting. Put both decks on STEMS to watch it. A control you touch is yours.")
+        XCTAssertEqual(dj.statusMessage, "Loop build starting. Put both decks on STEMS to watch it. From here, a control you touch is yours.")
     }
 
     /// RELOOP took a deck back a minute and a half, to a loop nobody set.
@@ -1254,7 +1254,7 @@ final class AutoDJTests: XCTestCase {
         XCTAssertEqual(two.effectiveBPM, 170, accuracy: 0.01, "What's on air stays as it is")
         XCTAssertFalse(two.syncOn)
         XCTAssertEqual(dj.masterIndex, 1)
-        XCTAssertEqual(dj.statusMessage, "Deck 2's leading, with nothing playing to follow. SYNC on deck 1 brings that one to this tempo.")
+        XCTAssertEqual(dj.statusMessage, "Deck 2's the master, with nothing playing to follow. SYNC on deck 1 brings that one to this tempo.")
         XCTAssertEqual(dj.statusKind, .refused)
 
         dj.decks[0].play()
@@ -1302,14 +1302,14 @@ final class AutoDJTests: XCTestCase {
         let dj = try ready(only: .echoDrop)
         dj.autoDJ.press()
         try await run(dj, until: { dj.statusMessage?.hasPrefix("Echo throw starting") == true })
-        XCTAssertEqual(dj.statusMessage, "Echo throw starting. A control you touch is yours.")
+        XCTAssertEqual(dj.statusMessage, "Echo throw starting. From here, a control you touch is yours.")
     }
 
     func testALoopBuildStillSaysToWatchTheStems() async throws {
         let dj = try ready(only: .loopDrop)
         dj.autoDJ.press()
         try await run(dj, until: { dj.statusMessage?.hasPrefix("Loop build starting") == true })
-        XCTAssertEqual(dj.statusMessage, "Loop build starting. Put both decks on STEMS to watch it. A control you touch is yours.")
+        XCTAssertEqual(dj.statusMessage, "Loop build starting. Put both decks on STEMS to watch it. From here, a control you touch is yours.")
     }
 
     func testAMixSaysHowManyAreLeftWhenItsLeftSomeOut() throws {
@@ -2195,5 +2195,120 @@ final class AutoDJTests: XCTestCase {
         last.queue = []
         last.next = nil
         XCTAssertEqual(last.line, "Mixing through Tonight. This is the last track.")
+    }
+
+    // MARK: Round 19
+
+    /// 12 pt at WIDE took a synced deck from 170 to 149.28, and all that showed it was a key going dark and a marker going orange.
+    func testTheTempoFaderSaysWhenItTakesADeckOffSync() throws {
+        let dj = try ready()
+        let two = dj.decks[1]
+        two.setTempo(10)
+        two.syncOn = true
+        dj.statusMessage = nil
+        two.setTempoManually(5)
+        XCTAssertFalse(two.syncOn)
+        XCTAssertEqual(dj.statusMessage, "Deck 2's off SYNC: you moved its tempo fader.")
+        XCTAssertNotNil(dj.undoAction, "It can be a slip, and it's a big change when it is")
+        let undo = try XCTUnwrap(dj.undoAction)
+        dj.statusMessage = nil
+        two.setTempoManually(4)
+        XCTAssertNil(dj.statusMessage, "Once it's off, moving it further is just moving it")
+        undo()
+        XCTAssertTrue(two.syncOn)
+        XCTAssertEqual(two.tempo, 10)
+    }
+
+    func testDoubleTappingTheFaderSaysWhenItTakesADeckOffSync() throws {
+        let dj = try ready()
+        let two = dj.decks[1]
+        two.setTempo(10)
+        two.faderBackToCentre()
+        XCTAssertNil(dj.statusMessage, "With nothing to follow, the number going back says it all")
+        two.setTempo(10)
+        two.syncOn = true
+        two.faderBackToCentre()
+        XCTAssertEqual(two.tempo, 0)
+        XCTAssertFalse(two.syncOn)
+        XCTAssertEqual(dj.statusMessage, "Deck 2's back at its own speed, and off SYNC.")
+        dj.undoAction?()
+        XCTAssertEqual(two.tempo, 10)
+        XCTAssertTrue(two.syncOn)
+    }
+
+    /// A first-time user was told "a control you touch is yours", and lost a muted vocal and an effect that they'd set just before.
+    func testAutoSaysWhatItsTakenOver() async throws {
+        let dj = try ready(only: .echoDrop)
+        let a = dj.decks[0], b = dj.decks[1]
+        b.syncOn = true
+        b.eqLow = -0.5
+        b.setStems([.melody, .bass, .drums])
+        a.activeFX.append(ActiveFX(effect: .echo, link: nil, beats: 1, depth: 0.5))
+        dj.autoDJ.press()
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        let message = try XCTUnwrap(dj.statusMessage)
+        XCTAssertTrue(message.contains(" It's taken over deck 2's SYNC, EQ and stems, and deck 1's effects. AUTO's counting down the bars."), message)
+    }
+
+    func testAutoOnlySaysWhatItsTakenOverIfThereIsAnything() async throws {
+        let dj = try ready(only: .echoDrop)
+        dj.autoDJ.press()
+        try await run(dj, until: { self.isArmed(dj) }, seconds: 30)
+        XCTAssertFalse(dj.statusMessage?.contains("taken over") == true, dj.statusMessage ?? "")
+    }
+
+    /// Meant to hand a move back, 1.5 s too late, it started the next one back into the track that had just gone.
+    func testAPressJustAfterAMoveOnlySaysSo() async throws {
+        let dj = try ready(only: .echoDrop)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle })
+        XCTAssertTrue(dj.statusMessage?.hasPrefix("Echo throw done.") == true, dj.statusMessage ?? "")
+        let question = dj.statusMessage
+        XCTAssertNotNil(dj.rateAction)
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(dj.statusMessage, question, "The question's still up, and it's already saying that's done")
+        XCTAssertNotNil(dj.rateAction)
+        dj.autoDJ.press()
+        XCTAssertNotEqual(dj.autoDJ.phase, .idle, "Twice means the next one")
+    }
+
+    func testAPressJustAfterAMoveSaysWhyWithNoQuestionUp() async throws {
+        let dj = try ready(only: .echoDrop)
+        dj.autoDJ.press()
+        try await run(dj, until: { dj.autoDJ.phase == .idle })
+        dj.rateAction = nil
+        dj.autoDJ.press()
+        XCTAssertEqual(dj.autoDJ.phase, .idle)
+        XCTAssertEqual(dj.statusMessage, "That move's just finished. Press AUTO again for the next one.")
+    }
+
+    /// "No clean way in." was all a first-time user got, when their stems were still at 78%.
+    func testAMixSaysWhenItWasTheStemsThatLeftNoWayIn() async throws {
+        let ids = [UUID(), UUID(), UUID()]
+        let first = try map(bars: 40)
+        let dj = engine(loading: [ids[0]: first, ids[1]: try map(), ids[2]: try map(bpm: 125, firstBar: 0.3)])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        try await run(dj, until: { dj.decks[1].track?.id == ids[1] }, seconds: 5)
+        dj.autoDJ.stopForTesting()
+        dj.decks[1].trackMap = nil
+        dj.decks[1].stemStatus = .separating(0.78)
+        dj.decks[0].seek(to: dj.decks[0].track!.duration - 1)
+        try await run(dj, until: { dj.decks[1].isPlaying }, seconds: 5)
+        XCTAssertEqual(dj.statusMessage, "The stems didn't get there in time. Deck 2 just started.")
+    }
+
+    /// A first-time user pressed it and saw nothing change, as the marker was already on a beat.
+    func testSettingTheDownbeatSaysSoAndCanBeUndone() throws {
+        let dj = try ready()
+        let a = dj.decks[0]
+        let was = try XCTUnwrap(a.track?.firstBeat)
+        a.seek(to: was + 60 / a.bpm)
+        a.setDownbeatHere()
+        XCTAssertEqual(dj.statusMessage, "The bar starts here now.")
+        XCTAssertEqual(a.track?.gridSource, .person)
+        dj.undoAction?()
+        XCTAssertEqual(try XCTUnwrap(a.track?.firstBeat), was, accuracy: 0.0001)
+        XCTAssertNotEqual(a.track?.gridSource, .person)
     }
 }

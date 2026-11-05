@@ -156,9 +156,16 @@ struct CompactDeck: View {
 
     /// It's the second thing anyone needs, so the pads page keeps it. The jog page has it among its keys.
     private var syncKey: some View {
-        Key("SYNC", lit: deck.syncOn, size: 8, feel: .toggle, accessibilityName: "Beat sync, deck \(deck.index + 1)", help: "SYNC", onPress: { dj.toggleSync(deck) })
-            .frame(width: keyWidth)
-            .needsATrack(on: deck)
+        Key(lit: deck.syncOn, feel: .toggle, accessibilityName: "Beat sync, deck \(deck.index + 1)", help: "SYNC", onPress: { dj.toggleSync(deck) }) {
+            VStack(spacing: 0) {
+                KeyLegend(title: "SYNC", size: 8)
+                // Both can read SYNC with neither saying who's following whom, and the MASTER key's on the other page. It's the sharpest
+                // case of a first-time user's worst thing: "it's hard to tell who's in charge of what".
+                if dj.masterIndex == deck.index, deck.isLoaded { Text("MASTER").font(Theme.silk(5)) }
+            }
+        }
+        .frame(width: keyWidth)
+        .needsATrack(on: deck)
     }
 
     /// Swaps the pads for the jog and the keys beside it.
@@ -326,6 +333,7 @@ private struct CueChannelKey: View {
 struct MixerMoreSheet: View {
     @Environment(DJEngine.self) private var dj
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var heightClass
 
     var body: some View {
         @Bindable var dj = dj
@@ -385,8 +393,31 @@ struct MixerMoreSheet: View {
         .onDisappear { WhatsThis.shared.sheetClosed() }
         .environment(\.isInASheet, true)
         // As tall as what's in it. At a half it was two rows of controls and a screen of nothing, over decks someone's mixing on.
-        .presentationDetents([.height(280)])
+        // On its side its lines are shorter, and that leaves both waveforms showing above it.
+        .presentationDetents([.height(heightClass == .compact ? 220 : 280)])
+        .background(StaysAtTheBottomEdge())
         .background(Theme.chassis)
         .preferredColorScheme(.dark)
+    }
+}
+
+/// On a phone on its side, a sheet takes no notice of its height and fills the screen: a row of knobs, half a screen of nothing, and
+/// none of the waveforms someone's setting TRIM by. SwiftUI has no way to ask for this, so it's asked of the sheet from inside it.
+private struct StaysAtTheBottomEdge: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Asker { Asker() }
+    func updateUIViewController(_ controller: Asker, context: Context) {}
+
+    final class Asker: UIViewController {
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            var controller: UIViewController? = self
+            while let current = controller {
+                if let sheet = current.sheetPresentationController {
+                    sheet.prefersEdgeAttachedInCompactHeight = true
+                    return
+                }
+                controller = current.parent
+            }
+        }
     }
 }

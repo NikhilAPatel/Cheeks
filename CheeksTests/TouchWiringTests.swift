@@ -443,7 +443,23 @@ final class TouchWiringTests: XCTestCase {
         fader.onUp?()
         XCTAssertNotEqual(deck.tempo, 0)
         XCTAssertFalse(deck.syncOn, "And that's moving it by hand")
+        XCTAssertEqual(dj.statusMessage, "Deck 1's off SYNC: you moved its tempo fader.")
         window.isHidden = true
+    }
+
+    /// It stayed one line tall whatever was in it, with three lines of words coming out of it onto the list, on everybody's first load.
+    func testAMessagesCapsuleGrowsWithItsWords() throws {
+        let dj = DJEngine(library: Library())
+        dj.stopRealtimeForTesting()
+        func height(_ message: String) -> CGFloat {
+            dj.say(message, .info)
+            // It hangs off the top bar, which is what's offered to it.
+            return UIHostingController(rootView: StatusCapsule().environment(dj)).sizeThatFits(in: CGSize(width: 381, height: 26)).height
+        }
+        let one = height("Short.")
+        XCTAssertEqual(one, 24, accuracy: 3)
+        let three = height("It's on the deck: DECKS takes you there. New to this? Press ? and tap anything to see what it does. The gear has the whole guide.")
+        XCTAssertGreaterThan(three, one + 20, "Three lines need the room of three lines")
     }
 
     /// With a question up, a hold meant for the overview under it gave a rating nobody meant.

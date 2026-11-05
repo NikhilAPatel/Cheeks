@@ -82,7 +82,13 @@ struct AutoKey: View {
     var body: some View {
         let auto = dj.autoDJ!
         // During a mix it reads MIX, and its note has to as well.
-        Key(auto.legend, lit: auto.isActive, size: 8, feel: .toggle, accessibilityName: "Auto DJ", help: auto.mixSet == nil ? nil : "Mix on the mixer", onPress: { auto.press() })
+        Key(lit: auto.isActive, feel: .toggle, accessibilityName: "Auto DJ", help: auto.mixSet == nil ? nil : "Mix on the mixer", onPress: { auto.press() }) {
+            VStack(spacing: 0) {
+                KeyLegend(title: auto.keyName, size: auto.keyDetail == nil ? 8 : 7)
+                if let detail = auto.keyDetail { Text(detail).font(Theme.silk(5)).lineLimit(1).minimumScaleFactor(0.8) }
+            }
+        }
+        .accessibilityValue(auto.keyDetail ?? "")
     }
 }
 

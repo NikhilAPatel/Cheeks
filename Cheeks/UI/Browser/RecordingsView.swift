@@ -174,7 +174,10 @@ struct RecordingsView: View {
         guard !name.isEmpty else { return }
         let target = Recordings.directory.appending(path: "\(name).\(url.pathExtension)")
         guard !FileManager.default.fileExists(atPath: target.path) else { return }
-        if player.playing == url { player.stop() }
+        // Giving it a name shouldn't lose someone's place in it.
+        let carryOn = player.playing == url ? (at: player.position, paused: player.isPaused) : nil
+        if carryOn != nil { player.stop() }
+        defer { if let carryOn { player.resume(target, at: carryOn.at, paused: carryOn.paused) } }
         let oldCompanions = Recordings.companionFiles(for: url)
         let newCompanions = Recordings.companionFiles(for: target)
         do {
@@ -249,6 +252,14 @@ final class RecordingPlayer {
                 }
             }
         }
+    }
+
+    /// Plays this from part-way through.
+    func resume(_ url: URL, at time: TimeInterval, paused: Bool) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        toggle(url)
+        seek(to: time)
+        if paused { toggle(url) }
     }
 
     func stop() {

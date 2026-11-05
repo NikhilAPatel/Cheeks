@@ -138,6 +138,10 @@ final class PhoneLayoutTests: CheeksUITestCase {
             screenshot("mixer-sheet-split-\(orientation.rawValue)")
             let window = app.windows.firstMatch.frame
             XCTAssertLessThanOrEqual(last.frame.maxY, window.maxY - 8, "Its last line should be on the screen")
+            // On its side it filled the screen, with half of that empty and none of the waveforms showing.
+            let heading = app.staticTexts["Mixer"].firstMatch
+            print("UITEST: mixer sheet starts at \(heading.frame.minY) of \(window.height), upright: \(orientation == .portrait)")
+            XCTAssertGreaterThan(heading.frame.minY, 60, "It should leave what's above it showing")
             app.buttons["Done"].firstMatch.tap()
             sleep(1)
             screenshot("mixer-key-split-\(orientation.rawValue)")
@@ -172,6 +176,105 @@ final class PhoneLayoutTests: CheeksUITestCase {
         XCTAssertLessThanOrEqual(footer.frame.maxY, window.height, "Everything in it should be on the screen without scrolling")
         app.buttons["Done"].firstMatch.tap()
         sleep(1)
+    }
+
+    /// The one thing in that menu someone's there for in a hurry, and on a phone on its side it was below the fold.
+    func testBackToItsOwnSpeedIsAtTheTopOfItsMenu() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        loadDeck1()
+        press(button("Show jog, deck 1"))
+        sleep(1)
+        let fader = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Tempo'")).firstMatch
+        waitFor(fader)
+        let cap = fader.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        cap.press(forDuration: 0.05, thenDragTo: cap.withOffset(CGVector(dx: 0, dy: 20)), withVelocity: .default, thenHoldForDuration: 0.1)
+        sleep(1)
+        button("Beat grid").tap()
+        let back = app.buttons["Back to Its Own Speed"].firstMatch
+        waitFor(back, seconds: 3)
+        screenshot("bpm-menu")
+        XCTAssertTrue(back.isHittable, "It should be there without scrolling")
+        XCTAssertLessThan(back.frame.minY, app.buttons["Double the Reading"].firstMatch.frame.minY)
+        back.tap()
+        sleep(1)
+        press(button("Show pads, deck 1"))
+    }
+
+    /// A first-time user held a row in their playlist and dragged it. It lifted, and nothing changed.
+    func testAPlaylistsRowsCanBeDraggedIntoAnotherOrder() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        defer { XCUIDevice.shared.orientation = .landscapeLeft }
+        openBrowser()
+        let menu = button("Playlists")
+        press(menu)
+        let new = app.buttons["New playlist…"].firstMatch
+        waitFor(new, seconds: 3)
+        new.tap()
+        let name = app.alerts.textFields.firstMatch
+        waitFor(name, seconds: 3)
+        name.typeText("Order test")
+        app.alerts.buttons["Create"].tap()
+        sleep(1)
+
+        // Two tracks into it.
+        press(menu)
+        let all = app.buttons["All Tracks"].firstMatch
+        waitFor(all, seconds: 3)
+        all.tap()
+        sleep(1)
+        let rows = app.collectionViews.firstMatch.cells
+        waitFor(rows.firstMatch)
+        XCTAssertGreaterThanOrEqual(rows.count, 2, "It takes two")
+        for row in 0..<2 {
+            rows.element(boundBy: row).press(forDuration: 1.2)
+            let add = app.buttons["Add to Playlist"].firstMatch
+            waitFor(add, seconds: 3)
+            add.tap()
+            let target = app.buttons["Order test"].firstMatch
+            waitFor(target, seconds: 3)
+            target.tap()
+            sleep(1)
+        }
+
+        press(menu)
+        let playlist = app.buttons["Order test"].firstMatch
+        waitFor(playlist, seconds: 3)
+        playlist.tap()
+        sleep(1)
+        func titles() -> [String] {
+            (0..<rows.count).map { row in rows.element(boundBy: row).staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: "|") }
+        }
+        let before = titles()
+        XCTAssertEqual(before.count, 2)
+        rows.element(boundBy: 0).press(forDuration: 1.2)
+        let change = app.buttons["Change the Order"].firstMatch
+        waitFor(change, seconds: 3)
+        screenshot("playlist-row-menu")
+        change.tap()
+        let done = button("Done changing the order")
+        waitFor(done, seconds: 3)
+        sleep(1)
+        screenshot("playlist-handles")
+        // The handles are at the end of each row.
+        let handle = rows.element(boundBy: 0).coordinate(withNormalizedOffset: CGVector(dx: 0.925, dy: 0.5))
+        handle.press(forDuration: 0.4, thenDragTo: handle.withOffset(CGVector(dx: 0, dy: 70)), withVelocity: XCUIGestureVelocity(60), thenHoldForDuration: 0.5)
+        sleep(1)
+        screenshot("playlist-dragged")
+        XCTAssertEqual(titles(), Array(before.reversed()), "The dragged row should have changed places")
+        press(done)
+        sleep(1)
+        XCTAssertFalse(done.exists, "It's over")
+
+        press(menu)
+        let delete = app.buttons["Delete Playlist"].firstMatch
+        waitFor(delete, seconds: 3)
+        delete.tap()
+        sleep(1)
+        closeBrowser()
     }
 
     private func percent(_ knob: XCUIElement) -> Int {

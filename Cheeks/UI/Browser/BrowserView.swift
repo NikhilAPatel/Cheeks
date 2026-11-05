@@ -13,6 +13,8 @@ struct BrowserView: View {
     /// keyboard too, and it used to push the whole browser out of shape behind the picker.
     var keyboardHeight: CGFloat = 0
     @State private var lastList = LastList()
+    /// The list's showing its handles, to change a playlist's order.
+    @State private var rearranging = false
     // How the list is showing is worth keeping: the browser closes every time someone goes back to the decks.
     @AppStorage("browserPlaylist") private var chosenPlaylist = ""
     @State private var search = ""
@@ -149,7 +151,7 @@ struct BrowserView: View {
                 toolbar
                 columnHeader
                 // Over the list and not above it, so nothing moves under a finger when a mix starts or ends.
-                table.safeAreaInset(edge: .bottom, spacing: 0) { mixLine }
+                table.safeAreaInset(edge: .bottom, spacing: 0) { listLines }
             }
         }
         .background(Color(white: 0.06))
@@ -191,6 +193,7 @@ struct BrowserView: View {
         // A playlist opens in the order it was built, which is the order MIX plays, whatever All Tracks was sorted by. A
         // first-time user's built order had gone from view, with nothing to say why. All Tracks gets its own sort back.
         .onChange(of: chosenPlaylist) { old, new in
+            rearranging = false
             if old.isEmpty {
                 allSort = sort
                 allAscending = ascending
@@ -208,6 +211,7 @@ struct BrowserView: View {
             guard !open else { return }
             search = ""
             searchFocused = false
+            rearranging = false
         }
     }
 
@@ -249,13 +253,19 @@ struct BrowserView: View {
         } else {
             let rows = Row.rows(of: list, canRepeat: playlistID != nil)
             ScrollViewReader { proxy in
-                List(rows) { row in
-                    TrackRow(track: row.track, referenceDeck: referenceDeck, playlistID: playlistID)
-                        .listRowBackground(row.number % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
-                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                        .listRowSeparator(.hidden)
+                List {
+                    // Holding a row opens its menu, and sliding from there chooses from the menu, so a drag can't be how to do this
+                    // without a mode of its own: the handles.
+                    if rearranging {
+                        ForEach(rows, content: tableRow)
+                            .onMove { from, to in rearrange(rows, from: from, to: to) }
+                            .deleteDisabled(true)
+                    } else {
+                        ForEach(rows, content: tableRow)
+                    }
                 }
                 .listStyle(.plain)
+                .environment(\.editMode, .constant(rearranging ? .active : .inactive))
                 .environment(\.defaultMinListRowHeight, 36)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.immediately)
@@ -266,9 +276,53 @@ struct BrowserView: View {
                 .onChange(of: whatsListed) { _, _ in
                     if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
                     dj.autoDJ.takeBack?(AutoDJ.everythingPlayed)
+                    if !showsItsOwnOrder { rearranging = false }
+                }
+                // A row lifted, went nowhere and gave a first-time user nothing to go on.
+                .dropDestination(for: String.self) { _, _ in
+                    dj.say(canRearrange ? "To change the order, hold a row and choose Change the Order." : "Drop it on a deck, or press 1 or 2.", .info)
+                    return false
                 }
             }
         }
+    }
+
+    private func tableRow(_ row: Row) -> some View {
+        // A phone's browser covers the decks, so outside a playlist there's nothing to say to a dropped row, or anywhere to drop it.
+        TrackRow(track: row.track, referenceDeck: referenceDeck, playlistID: playlistID, canDrag: !rearranging && (!layout.isCompact || canRearrange),
+                 changeTheOrder: canRearrange ? { showItsOwnOrderToRearrange() } : nil)
+            .listRowBackground(row.number % 2 == 0 ? Color(white: 0.07) : Color(white: 0.095))
+            .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+            .listRowSeparator(.hidden)
+    }
+
+    /// A playlist has an order of its own, which is the order MIX plays. History's is what happened.
+    private var canRearrange: Bool {
+        guard let playlistID, let playlist = library.playlists.first(where: { $0.id == playlistID }) else { return false }
+        return !library.isHistory(playlist)
+    }
+
+    /// What's showing is all of it, in that order.
+    private var showsItsOwnOrder: Bool {
+        canRearrange && sort == .dateAdded && !bestNext && search.isEmpty && !inKeyOnly && !nearBPMOnly
+    }
+
+    /// From whatever it was showing, as a first-time user can't be expected to work out what's in the way.
+    private func showItsOwnOrderToRearrange() {
+        sort = .dateAdded
+        ascending = false
+        bestNext = false
+        inKeyOnly = false
+        nearBPMOnly = false
+        search = ""
+        Haptics.shared.toggle(true)
+        withAnimation(Theme.panel) { rearranging = true }
+    }
+
+    private func rearrange(_ rows: [Row], from: IndexSet, to offset: Int) {
+        guard let playlistID, let first = from.first else { return }
+        Haptics.shared.confirm()
+        library.move(rows[first].track.id, in: playlistID, to: offset)
     }
 
     /// A row of the list. History can have a track in it twice, so a track isn't enough to tell rows apart: SwiftUI said so in
@@ -507,20 +561,60 @@ struct BrowserView: View {
     /// Which list a mix is going through, and what's left of it, for as long as it's on. Nothing showed this after the first
     /// message, and a first-time user changing list with MIX lit took it to apply to the new one.
     @ViewBuilder
-    private var mixLine: some View {
-        if let set = dj.autoDJ.mixSet {
-            HStack(spacing: 5) {
-                Circle().fill(Theme.accent).frame(width: 5, height: 5)
-                Text(set.line).font(Theme.text(10.5, .medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
-                Spacer(minLength: 0)
+    private var listLines: some View {
+        let filtered = filterLine
+        let set = dj.autoDJ.mixSet
+        if filtered != nil || set != nil || rearranging {
+            VStack(spacing: 0) {
+                if rearranging { rearrangingLine }
+                if let filtered { line(filtered, dot: Theme.warn, help: "Filter line") }
+                if let set { line(set.line, dot: Theme.accent, help: "Mix line") }
             }
-            .padding(.horizontal, 8)
-            .frame(height: 20)
             // The screen runs under the home indicator, and that went through this.
             .padding(.bottom, homeIndicatorRoom)
             .background(Color(white: 0.12))
-            .whatsThis("Mix line")
         }
+    }
+
+    private func line(_ text: String, dot: Color, help: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(dot).frame(width: 5, height: 5)
+            Text(text).font(Theme.text(10.5, .medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 20)
+        .whatsThis(help)
+    }
+
+    private var rearrangingLine: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "line.3.horizontal").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.accent)
+            Text("Drag the handles to change the order.").font(Theme.text(10.5, .medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                .whatsThis("Change the order")
+            Spacer(minLength: 0)
+            Key("DONE", lit: true, size: 8, accessibilityName: "Done changing the order", help: "Change the order", onPress: {
+                withAnimation(Theme.panel) { rearranging = false }
+            })
+            .frame(width: 44, height: 20)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+    }
+
+    /// The filters stay on when the browser closes, and one hid a track from a first-time user for a while, with the count beside the
+    /// list saying 7 and 4 showing.
+    private var filterLine: String? {
+        var on: [String] = []
+        if inKeyOnly, referenceDeck?.effectiveKey != nil { on.append(layout == .portrait ? "KEY" : "IN KEY") }
+        if nearBPMOnly, (referenceDeck?.effectiveBPM ?? 0) > 0 { on.append(layout == .portrait ? "±6%" : "±6% BPM") }
+        guard !on.isEmpty, let showing = lastList.tracks?.count else { return nil }
+        let all: Int
+        switch source {
+        case .all: all = library.tracks.count
+        case .playlist(let id): all = library.playlists.first { $0.id == id }?.trackIDs.count ?? showing
+        }
+        return "\(showing) of \(all) showing, with \(on.joined(separator: " and ")) on."
     }
 
     private var homeIndicatorRoom: CGFloat {
@@ -647,6 +741,31 @@ struct BrowserView: View {
     }
 }
 
+/// A row that picks up, to drop on a deck.
+private struct LiftsIfItCan: ViewModifier {
+    let on: Bool
+    let track: Track
+
+    func body(content: Content) -> some View {
+        if on {
+            content.draggable(track.id.uuidString) {
+                HStack(spacing: 8) {
+                    TrackArtwork(track: track).frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(track.title).font(Theme.text(12, .semibold)).lineLimit(1)
+                        Text(track.artist).font(Theme.text(10.5)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .padding(6)
+                .frame(width: 210, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+        } else {
+            content
+        }
+    }
+}
+
 /// A phone has no room for a row's waveform, so its picture is what previews, and nothing else there did. A first-time user went
 /// looking and never found a way to hear a track off the decks.
 struct ArtworkPreview: View {
@@ -689,6 +808,9 @@ struct TrackRow: View {
     let track: Track
     let referenceDeck: Deck?
     let playlistID: UUID?
+    var canDrag = true
+    /// Where a list has an order someone can change.
+    var changeTheOrder: (() -> Void)?
     @Environment(\.screenLayout) private var layout
     @State private var askingToDelete = false
 
@@ -767,18 +889,7 @@ struct TrackRow: View {
         }
         .frame(height: 36)
         .contentShape(Rectangle())
-        .draggable(track.id.uuidString) {
-            HStack(spacing: 8) {
-                TrackArtwork(track: track).frame(width: 34, height: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(track.title).font(Theme.text(12, .semibold)).lineLimit(1)
-                    Text(track.artist).font(Theme.text(10.5)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            .padding(6)
-            .frame(width: 210, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        }
+        .modifier(LiftsIfItCan(on: canDrag, track: track))
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Deck 1") { _ = dj.load(track, onto: dj.decks[0]) }.tint(Theme.accent)
         }
@@ -806,8 +917,18 @@ struct TrackRow: View {
                 let isHistory = library.playlists.first { $0.id == playlistID }.map(library.isHistory) == true
                 Button(isHistory ? "Remove from History" : "Remove from Playlist", systemImage: "minus.circle") { library.remove(track.id, from: playlistID) }
             }
+            if let changeTheOrder {
+                Button("Change the Order", systemImage: "arrow.up.arrow.down", action: changeTheOrder)
+            }
             Button("Re-analyse", systemImage: "waveform.badge.magnifyingglass") {
-                library.reanalyze(track)
+                library.reanalyze(track) { [dj] done in
+                    if let done {
+                        let tempo = done.bpm.map { String(format: "%.1f BPM", $0) } ?? "no tempo"
+                        dj.say("Analysed \(done.title) again: \(tempo)\(done.key.map { ", \($0)" } ?? "").", .done)
+                    } else {
+                        dj.say("\(track.title) couldn't be analysed.", .problem)
+                    }
+                }
                 dj.say("Analysing \(track.title) again.", .info)
             }
             Button("Delete from Library", systemImage: "trash", role: .destructive) {
@@ -823,7 +944,7 @@ struct TrackRow: View {
             Button("Delete", role: .destructive) { library.delete(track) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes its file from Segue DJ, along with its cues, loops and stems.")
+            Text("This removes it from Segue DJ, with its cues, loops and stems. A file you picked in Files stays there.")
         }
     }
 

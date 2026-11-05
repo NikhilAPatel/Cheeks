@@ -12,6 +12,7 @@ final class Library {
     var missingFiles: Set<UUID> = []
     /// Called when analysis has finished with a track, so a deck holding it can pick up the results.
     @ObservationIgnored var onAnalyzed: (@MainActor (UUID) -> Void)?
+    @ObservationIgnored private var whenReanalysed: [UUID: @MainActor (Track?) -> Void] = [:]
     private var analysisQueue: [UUID] = []
     /// Tracks that only need catching up with newer analysis. These wait while the decks are busy,
     /// so a big library can't heat the phone up in the middle of a set.
@@ -197,7 +198,9 @@ final class Library {
         analyzeNext()
     }
 
-    func reanalyze(_ track: Track) {
+    /// `then` hears how it came out, with nil if it couldn't be read. It said "Analysing … again" and never another word.
+    func reanalyze(_ track: Track, then done: (@MainActor (Track?) -> Void)? = nil) {
+        whenReanalysed[track.id] = done
         update(track.id) { t in
             t.bpm = nil
             t.key = nil
@@ -249,6 +252,7 @@ final class Library {
                     }
                     self.onAnalyzed?(id)
                 }
+                self.whenReanalysed.removeValue(forKey: id)?(result == nil ? nil : self.track(id))
                 self.analyzing = nil
                 self.analyzeNext()
             }
@@ -279,6 +283,14 @@ final class Library {
         guard let i = playlists.firstIndex(where: { $0.id == playlistID }),
               !playlists[i].trackIDs.contains(trackID) else { return }
         playlists[i].trackIDs.append(trackID)
+        save()
+    }
+
+    /// Takes a track to this place in the playlist, counted as the list is before it moves.
+    func move(_ trackID: UUID, in playlistID: UUID, to offset: Int) {
+        guard let i = playlists.firstIndex(where: { $0.id == playlistID }),
+              let from = playlists[i].trackIDs.firstIndex(of: trackID) else { return }
+        playlists[i].trackIDs.move(fromOffsets: IndexSet(integer: from), toOffset: min(max(offset, 0), playlists[i].trackIDs.count))
         save()
     }
 

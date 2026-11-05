@@ -46,6 +46,38 @@ final class BrowserAndRecordingTests: XCTestCase {
         library.deletePlaylist(playlist)
     }
 
+    /// "Analysing Fast Bird again." and never another word. This one has no file to read, so it's the way it can go wrong.
+    func testReanalysingSaysHowItCameOut() async throws {
+        let library = Library()
+        let track = Track(id: UUID(), title: "Gone", artist: "", fileName: "not-there.mp3", duration: 1, bpm: 120)
+        library.tracks.append(track)
+        defer { library.tracks.removeAll { $0.id == track.id } }
+        let heard = expectation(description: "It said")
+        library.reanalyze(track) { done in
+            XCTAssertNil(done)
+            heard.fulfill()
+        }
+        await fulfillment(of: [heard], timeout: 20)
+    }
+
+    /// A first-time user held a row in their playlist and dragged it. It lifted, and nothing changed.
+    func testAPlaylistsTracksCanBeMoved() throws {
+        let library = Library()
+        let ids = (0..<4).map { _ in UUID() }
+        let id = library.createPlaylist(named: "Order")
+        ids.forEach { library.add($0, to: id) }
+        func order() -> [UUID]? { library.playlists.first { $0.id == id }?.trackIDs }
+        library.move(ids[0], in: id, to: 2)
+        XCTAssertEqual(order(), [ids[1], ids[0], ids[2], ids[3]], "Counted as the list is before it moves")
+        library.move(ids[3], in: id, to: 0)
+        XCTAssertEqual(order(), [ids[3], ids[1], ids[0], ids[2]])
+        library.move(ids[1], in: id, to: 4)
+        XCTAssertEqual(order(), [ids[3], ids[0], ids[2], ids[1]], "To the end")
+        library.move(UUID(), in: id, to: 0)
+        XCTAssertEqual(order(), [ids[3], ids[0], ids[2], ids[1]], "One that isn't on it stays off it")
+        library.playlists.first { $0.id == id }.map(library.deletePlaylist)
+    }
+
     /// "History 2026-11-04" was cut off in the sidebar as "History 202…", which leaves out the day.
     /// A tracklist read "Gepzene — Gepzene - Can't be Serious", and listed a track moved to 10A as 5A with its played tempo beside it.
     func testATracklistSaysWhatWasHeard() throws {

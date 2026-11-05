@@ -700,3 +700,56 @@ Anything by ear, including headphone cueing and SPLIT. Double-tap to reset. Impo
 - Added: 7 tracks, playlist Warmup with 2 tracks, recording "First go" (10:34), and a backup saved to Files.
 - Track edits: Skylander has hot cues A (green, "Drop") and B and a memory cue at 03:37. Severe Tire Damage has hot cue A at 2:46. Fast Bird was re-analysed. I pressed Set downbeat here on Skylander, and halved then doubled Exhilarate's reading.
 - One sampler pad, pad 6 on deck 1, now holds my recording of the master.
+
+---
+
+## What happened next
+
+Everything below is in the next commit, and the task's round 20 retests it.
+
+### The failure and what's new
+- **N32, the capsule: fixed, and you had it right.** A frame with only a minimum height takes the height it's offered, however tall what's in it is, and it's offered the bar's 26 pt. A test measures it now: 26 pt with the old code, and over 44 for three lines. It also has a little more room above and below two lines.
+- **N33, the fader taking a deck off `SYNC`: says so, with `UNDO`.** "Deck 2's off SYNC: you moved its tempo fader." `UNDO` puts the speed and `SYNC` back. That also helps your `GC10` case, a thumb landing on the cap at `WIDE`, though only on a synced deck. A double-tap on a synced deck says the same: "Deck 2's back at its own speed, and off SYNC."
+- **N34, what `AUTO` undoes: I've kept the rule and made it say so.** A move has to start from known settings, so what's set on either deck goes back. The message at the press now says what: "Loop build next, with deck 2 cued at 126 BPM. It's taken over deck 2's SYNC, EQ and stems, and deck 1's effects. AUTO's counting down the bars." It only lists what isn't already neutral. "A control you touch is yours." is now "From here, a control you touch is yours." In a mix the plan can be minutes ahead, so nothing's said about a waiting deck's settings. That's the gap left.
+- **N35, `Back to Its Own Speed`: first in the menu,** above "Beat grid". A test checks it's on screen on the small iPhone without scrolling.
+- **N36, `AUTO` just after a move: the first press in the next 3 s doesn't start another.** With the question up it just buzzes, as the question's already saying the move's done, and the question stays. Otherwise it says "That move's just finished. Press AUTO again for the next one." A second press goes ahead. A move someone ended themselves doesn't count, as they know it's over: `testPressingAgainAfterStoppingStartsOverClean` caught my first go at this refusing that press too.
+
+### `GC10`, `GC1`, `GC11`
+- **`GC10`, a thumb landing on the cap:** left for a real thumb. It's on the owner's list.
+- **`GC1`:** see `N35`.
+- **`GC11`, `EXIT`:** nothing to do. I don't know what the first-time user saw last round.
+
+### Looks wrong
+- **`NEXT`'s order and its lit key: the order's as it should be, and the note's fixed.** It's a chain, and the key lights against the deck, so they do measure different things. The note now says so: "The top row's the best way on from the master deck, the next is the best way on from that, and so on, with tempo counting for more than key."
+- **`MIX`'s bare number: fixed, at the second time of asking.** The key says what it's counting under its name: `128 BARS`, `1 BAR`, `STEMS 14%`, `CHOOSING`, `WAITING`, `AT THE END`. That also deals with `MIX…` reading as a key running out of room.
+- **`SYNC` and `BEAT SYNC`: one name now, `SYNC`.** The notes say "the master deck" and not "the leading deck", as `MASTER` is what the screen says.
+- **Who's following whom: a phone's `SYNC` key says `MASTER` under it** on the deck the other one follows, as the `MASTER` key's on the other page.
+- **The BPM moving on `Fast Bird`:** left. It's that track's first analysis, which reads it as wandering, and the stems flatten it.
+- **`SPACE` and the red LED:** left. `LevelTests` has it at about 1 dB of limiting, on those hot tracks.
+- **The `?` note over a warning: fixed.** While a message is up, the note sits at the bottom of the screen.
+- **"No clean way in." with no reason:** a mix now says "The stems didn't get there in time. Deck 1 just started." when that's what happened. It's still "No clean way in." otherwise, which includes your track with 3 s left.
+- **"Analysing Fast Bird again." with no end:** "Analysed Fast Bird again: 140.1 BPM, 10A."
+- **Renaming a playing recording:** it carries on from where it was, paused or not.
+- **The guide's search bar with text showing through:** a hard edge along the top of that list. Please check it, as I've only got a screenshot from the first-time user to go on.
+- **The fourth knob reading `DUB` on one deck and `FILTER` on the other during a move:** left, as that's a score sweeping one deck's filter.
+
+### What the first-time user said, and what I did
+- **"It's hard to tell who's in charge of what":** `N33`, `N34`, `MIX`'s number and `MASTER` under `SYNC`, all above.
+- **Reordering a playlist, and dragging a row: there's a way now.** Hold a row in a playlist and choose `Change the Order`. It takes the list back to its own order if a sort or a filter's on, and shows handles, with a line along the bottom saying so and a `DONE` key. A drag alone can't be how: holding opens the menu, and sliding from there chooses from it. I filmed that, and a slide loaded the track on deck 2. In a playlist a row still lifts, and dropping it should say "To change the order, hold a row and choose Change the Order." I haven't seen that one work, so the task asks. Outside a playlist, on a phone, it no longer lifts, as there's nowhere to drop it.
+- **A filter hiding a track, with the count saying 7:** a line along the bottom of the list, "4 of 7 showing, with ±6% BPM on."
+- **The grey `STEMS` that did nothing:** with Prepare stems off, it's a `START` key that splits the track.
+- **Set downbeat here, with no word:** "The bar starts here now." with `UNDO`. The grid's 10 ms keys say so as well.
+- **`MORE`:** the tabs beside it don't move as its name changes. It still doesn't say what's next.
+- **`SET` with no instruction:** "Now press the pad you want to change." The sheet says what One shot, Gate and Loop do.
+- **The waveform changing colour on `STEMS`:** a tip the first time that page opens. And one for `MEM`'s blank pads.
+- **Words:** the backup's alert says Backup. Deleting a track says "A file you picked in Files stays there." "Deck 2 is now 26% slower than its own 170 BPM, to follow." "The mix carries on with the rest." when it's a mix. `TIME`'s note says why a new track reads 00:01.6.
+- **The Mixer sheet on its side, a row of knobs and half a screen of nothing:** it stops at 220 pt and stays on the bottom edge, with both waveforms and the deck headers showing above it.
+
+### Left as they are
+- **Closing Recordings stops what's playing, with no word.** It's a sheet over the decks, and it isn't asked to play on behind them.
+- **"Choose the XML your DJ software exported."** It can't name brands, and anyone with an export knows what it is.
+- **A deck's key isn't on a phone's pads page.** There's no room, and the browser lights what goes with it. If it comes up again I'll look harder.
+- **A dim load key at 05:38 with no word:** they weren't sure. `testPressingALoadKeyForAPlayingDeckSaysWhyNot` presses one on the iPad and gets "Deck 1 is playing. Stop it first." A phone goes through the same line of code, but I didn't press one there this round, so the task asks.
+- **The deck jumping to its old place for a moment when a mix replans after a loop.** It's putting the deck back before cueing it again, it's on a deck nobody's hearing, and it's over in a moment.
+- **`WIDE` staying after a big `SYNC`.** Someone may want it. `UNDO` is there for a slip on a synced deck.
+- **Adding several tracks to a playlist at once:** not done yet.

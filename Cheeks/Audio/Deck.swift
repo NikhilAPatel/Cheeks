@@ -638,10 +638,27 @@ final class Deck {
         saveMemoryCue(at: cuePoint)
     }
 
-    /// Called by the slider: moving tempo by hand takes the deck out of sync.
+    /// Called by the slider: moving tempo by hand takes the deck out of sync. The only signs of that were a key going dark and a
+    /// marker going orange, and 12 pt at WIDE is 20 BPM. A touch that does nothing got a sentence, and this got none.
     func setTempoManually(_ value: Double) {
+        if syncOn { sayItsOffSync("Deck \(index + 1)'s off SYNC: you moved its tempo fader.") }
         syncOn = false
         tempo = value
+    }
+
+    /// Double-tapping the fader. A synced deck can be a long way from there.
+    func faderBackToCentre() {
+        if syncOn { sayItsOffSync("Deck \(index + 1)'s back at its own speed, and off SYNC.") }
+        backToOwnSpeed()
+    }
+
+    private func sayItsOffSync(_ message: String) {
+        let tempoWas = tempo, rangeWas = tempoRange
+        offerUndo?(message, .info) { [weak self] in
+            self?.tempoRange = rangeWas
+            self?.setTempo(tempoWas)
+            self?.syncOn = true
+        }
     }
 
     /// The fader's cap can't show a tempo beyond its range, and its first touch would jump there from the range's edge.

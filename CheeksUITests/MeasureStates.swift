@@ -27,7 +27,7 @@ final class MeasureStates: CheeksUITestCase {
         press(plays.element(boundBy: 0))
         enter("one playing")
         press(app.buttons.matching(NSPredicate(format: "label == 'Play'")).firstMatch)
-        let syncs = app.buttons.matching(NSPredicate(format: "label == 'BEAT SYNC'"))
+        let syncs = app.buttons.matching(NSPredicate(format: "label == 'SYNC'"))
         press(syncs.element(boundBy: 1))
         enter("both playing, synced, stretched")
         try? "done".write(toFile: ProcessInfo.processInfo.environment["CHEEKS_UI_MEASURE"]!, atomically: true, encoding: .utf8)

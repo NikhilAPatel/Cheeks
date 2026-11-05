@@ -31,8 +31,9 @@ struct PadSection: View {
     @ViewBuilder
     private var controlRow: some View {
         switch deck.padMode {
-        case .memory: MemoryControlRow(deck: deck)
-        case .stems: StemControlRow(deck: deck)
+        case .memory: MemoryControlRow(deck: deck).modifier(PageHint(key: "memPadHintShown", message: "SAVE CUE or SAVE LOOP fills the next pad, and it stays with the track."))
+        // A first-time user thought the track had changed.
+        case .stems: StemControlRow(deck: deck).modifier(PageHint(key: "stemsPadHintShown", message: "On this page, the waveform shows each part in the colour of its pad."))
         case .fx: FXControlRow(deck: deck).modifier(PageHint(key: "fxPadHintShown", message: "FX pads slide: up and down for depth, left and right for the beat."))
         // They look like CUE and LOOP pads, where a tap's all it takes, and a tap on one of these looks dead.
         case .roll: LoopRow(deck: deck).modifier(PageHint(key: "rollPadHintShown", message: "ROLL pads play for as long as you hold them."))
@@ -125,12 +126,16 @@ struct PadTabs: View {
         let current = Self.others.firstIndex(of: deck.padMode)
         return ZStack {
             HStack(spacing: 1) {
-                // Short names, all no wider than MORE, or the other tabs change as this goes round: STEMS shrank beside SAMPLE.
-                Text(current.map { Self.others[$0].tabName } ?? "MORE")
-                    .font(Theme.silk(8.5))
-                    .tracking(0.3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+                // Short names, all no wider than MORE, or the other tabs change as this goes round: STEMS shrank beside SAMPLE. And it
+                // takes up MORE's room whatever it says, or the tabs beside it still moved a little at each press.
+                ZStack {
+                    Text("MORE").hidden()
+                    Text(current.map { Self.others[$0].tabName } ?? "MORE")
+                }
+                .font(Theme.silk(8.5))
+                .tracking(0.3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
                 Image(systemName: "chevron.right").font(.system(size: 6, weight: .bold))
             }
             .foregroundStyle(current != nil ? Color.white : Theme.textSecondary)
@@ -557,6 +562,9 @@ struct StemControlRow: View {
     @ViewBuilder
     private var status: some View {
         switch deck.stemStatus {
+        case .unavailable where deck.isLoaded:
+            // With Prepare stems off this was a grey word that a first-time user pressed, and it did nothing.
+            Key("START", color: Theme.accent, size: 8, accessibilityName: "Start the stems", help: "Stem status", onPress: { deck.prepareStems() })
         case .unavailable, .reading:
             Text("STEMS").silk(8, color: Theme.textTertiary)
         case .separating(let progress):
@@ -635,7 +643,10 @@ struct SamplerControlRow: View {
                 }
                 .frame(width: 58)
             } else {
-                Key("SET", color: Theme.accent, lit: sampler.isSetting, size: 8.5, feel: .toggle, onPress: { sampler.isSetting.toggle() })
+                Key("SET", color: Theme.accent, lit: sampler.isSetting, size: 8.5, feel: .toggle, onPress: {
+                    sampler.isSetting.toggle()
+                    if sampler.isSetting { dj.say("Now press the pad you want to change.", .info) }
+                })
                     .frame(width: 58)
             }
             Key("Q", lit: sampler.quantize, feel: .toggle, help: "Sampler Q", onPress: { sampler.quantize.toggle() })

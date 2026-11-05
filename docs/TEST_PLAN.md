@@ -27,6 +27,8 @@ Load a track on each deck, play one, wait for stems, and press `AUTO`.
 - [ ] **The bottom edge:** the app now uses the space by the home indicator. Do `PLAY`, `CUE`, the bottom pads and the crossfader all respond first time? Does sliding the crossfader ever switch apps or bring up the home indicator? If it's a problem, tell me and I'll give that space back.
 
 - [ ] **The Segue DJ folder in Files:** on the phone, in the Files app and in the import picker, press it. It should open. On a simulator nobody's folder does, a blank app's included, so it's never been seen working.
+- [ ] **A thumb landing on the tempo fader's cap by accident.** It's 5 pt from the platter on the small iPhone. Does it happen? At `WIDE` it's a big change, and only a synced deck gets an `UNDO`.
+- [ ] **Changing a playlist's order:** hold a row, `Change the Order`, and the handles. Do they feel right under a thumb?
 - [ ] **The tempo fader only moves from its cap,** or 8 pt off it. With a real thumb, does a grab ever miss, particularly on the smallest phone? A miss says so.
 - [ ] **The thumbs on a question:** they act on letting go, unlike every other key, so a hold meant for the overview under them isn't a rating. Does a quick tap always count?
 - [ ] **The overview on a playing deck:** a quick touch, or a thumb brushing along it, shouldn't move it, and holding for a moment should, then following your finger. Is that the right length, with a real finger?

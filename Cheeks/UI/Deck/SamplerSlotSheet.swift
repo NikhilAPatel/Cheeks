@@ -45,7 +45,7 @@ struct SamplerSlotSheet: View {
                     Text("Sound")
                 } footer: {
                     let grabbing = dj.decks.contains { $0.renderer.loopEnd > $0.renderer.loopStart } ? "A grabbed loop comes out as you're hearing it, so with the vocal muted it has no vocal. " : ""
-                    Text(grabbing + "Samples can be up to a minute long, and recordings stop at 30 seconds.")
+                    Text(grabbing + "Samples can be up to a minute long, and recordings stop at 30 seconds. One shot plays to its end, Gate while you hold the pad, and Loop until you press it again.")
                 }
             }
             .font(Theme.text(13))

@@ -148,6 +148,7 @@ struct WhatsThisKey: View {
 /// What's just been asked about. Touches go straight through it. It sits where the finger wasn't, and on a wide screen it
 /// keeps to one side, which also keeps it off a Duo's crease.
 struct WhatsThisNote: View {
+    @Environment(DJEngine.self) private var dj
     /// A sheet's controls are along its top, so its note goes below them, wherever the finger was.
     var inSheet = false
 
@@ -171,9 +172,15 @@ struct WhatsThisNote: View {
         .allowsHitTesting(false)
     }
 
+    /// Messages hang from the top, and that's where the note went. It hid the end of "Deck 2 has stopped, and deck 1 is playing with
+    /// the…", the most important one a first-time user got, and it had gone by the time they'd closed this.
     private func alignment(wide: Bool, touch: CGPoint) -> Alignment {
-        if wide { return touch.x > 0.5 ? .topLeading : .topTrailing }
-        return touch.y > 0.5 ? .top : .bottom
+        let messageUp = dj.statusMessage != nil
+        if wide {
+            let side: HorizontalAlignment = touch.x > 0.5 ? .leading : .trailing
+            return Alignment(horizontal: side, vertical: messageUp ? .bottom : .top)
+        }
+        return touch.y > 0.5 && !messageUp ? .top : .bottom
     }
 
     private func note(_ shown: Explanation) -> some View {
@@ -214,6 +221,7 @@ struct ControlsGuide: View {
                 }
             }
         }
+        .hardTopEdge()
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")
         .navigationTitle("What everything does")
         .navigationBarTitleDisplayMode(.inline)

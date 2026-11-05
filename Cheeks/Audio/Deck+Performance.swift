@@ -836,11 +836,22 @@ extension Deck {
             t.firstBeat = moved
             t.tempoMarkers = t.tempoMarkers?.map { TempoMarker(time: $0.time + milliseconds / 1000, bpm: $0.bpm, beatInBar: $0.beatInBar) }
         }
+        onMessage?("Beat grid moved \(Int(abs(milliseconds))) ms \(milliseconds < 0 ? "earlier" : "later").", .done)
     }
 
     /// Makes the playhead (snapped to the nearest beat when quantize is on) the first beat of a bar.
     func setDownbeatHere() {
-        guard barSeconds > 0 else { return }
+        guard barSeconds > 0, let was = track else { return }
+        // A first-time user pressed it and saw nothing change, as the marker was already on a beat.
+        defer {
+            offerUndo?("The bar starts here now.", .done) { [weak self] in
+                self?.updateTrack { t in
+                    t.firstBeat = was.firstBeat
+                    t.tempoMarkers = was.tempoMarkers
+                    t.gridSource = was.gridSource
+                }
+            }
+        }
         if track?.tempoMarkers != nil {
             // The beats stay where they are; only which one counts as the "1" changes.
             let offset = Int(beatPosition(snap(renderer.playhead)).rounded())

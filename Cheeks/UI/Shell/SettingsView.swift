@@ -93,7 +93,7 @@ struct SettingsView: View {
             guard case .success(let url) = result else { return }
             restore(url)
         }
-        .alert("Library", isPresented: Binding(get: { libraryMessage != nil }, set: { if !$0 { libraryMessage = nil } })) {
+        .alert("Backup", isPresented: Binding(get: { libraryMessage != nil }, set: { if !$0 { libraryMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(libraryMessage ?? "")
@@ -174,6 +174,15 @@ extension View {
     @ViewBuilder func keepsItsBar() -> some View {
         if #available(iOS 27.0, *) {
             toolbarMinimizationBehavior(.never, for: .navigationBar)
+        } else {
+            self
+        }
+    }
+
+    /// A search bar floats over its list from iOS 26, and what's scrolled under it showed through, across what's being typed.
+    @ViewBuilder func hardTopEdge() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.hard, for: .top)
         } else {
             self
         }

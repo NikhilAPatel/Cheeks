@@ -721,8 +721,11 @@ struct StatusCapsule: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, hasKeys || (touchOnly && lateQuestion != nil) ? 3 : 10)
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
         .frame(minHeight: 24)
+        // It's hung off a bar 26 pt tall, and a frame with only a minimum takes the height it's offered, however tall what's in it
+        // is. So the background stayed one line tall, with three lines of words coming out of it onto the list.
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityHidden(touchOnly)
     }
 

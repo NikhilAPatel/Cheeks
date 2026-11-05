@@ -170,7 +170,8 @@ struct DeckKeys: View {
 
     @ViewBuilder
     private var syncKeys: some View {
-        Key("BEAT SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: {
+        // SYNC on a phone's pads page and BEAT SYNC here were one control with two names.
+        Key("SYNC", lit: deck.syncOn, size: 8.5, feel: .toggle, onPress: {
             let wasOn = deck.syncOn
             dj.toggleSync(deck)
             if !wasOn && deck.syncOn { Haptics.shared.confirm() }
@@ -414,6 +415,10 @@ struct DeckHeader: View {
     /// track and so is labelled at the track's own speed.
     private var gridMenu: some View {
         Menu {
+            // First, as it's what someone comes here in a hurry for. Last, it was below the fold on a phone on its side.
+            if deck.tempo != 0 {
+                Button("Back to Its Own Speed", systemImage: "arrow.uturn.backward") { deck.backToOwnSpeed() }
+            }
             Section("Beat grid: " + String(format: "%.2f", deck.bpm) + " BPM at normal speed") {
                 // It's what the track's read as, and not its speed. "Halve BPM" sounds like a speed control.
                 Button("Double the Reading", systemImage: "multiply") { deck.scaleBPM(2) }
@@ -427,9 +432,6 @@ struct DeckHeader: View {
                 Button("Grid 10 ms earlier", systemImage: "arrow.left") { deck.shiftGrid(milliseconds: -10) }
                 Button("Grid 10 ms later", systemImage: "arrow.right") { deck.shiftGrid(milliseconds: 10) }
                 Button("Set downbeat here", systemImage: "scope") { deck.setDownbeatHere() }
-            }
-            if deck.tempo != 0 {
-                Button("Back to Its Own Speed", systemImage: "arrow.uturn.backward") { deck.backToOwnSpeed() }
             }
             Button("Save cue as memory cue", systemImage: "bookmark") { deck.saveMemoryCue() }
             Button("Cues and loops…", systemImage: "list.bullet") { showCueList = true }
@@ -451,6 +453,7 @@ struct DeckHeader: View {
             .frame(width: 42, alignment: .trailing)
             .contentShape(Rectangle())
         }
+        .menuOrder(.fixed)
         .disabled(!deck.isLoaded || WhatsThis.shared.isOn)
         .simultaneousGesture(TapGesture().onEnded { Haptics.shared.key() })
         .accessibilityLabel("Beat grid")

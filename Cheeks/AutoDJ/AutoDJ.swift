@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import QuartzCore
 
 /// The AUTO key: plans a transition from the deck that's playing to the one that's waiting, auditions it offline, waits
 /// for the right bar, and performs it through the same controls a person would use. Touching a control takes it back.
@@ -203,25 +204,51 @@ final class AutoDJ {
 
     var isActive: Bool { phase != .idle || mixSet != nil }
 
-    /// What the key says.
-    var legend: String {
-        let name = mixSet == nil ? "AUTO" : "MIX"
+    /// What the key's called.
+    var keyName: String { mixSet == nil ? "AUTO" : "MIX" }
+
+    /// What it says under that. `MIX 128` read as a tempo on a screen full of them, and as a percentage beside `MIX 14%`, even by a
+    /// first-time user who'd read its note, and `MIX…` read as a key running out of room.
+    var keyDetail: String? {
         switch phase {
         // A mix with no plan yet is waiting for something, like a loop to end, and shouldn't look as if it's just sitting there.
         case .idle:
-            guard let mixSet else { return name }
-            // The last track on the list has nothing to wait for, and "MIX…" read as if it was still thinking.
-            if mixSet.next == nil, mixSet.queue.isEmpty, !mixSet.needsStart { return name }
+            guard let mixSet else { return nil }
+            // The last track on the list has nothing to wait for, and it read as if it was still thinking.
+            if mixSet.next == nil, mixSet.queue.isEmpty, !mixSet.needsStart { return nil }
             // Nor when it's given up on a move, which read as thinking for over 2 minutes.
-            if mixSet.gaveUpAt != nil { return name }
-            return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
+            if mixSet.gaveUpAt != nil { return nil }
+            return stemsPercent.map { "STEMS \($0)%" } ?? "WAITING"
         // The clock starts a couple of bars ahead of the move, and it's still counting those.
-        case .running: return barsToGo > 0 ? "\(name) \(barsToGo)" : name
-        // "AUTO…" read like a clipped label for nearly 4 minutes, with nothing tying it to the percentage on the deck.
-        case .waitingForStems: return stemsPercent.map { "\(name) \($0)%" } ?? "\(name)…"
-        case .planning, .waitingForTheEnd: return "\(name)…"
-        case .armed: return "\(name) \(barsToGo)"
+        case .running: return barsToGo > 0 ? Self.bars(barsToGo) : nil
+        case .waitingForStems: return stemsPercent.map { "STEMS \($0)%" } ?? "WAITING"
+        case .planning: return "CHOOSING"
+        case .waitingForTheEnd: return "AT THE END"
+        case .armed: return Self.bars(barsToGo)
         }
+    }
+
+    private static func bars(_ count: Int) -> String { count == 1 ? "1 BAR" : "\(count) BARS" }
+
+    /// All of what the key says.
+    var legend: String { keyDetail.map { "\(keyName) \($0)" } ?? keyName }
+
+    /// When the last move got to its end. A press meant to hand it back got there just too late and started the next one, back into the
+    /// track that had just gone, and took the question with it. So the first press just after a move only says so. A move someone
+    /// ended themselves doesn't count: they know it's over, and pressing again means starting again.
+    @ObservationIgnored private var moveEndedAt: Double?
+    private static let tooSoonAfterAMove = 3.0
+
+    private func wasMeantForTheLastMove() -> Bool {
+        defer { moveEndedAt = nil }
+        guard let moveEndedAt, CACurrentMediaTime() - moveEndedAt < Self.tooSoonAfterAMove else { return false }
+        // The question's already saying that it's done, and what's on.
+        if isAskingForRating() {
+            Haptics.shared.deny()
+        } else {
+            say("That move's just finished. Press AUTO again for the next one.", .refused)
+        }
+        return true
     }
 
     /// How far along the stems are that it's waiting for: the deck with furthest to go.
@@ -241,7 +268,7 @@ final class AutoDJ {
             if wasSet {
                 undoEarlyCrossfader()
                 say("Mix off. The track playing just carries on.", .info)
-            } else {
+            } else if !wasMeantForTheLastMove() {
                 begin()
             }
         case .waitingForStems, .waitingForTheEnd, .planning, .armed:
@@ -420,7 +447,7 @@ final class AutoDJ {
                 endSet("Mix off: deck \(air.index + 1) was stopped.")
                 return
             }
-            startWithoutAMove(waiting, "No clean way in.")
+            startWithoutAMove(waiting, whyNoMove(air, waiting))
             return
         }
         // Someone's holding this track in a loop, so it isn't leaving yet. A held roll or slice is over when it's let go.
@@ -434,7 +461,7 @@ final class AutoDJ {
         if set.saidItsHeld { mixSet?.saidItsHeld = false }
         if hasNothingLeftToHear(air) {
             air.endHere()
-            startWithoutAMove(waiting, "No clean way in.")
+            startWithoutAMove(waiting, whyNoMove(air, waiting))
             return
         }
 
@@ -479,6 +506,11 @@ final class AutoDJ {
     }
 
     private static let noWayIn = "No clean way in. Next track starts when this one ends."
+
+    /// A first-time user's stems weren't ready, and this was all they were told.
+    private func whyNoMove(_ air: Deck, _ waiting: Deck) -> String {
+        air.stemsAreOnTheWay || waiting.stemsAreOnTheWay ? "The stems didn't get there in time." : "No clean way in."
+    }
 
     /// The incoming deck's the one on air now, and the other one's free for what comes next.
     private func handOver(to deck: Deck) {
@@ -683,6 +715,7 @@ final class AutoDJ {
             _ = planIfReady()
             return
         }
+        let takenOver = mixSet == nil ? whatItTakesOver(from: outgoing, to: incoming) : ""
         prepare(incoming, for: score)
         let steps = score.steps
         let loaded = steps.withUnsafeBufferPointer {
@@ -710,8 +743,25 @@ final class AutoDJ {
         // means a musical key everywhere else here, and what's happened to the other deck, which nothing else said.
         if mixSet == nil {
             let tempo = String(format: "%.0f", incoming.effectiveBPM)
-            say("\(score.plan.move.title) next, with deck \(incoming.index + 1) cued at \(tempo) BPM. AUTO's counting down the bars.", .info)
+            say("\(score.plan.move.title) next, with deck \(incoming.index + 1) cued at \(tempo) BPM.\(takenOver) AUTO's counting down the bars.", .info)
         }
+    }
+
+    /// A move has to start from known settings, so what's set on either deck before it goes back. A first-time user lost a muted vocal
+    /// and an effect that way, with no word, having been told "a control you touch is yours".
+    private func whatItTakesOver(from old: Deck, to new: Deck) -> String {
+        func settings(on deck: Deck) -> String? {
+            var what: [String] = []
+            if deck === new, deck.syncOn { what.append("SYNC") }
+            if deck.eqLow != 0 || deck.eqMid != 0 || deck.eqHigh != 0 { what.append("EQ") }
+            if deck.filter != 0 { what.append(deck.colorFX.rawValue) }
+            if deck.stemsAltered { what.append("stems") }
+            if deck.fxOn { what.append("effects") }
+            guard let last = what.popLast() else { return nil }
+            return "deck \(deck.index + 1)'s " + (what.isEmpty ? last : what.joined(separator: ", ") + " and " + last)
+        }
+        let taken = [settings(on: new), settings(on: old)].compactMap { $0 }
+        return taken.isEmpty ? "" : " It's taken over " + taken.joined(separator: ", and ") + "."
     }
 
     /// Puts the incoming deck where the score expects it.
@@ -908,7 +958,7 @@ final class AutoDJ {
             // first-time user put both decks on STEMS for an echo throw, as told, and watched four lit pads.
             let watch = onStems || move == .brakeDrop || move == .echoDrop ? "" : " Put both decks on STEMS to watch it."
             if mixSet == nil {
-                say("\(move.title) starting.\(watch) A control you touch is yours.", .info)
+                say("\(move.title) starting.\(watch) From here, a control you touch is yours.", .info)
             } else {
                 // Someone who only ever presses MIX never got this. Once a mix, or it's a nag every few minutes.
                 let tip = mixSet?.saidToWatch == true ? "" : watch
@@ -974,7 +1024,7 @@ final class AutoDJ {
               lanes.contains(where: { $0.deck === deck && $0.kind == kind && $0.index == control }) else { return }
         saidItsYours = true
         // For the move: an old deck's knobs go back when it's over, which read as a broken promise when this just said "now".
-        if !isAskingForRating() { say("That's yours for this move. Auto DJ carries on with the rest.", .info) }
+        if !isAskingForRating() { say("That's yours for this move. \(mixSet == nil ? "Auto DJ" : "The mix") carries on with the rest.", .info) }
     }
 
     /// Sending the old deck somewhere else means taking it, or the score's loop would take it straight back, with no word.
@@ -1015,6 +1065,7 @@ final class AutoDJ {
             say(message, .info)
             return
         }
+        moveEndedAt = CACurrentMediaTime()
         let title = score?.plan.move.title ?? "Transition"
         let move = score?.plan.move
         let from = outgoing.track?.title ?? "", to = incoming.track?.title ?? ""

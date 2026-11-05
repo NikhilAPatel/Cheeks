@@ -473,7 +473,7 @@ final class DJEngine {
             // On the only deck playing, it took what's on air to the tempo of a stopped deck: 170 to 125, in one press, with a
             // first-time user and then a tester each caught by it. Real decks don't follow anything nobody can hear.
             if masterIndex == deck.index, deck.isPlaying, !leader.isPlaying {
-                say("Deck \(deck.index + 1)'s leading, with nothing playing to follow. SYNC on deck \(leader.index + 1) brings that one to this tempo.", .refused)
+                say("Deck \(deck.index + 1)'s the master, with nothing playing to follow. SYNC on deck \(leader.index + 1) brings that one to this tempo.", .refused)
                 return
             }
             // A track that's over has no tempo worth following. A first-time user's 126 went to 85 from one sitting at 170, on its
@@ -498,7 +498,7 @@ final class DJEngine {
                 deck.offerUndo?("Deck \(deck.index + 1) follows at \(settlesOn < theirs ? "half" : "double") tempo: \(String(format: "%.0f", settlesOn)) against \(String(format: "%.0f", theirs)).", .info, undo)
             } else if deck.isLoaded, abs(deck.tempo) > Self.farToStretch {
                 // A long way to stretch a track can be heard, and 170 going to 128 had nothing to say so, where half tempo did.
-                deck.offerUndo?(String(format: "Deck %d's %.0f%% %@ than its own %.0f BPM, to follow.", deck.index + 1, abs(deck.tempo), deck.tempo < 0 ? "slower" : "faster", deck.bpm), .info, undo)
+                deck.offerUndo?(String(format: "Deck %d is now %.0f%% %@ than its own %.0f BPM, to follow.", deck.index + 1, abs(deck.tempo), deck.tempo < 0 ? "slower" : "faster", deck.bpm), .info, undo)
             }
         }
     }
