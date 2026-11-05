@@ -87,6 +87,13 @@ final class LayoutSnapshots: XCTestCase {
         try await writeAppIcon(to: dir)
         dj.decks.forEach { $0.padMode = .hotCue }
 
+        // In a move, from a page that isn't STEMS: the tab says what's in.
+        dj.decks[0].stemsOn = [true, true, true, true]
+        dj.decks[0].stemLevels = [0, 0.3, 0.7, 1]
+        dj.decks[1].stemLevels = [1, 0.6, 0, 0]
+        try await snapAll("decks-in-a-move", ContentView(opensBrowserWhenEmpty: false))
+        dj.decks.forEach { $0.stemLevels = [1, 1, 1, 1] }
+
         dj.say("Echo throw done. Deck 2 is on.", .done)
         dj.rateAction = { _ in }
         try await snapAll("rating", ContentView(opensBrowserWhenEmpty: false))

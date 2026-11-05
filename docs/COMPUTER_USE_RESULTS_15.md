@@ -624,3 +624,53 @@ These are the raw notes below. Where they disagree with the sections above, the 
 - 17:46:00 Sorted the list by BPM, stopped everything, MIX: "Mixing through all your tracks, 5 tracks. Up next: Houston." Yes: it plays the list in the order on screen (fu-mix-follows-sort.png). That's a clever idea, and I'd never have guessed the sort was also the set order until I read MIX's help. "5 tracks" vs the strip's "4 tracks to go" within the same screenshot reads like a mismatch; I get it after a beat (one's already on).
 - 17:46:15 Mix running, crossfader had jumped back to centre by itself, button says MIX 98: 98 bars, about three minutes before anything happens. I got impatient and wanted "go to the next track now"; nothing offers that. The only choices I found are the MIX button (stops it) or to load something else: "Mix off: the track changed." (fu-mix-off-track-changed.png), which threw away the plan when all I'd wanted was to change what plays next.
 - 17:46:30 History (fu-history-is-every-load.png): newest first, and it's every time a track went on a deck, not what I played. Exhilarate is top having just been loaded and never played. Tracks Mix loaded and threw away are in there too. No times on any of it, and every row looks like a normal track list. A "history" I'd want for working out what I played at a gig isn't this. Every copy of a loaded track is highlighted.
+
+---
+
+## What happened next
+
+Everything below is in the next commit, and the task's round 16 retests it. Where I could, I ran a new test with the fix out first.
+
+### Failures
+- **N14, the mixer sheet's knobs: fixed.** A UI test showed it without a finger: a 60 pt drag on `MASTER` moved it 5 points where it should move 40. A sheet's own drag takes any touch that's moved about 10 pt and cancels it on the knob, which is why a short move got a tick and a long one got no more. A control in a sheet now holds that off until its touch ends (`SheetHolder`), and the same drag goes from 90 to 50. The rest of the sheet still drags it. The sheet has its own meters beside the knobs now, as it covers the ones on the mixer. `testTheMixerSheetsKnobsTurn` checks four knobs both ways up. It wants a real finger too, so it's in `docs/TEST_PLAN.md`.
+- **N15, the sidebar under `?`: fixed.** The headings and `New Playlist` show the note, and `New Playlist` doesn't open its prompt while it's lit. A row chooses its list and says so. `testTheSidebarExplainsItself`.
+- **N16, the fader with no word: fixed.** "Deck 2's fader up, to hear both.", or "Crossfader to the middle and deck 2's fader up, to hear both." with both away.
+
+### The worst thing for a newcomer
+The first-time user took 34 minutes to see what Auto DJ does, and I think that's the most useful thing in this report. It mostly brings stems in and out, and nothing showed that off the `STEMS` page, with the faders standing still.
+- **Above the `STEMS` tab,** four small marks in the stem colours, on any page, while any part's down. They dim as a part goes and brighten as it comes back. They're an overlay, so nothing moves on the tab row, and a view of their own, as a move changes them 30 times a second.
+- **The message at "starting" points there:** "Loop build starting. STEMS shows what's in. A control you touch is yours." That also fixes "take it back", which read as cancelling the whole move.
+- **`AUTO`'s note says it,** and the guide says to put both decks on `STEMS` to watch.
+
+I don't know yet whether that's enough. It's what round 16's first-time user is there to find out.
+
+### Other things you found
+- **`BROWSE` reads `DECKS` while the browser's open,** with a disc on it, and it's not lit. It was the way back with the wrong name on it, and one of two blue things.
+- **The upright `MIX` has its play mark,** which fits after all. Both first-time users took it for a filter without one.
+- **`MIX` on a list that doesn't have what's playing on it plays the whole list,** played or not. "You've played the rest of Friday" was true by the rule and wrong for someone who'd tried tracks out while building a playlist. With a track from the list playing, the rule's the same, and it says "Everything else here has been played."
+- **A tick by a track that's been on air,** as nothing showed what `MIX` and `NEXT` go by.
+- **"4 tracks to go"** in the message as well as the line, as one's about to play.
+- **The first message says what's happened to the other deck, and AUTO, not "the key":** "Loop build next, with deck 2 cued at 126 BPM. AUTO's counting down the bars." In a mix nothing's said at the plan, so a new deck can still read a tempo nobody chose until the move. I left that: a plan's minutes ahead, and it'd be one more message for a number that's right.
+- **"That's yours for this move",** so the knob going back on the old deck is what it said would happen. I kept the going back, as a stopped deck's next track shouldn't inherit a knob.
+- **`SYNC` says when it settles on half or double:** "Deck 2 follows at half tempo: 85 against 170." Its note says so as well.
+- **`ROLL` and `SLICER` say once that they're held,** the first time each page opens, as `FX` does for sliding.
+- **Preview on a phone:** a row's picture, and holding a row offers it on every layout. There was no way at all without the waveform column.
+- **A sampler pad's Name** shows what the pad says, and "Restore the Original Sound" isn't red.
+- **Tracklists** give the key as played, and leave out an artist that's also in the title.
+- **Words:** `?`'s opening note, "Nothing fits" true of which filters are on, the import icon in the empty library's sentence, a line under Mixing and Display in Settings, and `BRAKE` and `BACKSPIN` saying the deck stays stopped.
+- **The guide:** **Start here** at the top, with how to load, mix by hand and let it mix, and "how do I", "transition" and "blend" find things now.
+- **The mix line** clears the home indicator, and **a chosen History row** shrinks a little to fit its bold.
+
+### Not changed, and why
+- **The thumbs.** There's already an answer: "Got it. More like that.", up for 5 s. `testAThumbLeavesItsAnswerUp` presses one in a real window and it's still there 3 s later. You both pressed something else or looked again a while after, so I think that's the tool's pace, and I've asked for a look straight after pressing. If it isn't there, it's a fault I can't see.
+- **`AUTO`'s key showing %** while stems split. It read as blend progress to one person, but "AUTO…" read as a clipped label for 4 minutes in an earlier round, with nothing tying it to the deck. `?` explains it.
+- **A first `MIX` that's barely a blend** when the next track's stems aren't ready. The simulator splits on its CPU. It wants a look on the phone before anything's changed.
+- **`LIM` lighting with two tracks at default levels.** That's what it's for, and its note says so.
+- **A "go now" in a mix,** and changing what's next without ending the mix. These are real wishes, and features. Both are on the list for after the bugs.
+- **The slide's band.** Nothing changed this round. Up to 102 pt of panel colour for a frame in Debug on a busy Mac, and it wants someone's eyes on a phone.
+- **Your note on the Loop build's beat:** added to the task, with Gepzene's own gap.
+
+### What the gate caught
+My first version of `DECKS` changed the key's words as the slide started, which laid out the whole screen again. The mixer fell 110 to 320 pt behind the decks for a frame, on every press, where the last commit stays within about 25 pt. `testTheDecksAndTheMixerSlideTogether` caught it, and it failed 6 runs of 6 until both legends were always built, with only their opacity changing. That test had faults of its own, which are fixed: a busy Mac could run it past the point where the deck leaves the window (it read 566), the first slide after a launch can wait on the render server, which is a separate thing, and one slipped frame read 46 against its limit of 45. It now takes the best of three slides, as a real fault shows on all of them.
+
+The final gate, from clean installs: unit 446 tests (8 skipped), with that one slipped frame as the only failure. After the change to that test, all 26 in its class pass. iPad 30 UI tests (6 skipped), no failures. Small iPhone: phone layouts 4 pass, and the walk 6 pass with no control lacking a note. A short suite on the folded Duo, 4 pass. The long suite on the unfolded Duo wasn't run, as it's folded.

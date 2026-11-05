@@ -41,6 +41,15 @@ final class WhatsThisTests: XCTestCase {
         }
     }
 
+    /// A first-time user searched for "how do I" and "transition" and got nothing: it calls a transition a move.
+    func testTheGuideCanBeSearchedInOrdinaryWords() {
+        for words in ["how do I", "transition", "blend"] {
+            XCTAssertFalse(Explanations.found(words).isEmpty, words)
+        }
+        XCTAssertEqual(Explanations.found("").count, Explanations.sections.count)
+        XCTAssertTrue(Explanations.found("nothing says this").isEmpty)
+    }
+
     func testNoTwoNotesClaimTheSameName() {
         var seen = Set<String>()
         for entry in Explanations.sections.flatMap(\.entries) {

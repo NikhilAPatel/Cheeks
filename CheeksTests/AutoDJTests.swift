@@ -752,7 +752,7 @@ final class AutoDJTests: XCTestCase {
         XCTAssertFalse(dj.statusMessage?.contains("starting") == true, "\(dj.statusMessage ?? "")")
         try await run(dj, until: { auto.barsToGo == 0 }, seconds: 10)
         XCTAssertEqual(auto.legend, "AUTO")
-        XCTAssertEqual(dj.statusMessage, "Loop build starting. Touch a control to take it back.")
+        XCTAssertEqual(dj.statusMessage, "Loop build starting. STEMS shows what's in. A control you touch is yours.")
     }
 
     /// RELOOP took a deck back a minute and a half, to a loop nobody set.
@@ -1452,7 +1452,7 @@ final class AutoDJTests: XCTestCase {
         dj.autoDJ.press()
         try await run(dj) { self.isRunning(dj) && a.renderer.loopActive }
         a.filter = 0.3
-        XCTAssertEqual(dj.statusMessage, "That's yours now. Auto DJ carries on with the rest.")
+        XCTAssertEqual(dj.statusMessage, "That's yours for this move. Auto DJ carries on with the rest.")
         dj.say("Something else", .info)
         a.eqLow = -0.2
         XCTAssertEqual(dj.statusMessage, "Something else", "Once a move's enough")
@@ -1483,7 +1483,79 @@ final class AutoDJTests: XCTestCase {
         let dj = try ready(only: .echoDrop)
         dj.autoDJ.press()
         try await run(dj) { self.isArmed(dj) }
-        XCTAssertEqual(dj.statusMessage, "Echo throw next. The key's counting down the bars.")
+        let tempo = String(format: "%.0f", dj.decks[1].effectiveBPM)
+        XCTAssertEqual(dj.statusMessage, "Echo throw next, with deck 2 cued at \(tempo) BPM. AUTO's counting down the bars.")
+    }
+
+    // MARK: Round 15
+
+    /// With the crossfader at the middle already it came up without a word, and with both away only the crossfader was mentioned.
+    func testTheNewDecksFaderSaysWhenItComesUp() async throws {
+        let dj = try ready(only: .loopDrop)
+        dj.decks[1].fader = 0
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertGreaterThan(dj.decks[1].fader, 0.4)
+        XCTAssertEqual(dj.statusMessage, "Deck 2's fader up, to hear both.")
+    }
+
+    func testTheCrossfaderAndTheFaderAreSaidTogether() async throws {
+        let dj = try ready(only: .loopDrop)
+        dj.crossfader = -1
+        dj.decks[1].fader = 0
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertEqual(dj.statusMessage, "Crossfader to the middle and deck 2's fader up, to hear both.")
+    }
+
+    /// With nothing to open, it goes straight on to what's starting.
+    func testAChannelThatsOpenAlreadySaysNothing() async throws {
+        let dj = try ready(only: .loopDrop)
+        dj.autoDJ.press()
+        try await run(dj) { self.isRunning(dj) }
+        XCTAssertFalse(dj.statusMessage?.contains("fader") == true, dj.statusMessage ?? "")
+        XCTAssertFalse(dj.statusMessage?.contains("Crossfader") == true, dj.statusMessage ?? "")
+    }
+
+    /// "You've played the rest of Friday", to a first-time user who'd never played Friday, with something else on the deck.
+    func testAListWithoutWhatsPlayingIsAllStillToCome() throws {
+        let ids = [UUID(), UUID()]
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map()])
+        dj.autoDJ.hasBeenHeard = { _ in true }
+        put(try map(), on: dj.decks[0], name: "Playing", id: UUID())
+        dj.decks[0].play()
+        dj.autoDJ.startSet(named: "Friday", tracks: ids, airIsElsewhere: true)
+        XCTAssertEqual(dj.autoDJ.mixSet?.queue, ids)
+        XCTAssertEqual(dj.statusMessage, "Mixing through Friday, 2 tracks to go.")
+    }
+
+    /// "5 tracks" in the message and "4 tracks to go" under the list read as a mistake, and one's about to play.
+    func testAMixFromStoppedCountsTheSameAsItsLine() throws {
+        let ids = (0..<3).map { _ in UUID() }
+        let dj = engine(loading: [ids[0]: try map(), ids[1]: try map(), ids[2]: try map()])
+        dj.autoDJ.startSet(named: "Tonight", tracks: ids)
+        XCTAssertEqual(dj.statusMessage, "Mixing through Tonight, 2 tracks to go.")
+        XCTAssertEqual(dj.autoDJ.mixSet?.line, dj.statusMessage)
+    }
+
+    /// A third slower with nothing to say why. A first-time user's 126 went to 85, and stayed there when the other deck ended.
+    func testSyncSaysWhenItSettlesOnHalfTheTempo() throws {
+        let dj = makeEngine()
+        put(try map(bpm: 170), on: dj.decks[0], name: "A")
+        put(try map(bpm: 126), on: dj.decks[1], name: "B")
+        dj.decks[0].play()
+        dj.toggleSync(dj.decks[1])
+        XCTAssertEqual(dj.decks[1].effectiveBPM, 85, accuracy: 0.01)
+        XCTAssertEqual(dj.statusMessage, "Deck 2 follows at half tempo: 85 against 170.")
+    }
+
+    func testAnOrdinarySyncSaysNothing() throws {
+        let dj = makeEngine()
+        put(try map(bpm: 124), on: dj.decks[0], name: "A")
+        put(try map(bpm: 126), on: dj.decks[1], name: "B")
+        dj.decks[0].play()
+        dj.toggleSync(dj.decks[1])
+        XCTAssertNil(dj.statusMessage)
     }
 
     // MARK: Round 14
@@ -1661,7 +1733,7 @@ final class AutoDJTests: XCTestCase {
             dj.decks[0].play()
             dj.autoDJ.startSet(named: "Tonight", tracks: ids)
             XCTAssertNil(dj.autoDJ.mixSet, "Row \(row)")
-            XCTAssertEqual(dj.statusMessage, "You've played the rest of Tonight. To go round again, stop the deck and press MIX.")
+            XCTAssertEqual(dj.statusMessage, "Everything else here has been played. To go round again, stop the deck and press MIX.")
             XCTAssertEqual(dj.statusKind, .refused)
         }
     }

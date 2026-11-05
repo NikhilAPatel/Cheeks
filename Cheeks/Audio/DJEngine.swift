@@ -452,7 +452,12 @@ final class DJEngine {
             }
             // Syncing the master means following the other deck, so that one has to lead.
             if masterIndex == deck.index { masterIndex = leader.index }
+            let settlesOn = deck.matchedBPM(for: leader.effectiveBPM), theirs = leader.effectiveBPM
             deck.sync(to: leader)
+            // A first-time user's 126 went to 85 with nothing to say why, and stayed there when the other deck ended.
+            if deck.isLoaded, deck.bpm > 0, settlesOn != theirs {
+                say("Deck \(deck.index + 1) follows at \(settlesOn < theirs ? "half" : "double") tempo: \(String(format: "%.0f", settlesOn)) against \(String(format: "%.0f", theirs)).", .info)
+            }
         }
     }
 
@@ -511,9 +516,8 @@ final class DJEngine {
     }
 
     private func appendToSetlist(_ deck: Deck, at offset: TimeInterval) {
-        guard let track = deck.track, let caf = recordingURL else { return }
-        setlist.append(SetlistEntry(offset: max(0, offset), title: track.title, artist: track.artist,
-                                    bpm: deck.bpm > 0 ? deck.effectiveBPM : nil, key: track.key))
+        guard let entry = SetlistEntry(heardOn: deck, at: offset), let caf = recordingURL else { return }
+        setlist.append(entry)
         setlist.sort { $0.offset < $1.offset }
         Setlist.save(setlist, forRecording: caf) // kept on disk so a crash doesn't lose the tracklist
     }

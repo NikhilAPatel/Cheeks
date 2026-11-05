@@ -205,3 +205,14 @@ extension Double {
         return String(format: "%@%d:%02d", self < 0 ? "-" : "", total / 60, total % 60)
     }
 }
+
+extension Track {
+    /// The title, where a file's tag has the artist in it as well: a tracklist read "Gepzene — Gepzene - Can't be Serious".
+    var titleWithoutArtist: String {
+        guard !artist.isEmpty else { return title }
+        for dash in [" - ", " – ", " — "] where title.lowercased().hasPrefix(artist.lowercased() + dash) {
+            return String(title.dropFirst(artist.count + dash.count))
+        }
+        return title
+    }
+}

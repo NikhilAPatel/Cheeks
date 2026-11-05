@@ -250,7 +250,8 @@ final class AutoDJ {
 
     /// Mixes through these tracks in order. If a deck's playing, it carries on from that, and from that track's place
     /// in the list if it's on it, and then comes back for what's above it. Otherwise it starts from the top.
-    func startSet(named name: String, tracks: [UUID]) {
+    /// `airIsElsewhere`: what's playing isn't on this list at all, so nobody's been through it yet.
+    func startSet(named name: String, tracks: [UUID], airIsElsewhere: Bool = false) {
         let playing = decks.filter(\.isPlaying)
         guard playing.count <= 1 else {
             // Not "the one you want next": the list decides that, and the stopped deck's track makes way for it.
@@ -263,13 +264,15 @@ final class AutoDJ {
             // The note says the whole list, and from row 4 of 5 a first-time user got two tracks and then nothing.
             if let id, let here = queue.firstIndex(of: id) { queue = Array(queue[(here + 1)...]) + queue[..<here] }
             let others = queue.filter { $0 != id }
-            // What's been played already doesn't come round again, whichever side of this track it's on.
-            queue = others.filter { !hasBeenHeard($0) }
+            // What's been played already doesn't come round again, whichever side of this track it's on. A playlist of tracks
+            // someone tried out while building it, with something else playing, is all still to come: it said "You've played the
+            // rest of Friday" to a first-time user who'd never played Friday.
+            queue = airIsElsewhere ? others : others.filter { !hasBeenHeard($0) }
             guard !queue.isEmpty else {
                 if others.isEmpty {
                     say("There's nothing left in \(name) to mix into.", .refused)
                 } else {
-                    say("You've played the rest of \(name). To go round again, stop the deck and press MIX.", .refused)
+                    say("Everything else here has been played. To go round again, stop the deck and press MIX.", .refused)
                 }
                 return
             }
@@ -282,14 +285,14 @@ final class AutoDJ {
         }
         if phase != .idle { cancel() }
         askedForStems = []
-        let count = Format.count(queue.count, "track")
         if let air = playing.first {
             getReadyToLeave(air)
-            let opening = "\(letItBeHeard(air))Mixing through \(name), \(count) to go."
+            let opening = "\(letItBeHeard(air))Mixing through \(name), \(Format.count(queue.count, "track")) to go."
             mixSet = MixSet(name: name, queue: queue, onAir: air.index, opening: opening)
             say(opening, .info)
         } else {
-            let opening = "Mixing through \(name), \(count)."
+            // The first one's about to play, so it isn't to go. "5 tracks" here and "4 tracks to go" on the line under the list read as a mistake.
+            let opening = "Mixing through \(name), \(Format.count(queue.count - 1, "track")) to go."
             // If the first track's on a deck already, that's the deck it starts on. It would have been loaded on the first deck as well.
             let first = decks.first { $0.track?.id == queue.first } ?? decks[0]
             mixSet = MixSet(name: name, queue: queue, onAir: first.index, needsStart: true, opening: opening)
@@ -634,8 +637,12 @@ final class AutoDJ {
         phase = .armed(score.plan.move)
         updateBarsToGo()
         // A mix can be minutes from its next move, so there's no point saying so yet. No number either: this stays up for a few
-        // bars with the key counting beside it, and they were up to 3 apart by the time anyone had read it.
-        if mixSet == nil { say("\(score.plan.move.title) next. The key's counting down the bars.", .info) }
+        // bars with the key counting beside it, and they were up to 3 apart by the time anyone had read it. It says AUTO, as "key"
+        // means a musical key everywhere else here, and what's happened to the other deck, which nothing else said.
+        if mixSet == nil {
+            let tempo = String(format: "%.0f", incoming.effectiveBPM)
+            say("\(score.plan.move.title) next, with deck \(incoming.index + 1) cued at \(tempo) BPM. AUTO's counting down the bars.", .info)
+        }
     }
 
     /// Puts the incoming deck where the score expects it.
@@ -798,9 +805,13 @@ final class AutoDJ {
     /// once, however far off the move was. Reported in three rounds as moving by itself.
     private func openTheChannel() {
         guard let incoming else { return }
-        let moves = !crossfaderIsCentred()
+        let crossfaderMoves = !crossfaderIsCentred(), faderWas = incoming.fader
         prepared?.undoMixer = prepareMixer(incoming)
-        if moves, !isAskingForRating() { say("Crossfader to the middle, \(mixSet == nil ? "to hear both" : "ready for what's next").", .info) }
+        let faderMoves = incoming.fader != faderWas
+        guard crossfaderMoves || faderMoves, !isAskingForRating() else { return }
+        let fader = "deck \(incoming.index + 1)'s fader up"
+        let what = crossfaderMoves ? "Crossfader to the middle\(faderMoves ? " and \(fader)" : "")" : "D" + fader.dropFirst()
+        say("\(what), \(mixSet == nil ? "to hear both" : "ready for what's next").", .info)
     }
 
     /// The clock starts a couple of bars ahead of the move, to get the new deck going. Round 12 saw "starting" come with the
@@ -813,7 +824,8 @@ final class AutoDJ {
         guard left == 0 else { return }
         saidItsStarting = true
         if !isAskingForRating() {
-            say(mixSet == nil ? "\(move.title) starting. Touch a control to take it back." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
+            // "Take it back" read as cancelling the whole thing. And the faders mostly stay still in a move, so it says where to look.
+            say(mixSet == nil ? "\(move.title) starting. STEMS shows what's in. A control you touch is yours." : "\(move.title) into \(incoming?.track?.title ?? "the next track").", .info)
         }
     }
 
@@ -872,7 +884,8 @@ final class AutoDJ {
         guard case .running = phase, ending == nil, !saidItsYours,
               lanes.contains(where: { $0.deck === deck && $0.kind == kind && $0.index == control }) else { return }
         saidItsYours = true
-        if !isAskingForRating() { say("That's yours now. Auto DJ carries on with the rest.", .info) }
+        // For the move: an old deck's knobs go back when it's over, which read as a broken promise when this just said "now".
+        if !isAskingForRating() { say("That's yours for this move. Auto DJ carries on with the rest.", .info) }
     }
 
     /// Sending the old deck somewhere else means taking it, or the score's loop would take it straight back, with no word.

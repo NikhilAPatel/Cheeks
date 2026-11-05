@@ -338,6 +338,8 @@ struct BrowserView: View {
                 Button { showNewPlaylist = true } label: {
                     Label("New Playlist", systemImage: "plus").font(Theme.text(11.5)).foregroundStyle(Theme.textSecondary)
                 }
+                .disabled(WhatsThis.shared.isOn)
+                .whatsThis("Playlists")
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             } header: {
@@ -366,12 +368,14 @@ struct BrowserView: View {
 
     private func sidebarHeader(_ title: String) -> some View {
         Text(title.uppercased()).silk(8.5, color: Theme.textTertiary)
+            .whatsThis("Playlists")
     }
 
     private func sidebarRow(_ title: String, icon: String, count: Int, tag: Source) -> some View {
         Button {
             Haptics.shared.toggle(true)
             source = tag
+            WhatsThis.shared.note("Playlists")
         } label: {
             HStack(spacing: 6) {
                 // On a phone's narrow sidebar, the name matters more: it read "All Tr…".
@@ -379,7 +383,8 @@ struct BrowserView: View {
                     Image(systemName: icon).font(.system(size: 10)).frame(width: 14)
                         .foregroundStyle(source == tag ? Color.white : Theme.textSecondary)
                 }
-                Text(title).lineLimit(1)
+                // Bold when it's chosen, and "History Nov 4" fitted until then.
+                Text(title).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 2)
                 Text("\(count)").font(Theme.digits(10)).foregroundStyle(Theme.textTertiary)
             }
@@ -464,12 +469,14 @@ struct BrowserView: View {
             if on {
                 auto.press()
             } else {
-                auto.startSet(named: sourceName, tracks: listToMix)
+                let air = dj.decks.first(where: \.isPlaying)?.track?.id
+                auto.startSet(named: sourceName, tracks: listToMix, airIsElsewhere: air.map { !isInSource($0) } ?? false)
             }
         }) {
-            // It does something, where the keys beside it only change what's listed. It read as one more filter.
+            // It does something, where the keys beside it only change what's listed. It read as one more filter, in both rounds
+            // where it had no mark: a first-time user upright started a mix by accident, thinking that.
             HStack(spacing: 2) {
-                if roomy { Image(systemName: on ? "stop.fill" : "play.fill").font(.system(size: 6.5, weight: .bold)) }
+                Image(systemName: on ? "stop.fill" : "play.fill").font(.system(size: 6.5, weight: .bold))
                 KeyLegend(title: "MIX", size: 8.5)
             }
         }
@@ -504,9 +511,16 @@ struct BrowserView: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 20)
+            // The screen runs under the home indicator, and that went through this.
+            .padding(.bottom, homeIndicatorRoom)
             .background(Color(white: 0.12))
             .whatsThis("Mix line")
         }
+    }
+
+    private var homeIndicatorRoom: CGFloat {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        return min(14, scene?.keyWindow?.safeAreaInsets.bottom ?? 0)
     }
 
     private var sourceName: String {
@@ -591,25 +605,63 @@ struct BrowserView: View {
         .buttonStyle(.plain)
     }
 
+    /// True of what's on: it said nothing was in key or close in tempo, on a screen with one of each.
+    private var nothingFits: String {
+        let key = layout == .portrait ? "KEY" : "IN KEY", tempo = layout == .portrait ? "±6%" : "±6% BPM"
+        if inKeyOnly, nearBPMOnly { return "Nothing here is both in key and close in tempo with what's on the deck. Turn off \(key) or \(tempo) to see more." }
+        if inKeyOnly { return "Nothing here is in key with what's on the deck. Turn off \(key) to see the rest." }
+        return "Nothing here is close in tempo with what's on the deck. Turn off \(tempo) to see the rest."
+    }
+
     private var emptyState: some View {
         Group {
             if library.tracks.isEmpty {
                 ContentUnavailableView {
                     Label("No music yet", systemImage: "music.note.house")
                 } description: {
-                    Text((layout == .portrait ? "Tap the blue button above" : "Tap Import") + " to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder. If Files opens on an empty folder, go back from there to find your music.")
+                    let how = " to add music from Files, or drop audio into the Segue DJ folder in the Files app or Finder. If Files opens on an empty folder, go back from there to find your music."
+                    // "The blue button" could have been either of two.
+                    Text(layout == .portrait ? "Tap \(Image(systemName: "square.and.arrow.down")) above\(how)" : "Tap Import\(how)")
                 }
             } else if !search.isEmpty {
                 ContentUnavailableView.search(text: search)
             } else if inKeyOnly || nearBPMOnly {
                 ContentUnavailableView("Nothing fits right now", systemImage: "line.3.horizontal.decrease.circle",
-                                       description: Text("Nothing here is in key or close in tempo with what's on the deck. Turn off IN KEY or ±6% BPM to see the rest."))
+                                       description: Text(nothingFits))
             } else {
                 ContentUnavailableView("Nothing in this playlist yet", systemImage: "music.note.list",
                                        description: Text("Go to All Tracks, press and hold a track, and add it from there."))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// A phone has no room for a row's waveform, so its picture is what previews, and nothing else there did. A first-time user went
+/// looking and never found a way to hear a track off the decks.
+struct ArtworkPreview: View {
+    @Environment(DJEngine.self) private var dj
+    let track: Track
+
+    var body: some View {
+        let previewing = dj.previewingTrack == track.id
+        ZStack {
+            if previewing {
+                Color.black.opacity(0.5)
+                Image(systemName: "stop.fill").font(.system(size: 9)).foregroundStyle(.white)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !WhatsThis.shared.isOn else { return }
+            Haptics.shared.toggle(!previewing)
+            dj.togglePreview(track)
+        }
+        .whatsThis("Preview")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(previewing ? "Stop preview" : "Preview")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -628,6 +680,7 @@ struct TrackRow: View {
         let loadedOn = dj.decks.first { $0.track?.id == track.id }
         HStack(spacing: 8) {
             TrackArtwork(track: track).frame(width: 28, height: 28)
+                .overlay { if layout.isCompact { ArtworkPreview(track: track) } }
             if !layout.isCompact { TrackPreview(track: track).frame(width: 90, height: 24) }
             VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
@@ -636,6 +689,13 @@ struct TrackRow: View {
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.warn)
                         .accessibilityLabel("File missing")
+                }
+                // MIX and NEXT go by what's been played, and nothing in the list showed which those were.
+                if dj.heardThisSession.contains(track.id) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .accessibilityLabel("Played")
                 }
                 Text(track.title)
                     .font(Theme.text(12, .medium))
@@ -703,6 +763,8 @@ struct TrackRow: View {
         .contextMenu {
             Button("Load on Deck 1", systemImage: "1.circle") { _ = dj.load(track, onto: dj.decks[0]) }
             Button("Load on Deck 2", systemImage: "2.circle") { _ = dj.load(track, onto: dj.decks[1]) }
+            let previewing = dj.previewingTrack == track.id
+            Button(previewing ? "Stop Preview" : "Preview", systemImage: previewing ? "stop.circle" : "play.circle") { dj.togglePreview(track) }
             Divider()
             let addable = library.playlists.filter { !library.isHistory($0) }
             if !addable.isEmpty {

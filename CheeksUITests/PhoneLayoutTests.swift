@@ -72,6 +72,40 @@ final class PhoneLayoutTests: CheeksUITestCase {
         XCTAssertEqual(app.state, .runningForeground, "Turning it mustn't bring anything down")
     }
 
+    /// Round 15: a sheet's own drag took the touch after about 10 pt, so 120 pt on MASTER moved it nothing at all, and these
+    /// are the only TRIM and MASTER a phone has. Down is the sheet's way of closing, so that's the hard direction.
+    func testTheMixerSheetsKnobsTurn() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        defer { XCUIDevice.shared.orientation = .landscapeLeft }
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = orientation
+            sleep(2)
+            press(button("More mixer controls"))
+            XCTAssertTrue(app.staticTexts["Mixer"].waitForExistence(timeout: 3))
+            sleep(1)
+            for name in ["Master", "Trim 1", "Trim 2", "Level"] {
+                let knob = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", name)).firstMatch
+                waitFor(knob)
+                let before = percent(knob)
+                // Whichever way it has room, as they stay where the last pass left them.
+                let drag = before > 50 ? 60.0 : -60.0
+                let from = knob.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+                from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: drag)), withVelocity: .default, thenHoldForDuration: 0.1)
+                usleep(300_000)
+                print("UITEST: \(orientation.rawValue) \(name) \(before) to \(percent(knob))")
+                XCTAssertGreaterThan(abs(percent(knob) - before), 15, "\(name) should turn with the finger")
+                XCTAssertTrue(app.staticTexts["Mixer"].exists, "and the sheet should stay put")
+            }
+            screenshot("mixer-sheet-\(orientation.rawValue)")
+            app.buttons["Done"].firstMatch.tap()
+            sleep(1)
+        }
+    }
+
+    private func percent(_ knob: XCUIElement) -> Int {
+        Int((knob.value as? String)?.split(separator: " ").first ?? "") ?? -1
+    }
+
     /// The note says a playlist can be renamed, and held upright there's no sidebar to hold it in. Holding it in the menu just chose it.
     func testHeldUprightAPlaylistCanStillBeRenamedAndDeleted() throws {
         guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }

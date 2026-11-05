@@ -92,6 +92,26 @@ final class WhatsThisUITests: CheeksUITestCase {
         press(helpKey)
     }
 
+    /// Round 15: on its side, the sidebar had no note at all, and New Playlist opened its prompt with this saying controls only explain themselves.
+    func testTheSidebarExplainsItself() throws {
+        openBrowser()
+        guard app.staticTexts["PLAYLISTS"].waitForExistence(timeout: 3) else { throw XCTSkip("Upright has a menu instead") }
+        press(helpKey)
+        waitFor(note)
+        press(app.staticTexts["PLAYLISTS"])
+        usleep(300_000)
+        XCTAssertTrue(note.label.contains("which list"), note.label)
+        press(helpKey)
+        press(helpKey)
+        waitFor(note)
+        press(button("New Playlist"))
+        usleep(500_000)
+        XCTAssertTrue(note.label.contains("which list"), note.label)
+        XCTAssertFalse(app.alerts.firstMatch.exists, "Asking doesn't open the prompt")
+        press(helpKey)
+        closeBrowser()
+    }
+
     func testTheBrowserExplainsItselfToo() throws {
         press(helpKey)
         waitFor(note)
@@ -106,7 +126,7 @@ final class WhatsThisUITests: CheeksUITestCase {
         XCTAssertTrue(note.label.contains("good order"), note.label)
         XCTAssertEqual(next.isSelected, wasOn, "Asking about NEXT doesn't reorder the list")
         screenshot("whats-this-browser")
-        press(button("Browser"))
+        press(button("Decks"))
         sleep(1)
         press(helpKey)
     }
@@ -122,7 +142,7 @@ final class WhatsThisUITests: CheeksUITestCase {
         func askEverythingOnScreen() throws {
             for label in try buttonsOnScreen() {
                 // These still do what they do, which is go somewhere.
-                let goesSomewhere = label.hasSuffix(" pads") || ["Browser", "What does this do?", "More mixer controls", "More pad pages"].contains(label)
+                let goesSomewhere = label.hasSuffix(" pads") || ["Browser", "Decks", "What does this do?", "More mixer controls", "More pad pages"].contains(label)
                     || label.hasPrefix("Show ")
                 if goesSomewhere || !asked.insert(label).inserted { continue }
                 press(button(label), seconds: 0.05)

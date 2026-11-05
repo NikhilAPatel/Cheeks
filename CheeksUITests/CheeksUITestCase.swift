@@ -56,7 +56,7 @@ class CheeksUITestCase: XCTestCase {
     }
 
     func closeBrowser() {
-        press(button("Browser"))
+        press(button("Decks"))
         sleep(1)
     }
 

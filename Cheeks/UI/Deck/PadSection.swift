@@ -33,23 +33,28 @@ struct PadSection: View {
         switch deck.padMode {
         case .memory: MemoryControlRow(deck: deck)
         case .stems: StemControlRow(deck: deck)
-        case .fx: FXControlRow(deck: deck).modifier(FXPadHint())
+        case .fx: FXControlRow(deck: deck).modifier(PageHint(key: "fxPadHintShown", message: "FX pads slide: up and down for depth, left and right for the beat."))
+        // They look like CUE and LOOP pads, where a tap's all it takes, and a tap on one of these looks dead.
+        case .roll: LoopRow(deck: deck).modifier(PageHint(key: "rollPadHintShown", message: "ROLL pads play for as long as you hold them."))
+        case .slicer: LoopRow(deck: deck).modifier(PageHint(key: "slicerPadHintShown", message: "SLICER pads play for as long as you hold them."))
         case .sampler: SamplerControlRow(deck: deck)
         default: LoopRow(deck: deck)
         }
     }
 }
 
-/// Nothing on an FX pad says it slides, and a slide's half of what they do. So it's said once, the first time the page opens.
-private struct FXPadHint: ViewModifier {
+/// Nothing on an FX pad says it slides, or on a ROLL pad that it's held, and that's half of what they do. So it's said once,
+/// the first time the page opens.
+private struct PageHint: ViewModifier {
     @Environment(DJEngine.self) private var dj
-    @AppStorage("fxPadHintShown") private var shown = false
+    let key: String
+    let message: String
 
     func body(content: Content) -> some View {
         content.onAppear {
-            guard !shown else { return }
-            shown = true
-            dj.say("FX pads slide: up and down for depth, left and right for the beat.", .info)
+            guard !UserDefaults.standard.bool(forKey: key), dj.rateAction == nil else { return }
+            UserDefaults.standard.set(true, forKey: key)
+            dj.say(message, .info)
         }
     }
 }
@@ -165,6 +170,9 @@ struct PadTabs: View {
                             .offset(x: 5, y: -2)
                     }
                 }
+                .overlay(alignment: .top) {
+                    if mode == .stems { StemsOnTheTab(deck: deck).offset(y: -4.5) }
+                }
             VStack {
                 Spacer(minLength: 0)
                 Capsule().fill(selected ? Theme.accent : Color.clear)
@@ -188,6 +196,26 @@ struct PadTabs: View {
         .accessibilityValue(effectsOn ? "effects on" : "")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { deck.padMode = mode }
+    }
+}
+
+/// Which parts of the track are in, from whichever page the deck's on, while any aren't. Auto DJ mostly works by bringing parts in
+/// and out, so a deck's sound went away with its fader up and nothing moving. A first-time user took 34 minutes to see how it
+/// works, and only by having both decks on STEMS by luck. A view of its own, as a move changes these 30 times a second.
+private struct StemsOnTheTab: View {
+    let deck: Deck
+
+    var body: some View {
+        if deck.stemsAltered {
+            HStack(spacing: 1) {
+                ForEach(Stem.allCases, id: \.self) { stem in
+                    Capsule().fill(stem.color.opacity(deck.stemIsHeard(stem) ? 0.25 + 0.75 * Double(deck.stemLevels[stem.rawValue]) : 0.14))
+                }
+            }
+            .frame(height: 3)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 }
 

@@ -15,7 +15,8 @@ struct SamplerSlotSheet: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
-                        .onChange(of: name) { _, value in sampler.rename(slot, to: value) }
+                        // Filled in with what the pad says, which isn't a change of name.
+                        .onChange(of: name) { _, value in if value != sampler.name(slot) { sampler.rename(slot, to: value) } }
                     Picker("Plays", selection: Binding(get: { sampler.slots[slot].mode }, set: { sampler.setMode($0, slot: slot) })) {
                         ForEach(Sampler.Mode.allCases) { Text($0.rawValue).tag($0) }
                     }
@@ -35,7 +36,7 @@ struct SamplerSlotSheet: View {
                         dismiss()
                     }
                     if sampler.hasOwnSound(slot) {
-                        Button("Restore the Original Sound", systemImage: "arrow.uturn.backward", role: .destructive) {
+                        Button("Restore the Original Sound", systemImage: "arrow.uturn.backward") {
                             sampler.restoreOriginal(slot)
                             dismiss()
                         }
@@ -58,7 +59,7 @@ struct SamplerSlotSheet: View {
         }
         .tint(Theme.accent)
         .preferredColorScheme(.dark)
-        .onAppear { name = sampler.slots[slot].name ?? "" }
+        .onAppear { name = sampler.name(slot) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
             guard case .success(let url) = result else { return }
             Task {

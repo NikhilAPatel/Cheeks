@@ -197,6 +197,16 @@ struct SetlistEntry: Codable, Hashable {
     var key: String?
 }
 
+extension SetlistEntry {
+    /// As it was heard: the tempo was already, and a track moved to 10A was listed as 5A.
+    @MainActor
+    init?(heardOn deck: Deck, at offset: TimeInterval) {
+        guard let track = deck.track else { return nil }
+        self.init(offset: max(0, offset), title: track.titleWithoutArtist, artist: track.artist,
+                  bpm: deck.bpm > 0 ? deck.effectiveBPM : nil, key: deck.effectiveKey ?? track.key)
+    }
+}
+
 enum Setlist {
     static func sidecarURL(forRecording caf: URL) -> URL {
         URL(fileURLWithPath: caf.path.replacingOccurrences(of: ".caf", with: ".json"))

@@ -25,12 +25,16 @@ struct SettingsView: View {
                 } footer: {
                     Text("Every control, explained. On the decks, press ? and touch a control to see just that one.")
                 }
-                Section("Mixing") {
+                Section {
                     Picker("Crossfader curve", selection: $dj.crossfaderCurve) {
                         ForEach(CrossfaderCurve.allCases) { Text($0.rawValue.capitalized).tag($0) }
                     }
                     Toggle("Match track loudness", isOn: $autoGain)
                         .onChange(of: autoGain) { _, _ in dj.updateVolumes() }
+                } header: {
+                    Text("Mixing")
+                } footer: {
+                    Text("Smooth fades a deck out as the crossfader goes away from it. Scratch keeps both at full until the very end, for quick cuts. Matching brings loud and quiet tracks to about the same level.")
                 }
                 Section {
                     Toggle("Prepare stems on load", isOn: $prepareStems)
@@ -39,12 +43,16 @@ struct SettingsView: View {
                 } footer: {
                     Text("Splits each track in the background as soon as it's loaded, so stems are ready when you want them. Split tracks are kept, so they load instantly next time.")
                 }
-                Section("Display") {
+                Section {
                     Picker("Waveform colours", selection: $waveformStyle) {
                         Text("3-band").tag(0)
                         Text("RGB").tag(1)
                     }
                     .onChange(of: waveformStyle) { _, value in WaveformDisplay.shared.colorStyle = Int32(value) }
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("3-band draws the lows, mids and highs in colours of their own. RGB is one shape, coloured by the balance between them.")
                 }
                 Section {
                     Toggle("Haptics", isOn: $hapticsOn)

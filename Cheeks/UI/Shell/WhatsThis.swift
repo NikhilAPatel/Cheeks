@@ -189,13 +189,7 @@ struct WhatsThisNote: View {
 struct ControlsGuide: View {
     @State private var search = ""
 
-    private var sections: [Explanations.Section] {
-        guard !search.isEmpty else { return Explanations.sections }
-        return Explanations.sections.compactMap { section in
-            let found = section.entries.filter { $0.title.localizedCaseInsensitiveContains(search) || $0.text.localizedCaseInsensitiveContains(search) }
-            return found.isEmpty ? nil : Explanations.Section(title: section.title, entries: found)
-        }
-    }
+    private var sections: [Explanations.Section] { Explanations.found(search) }
 
     var body: some View {
         List {

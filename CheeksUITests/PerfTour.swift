@@ -95,9 +95,9 @@ final class PerfTour: CheeksUITestCase {
 
         step("browser open and closed while playing")
         for _ in 0..<3 {
-            press(button("Browser"))
+            press(button(app.buttons["Decks"].exists ? "Decks" : "Browser"))
             sleep(1)
-            press(button("Browser"))
+            press(button(app.buttons["Decks"].exists ? "Decks" : "Browser"))
             sleep(1)
         }
 

@@ -424,6 +424,13 @@ struct TopBar: View {
     @State private var showSettings = false
     @State private var confirmStopRecording = false
 
+    private func browserKeyLegend(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon).font(.system(size: 9, weight: .semibold))
+            Text(title).font(Theme.silk(8.5))
+        }
+    }
+
     var body: some View {
         HStack(spacing: 5) {
             HStack(spacing: 5) {
@@ -435,10 +442,14 @@ struct TopBar: View {
                 .padding(.horizontal, 3)
             }
 
-            Key(color: Theme.accent, lit: showLibrary, feel: .toggle, accessibilityName: "Browser", actsDuringHelp: true, onPress: { showLibrary.toggle() }) {
-                HStack(spacing: 3) {
-                    Image(systemName: "music.note.list").font(.system(size: 9, weight: .semibold))
-                    Text("BROWSE").font(Theme.silk(8.5))
+            // It says where it goes. "BROWSE" lit up was also the way back to the decks, and a first-time user went looking for
+            // another way, and took it for the tab they were already on. A blue one was also one of two blue things to choose from.
+            Key(color: Theme.accent, feel: .toggle, accessibilityName: showLibrary ? "Decks" : "Browser", help: "Browser", actsDuringHelp: true, onPress: { showLibrary.toggle() }) {
+                // Both are always there. Changing the words laid out the whole screen again as the slide started, and the mixer
+                // fell about 200 pt behind the decks on every press. `testTheDecksAndTheMixerSlideTogether` caught it.
+                ZStack {
+                    browserKeyLegend("music.note.list", "BROWSE").opacity(showLibrary ? 0 : 1)
+                    browserKeyLegend("opticaldisc", "DECKS").opacity(showLibrary ? 1 : 0)
                 }
             }
             .frame(width: 66, height: 20)

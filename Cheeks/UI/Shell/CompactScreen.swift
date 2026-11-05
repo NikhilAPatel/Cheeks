@@ -330,6 +330,11 @@ struct MixerMoreSheet: View {
                 Knob(value: $dj.masterVolume, range: 0...1, defaultValue: 0.9, label: "MASTER", color: Theme.textPrimary, size: 40, scale: .unipolar, help: "Master volume")
                 Knob(value: $dj.headphoneMix, range: 0...1, defaultValue: 0.25, label: "CUE/MST", color: Theme.textPrimary, size: 40, scale: .unipolar)
                 Knob(value: $dj.headphoneVolume, range: 0...1, defaultValue: 0.8, label: "LEVEL", color: Theme.textPrimary, size: 40, scale: .unipolar)
+                // The sheet covers the ones on the mixer, and TRIM's set by watching them.
+                VStack(spacing: 2) {
+                    LimiterLight()
+                    CentreMeters().frame(height: 42)
+                }
             }
             HStack(spacing: 8) {
                 Key("SPLIT", lit: dj.splitCue, size: 9, feel: .toggle, onPress: { dj.splitCue.toggle() })
@@ -354,6 +359,7 @@ struct MixerMoreSheet: View {
         .overlay { WhatsThisNote(inSheet: true) }
         .onAppear { WhatsThis.shared.sheetOpened() }
         .onDisappear { WhatsThis.shared.sheetClosed() }
+        .environment(\.isInASheet, true)
         .presentationDetents([.medium])
         .background(Theme.chassis)
         .preferredColorScheme(.dark)

@@ -47,6 +47,28 @@ final class BrowserAndRecordingTests: XCTestCase {
     }
 
     /// "History 2026-11-04" was cut off in the sidebar as "History 202…", which leaves out the day.
+    /// A tracklist read "Gepzene — Gepzene - Can't be Serious", and listed a track moved to 10A as 5A with its played tempo beside it.
+    func testATracklistSaysWhatWasHeard() throws {
+        let deck = Deck(index: 0)
+        deck.track = Track(id: UUID(), title: "Gepzene - Can't be Serious", artist: "Gepzene", fileName: "none", duration: 1, bpm: 128, key: "5A")
+        deck.keyShift = 7
+        let entry = try XCTUnwrap(SetlistEntry(heardOn: deck, at: 12))
+        XCTAssertEqual(entry.title, "Can't be Serious")
+        XCTAssertEqual(entry.artist, "Gepzene")
+        XCTAssertEqual(entry.key, Camelot.shifted("5A", by: 7))
+        XCTAssertNotEqual(entry.key, "5A")
+    }
+
+    func testATitleKeepsWhatOnlyLooksLikeAnArtist() {
+        func title(_ title: String, by artist: String) -> String {
+            Track(id: UUID(), title: title, artist: artist, fileName: "none").titleWithoutArtist
+        }
+        XCTAssertEqual(title("Solo", by: "Solo"), "Solo")
+        XCTAssertEqual(title("Solo Flight", by: "Solo"), "Solo Flight")
+        XCTAssertEqual(title("Any - Thing", by: ""), "Any - Thing")
+        XCTAssertEqual(title("SOLO – Flight", by: "Solo"), "Flight")
+    }
+
     func testAHistoryPlaylistShowsADateThatFits() throws {
         let library = Library()
         let formatter = DateFormatter()
