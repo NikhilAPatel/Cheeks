@@ -701,3 +701,59 @@ Running notes, tidied at the end.
 - AUTO's second deck comes in with its stems off at first, and at 03:14 deck 1 is playing with all four pads dim, LOW and FILTER on deck 2 moving by themselves. Reads clearly as the same loop build as before.
 - 03:14:30 Thumbs-down: toast just went, no reply seen (thumbs-up said "Got it. More like that."). Could be timing. ? BEAT BLOCKS: "Four blocks for each deck, one lit for each beat of the bar, mirrored about the middle... Red is the first beat. The scale in the middle shows how far apart they are." OVERVIEW: "The flags are your cues, and the colours its sections." Both good. So the coloured band under the overview = sections, not explained until you ask.
 - 03:14:45 Import menu has "DJ library (XML)...". Doesn't say what kind of XML or from where. I have nothing to test it with, so I didn't try.
+
+---
+
+## What happened next
+
+Everything below is in the next commit, and the task's round 19 retests it.
+
+### Failures
+- **GB4, the tip's last words: fixed twice.** It's shorter, without "The gear's guide has the rest." A message can also take a third line now, as `letItBeHeard`'s words in front of one could have run as long.
+- **N28, a mix from nothing held at a saved loop: fixed, as you read it.** A mix starting a track takes its loop off, the same as a mix with a track playing. And if a loop's holding a mix that has no plan yet, it now says so, once: "The mix will carry on when deck 2's loop ends."
+- **N29, `SYNC` following what a stopped deck was left at: that's two things, and both are changed.**
+  - A deck that's run out can't be followed. "Deck 2's track has finished, so there's no tempo to follow. Load the next one first." with a hand. That's the first-time user's own case.
+  - A stopped deck that was following something that's run out, or gone for a new load, goes back to its own speed and comes off `SYNC`. Nobody's heard it at that speed. That's your reproduction: Gepzene goes back to 128 as Houston starts to load, so `SYNC` on Houston comes to 128. A deck that's only paused still leads, as someone may well be about to start it.
+  - Half and double tempo stay, for a leader someone can still start. The way back was the real trouble, so "follows at half tempo" and "33% faster than its own" now come with `UNDO`, and the `BPM` menu has `Back to Its Own Speed` whenever the deck's away from it.
+  - On a phone, the word under the BPM reads `+33.3%` in blue while a deck's away from its own speed, as the tempo fader's on another page.
+  - A **playing** deck left with nothing to follow still stays where it is, as music can't just change speed. From 12% away, it says so: "Deck 2 has nothing to follow now, and stays at 170 BPM, 33% faster than its own."
+- **N30, `Done` going from Settings: fixed, in all five places with a bar.** iOS 27 has a new setting for a navigation bar going away on scrolling, and `keepsItsBar()` turns that off in Settings, the guide, Recordings, the cue list and the sampler's sheet. A test failed upright on the folded Duo before this and passes now, and it passes on the small iPhone both ways.
+- **N31, `STEMS` on an Echo throw: gone,** the same as a brake drop. The tip waits for a move it's true of, and the guide says "most of the moves".
+
+### `GC2`, the two jumps with the Mac at 0% idle
+**Left as they are, for a real thumb.** My guess is the same as yours: with the whole Mac stalled, the touch-up got to the app after the 0.25 s timer ran out. I can't tell from here how that goes on a phone, and it's still on the owner's list.
+
+### Looks wrong
+- **`-00:00.4` in red for good: fixed.** A deck stopped because there's nothing left to hear goes to its end, and reads `00:00.0`.
+- **The thumbs over the overview: fixed.** A thumb acts on letting go, and only for a touch under the overview's 0.25 s. A hold there is neither a rating nor a seek.
+- **`LIST`'s switch: fixed.** Switching off a saved loop that's still up ahead takes it off. One the deck's in stays, as `EXIT` is how to leave that.
+- **Messages from before a page change: fixed.** A page's tip goes with its page. "Everything else here has been played" goes when the list on screen changes.
+- **"Crossfader to the middle, to hear both.":** "Moved the crossfader to the middle, to hear both."
+- **`RELOOP` orange on orange during a held `SLICE` pad: not looked at yet.** A lit key should say `EXIT`, so I don't see how that happens. `GC` asks you to look.
+
+### What the first-time user said, and what I did
+- **"Things stay changed and the main screen doesn't show it":** the tempo's above. A phone's `MIXER` key lights and says `SPLIT` under it while that's on.
+- **The crossfader left on a deck that ran out, with both meters at zero for 2 minutes:** "Deck 1 has stopped, and deck 2 is playing with the crossfader away from it. Nothing's coming out." It only says so when what could be heard stops. Moving a fader yourself gets no word.
+- **Tracks running out behind the browser, twice:** a phone's browser says "Deck 1 runs out in 29 s." as it gets to the last 30 s, once a track, with only that deck playing and no mix on.
+- **"2 tracks to go" out of seven:** "Mixing through all your tracks, 2 not played yet."
+- **"Where did my track go?":** the first load's tip starts "It's on the deck: DECKS takes you there."
+- **The mixer sheet:** it's as tall as what's in it, so the mixer's still in sight above it upright, and it says what the key with the arrows does. On a phone on its side the system still makes a sheet full height, so that's still mostly empty.
+- **`LOW`'s "All the way left":** the notes for `HI`, `MID`, `LOW`, `FILTER` and `CUE/MST` say down and up, as that's how you drag them.
+- **`MIX TWO TRACKS`:** it says to start with the crossfader on the playing deck.
+- **Column headings under `?`:** they explain, and don't sort. `COLUMN HEADINGS` is a new note.
+- **The playlist icon that looked like a sidebar toggle:** it's a list of music now.
+- **"5 s" at 99%:** "a moment", once it's under about 7 s.
+
+### Your first impressions
+- **The tempo fader's closeness to the platter: mostly dealt with.** It only moves from its cap now, or within 8 pt of it. A drag anywhere up its column used to count, which is how a drag meant for the platter went from 125 to 141.77 last round. A drag that misses says "Drag the tempo fader by its cap. A stray touch can't change the speed." It's still 7 pt from the platter on the small iPhone, so a touch at the cap's own height can still take it. `GC` asks whether a real grab ever misses.
+- **`MIX…`, `AUTO 1` and `MIX 14%` reading as keys running out of room:** left as they are. They fit, and `?` explains them.
+
+### Left as they are
+- **`Fast Bird`'s three tempos.** It's `jam1121443`, and the first analysis does read it as wandering, 124 tempo markers, so the deck shows each section's tempo where the list shows the typical one. Then the stems flatten it to 140.06. That's what it's meant to do, and I've taken it off the list. It only matters if real tracks do it, so a live-played track is a better test than this one.
+- **EQ knobs carrying over to the next track.** Knobs on a mixer don't move by themselves, and they're on the screen.
+- **A move and the fourth knob keeping its place through a change of effect.** The same.
+- **"More loop builds?" reading as what to do next.** It used to say "More like that?", and that could have meant the kind of move, the track or the pair. The thumbs beside it say what it is.
+- **A scratch on a synced deck showing beats out.** `SYNC` corrects it only while both are playing, and they went green again. That looks right.
+- **`AUTO` undoing a `SYNC` on the new deck with no word.** It says what tempo it's cueing at, which is what a move's going to play.
+- **The folded Duo's black strip.** That's where the camera is.
+- **GA:** still blocked, on the owner.

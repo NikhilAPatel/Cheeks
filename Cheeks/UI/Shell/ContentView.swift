@@ -697,8 +697,9 @@ struct StatusCapsule: View {
                 } else {
                     ProgressView().controlSize(.mini)
                 }
-                // On the Duo a long one lost its end at any size, and the end's the part you act on: "The decks are…".
-                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                // On the Duo a long one lost its end at any size, and the end's the part you act on: "The decks are…". Upright on the
+                // folded Duo there's 381 pt to say it in, and two lines weren't always enough either.
+                Text(text).font(Theme.text(11.5, .medium)).foregroundStyle(.white).lineLimit(3).fixedSize(horizontal: false, vertical: true)
             }
             .opacity(touchOnly ? 0 : 1)
             if dj.undoAction != nil {
@@ -731,7 +732,11 @@ struct StatusCapsule: View {
     private func rateKey(liked: Bool, touchOnly: Bool) -> some View {
         if touchOnly {
             Color.clear.frame(width: 30, height: 18).overlay {
-                TouchSurface(onDown: { _ in rate(liked) }).padding(.vertical, -6).padding(.horizontal, -2)
+                // On letting go, unlike a key: it's over the overview, and a hold meant for that gave a rating nobody meant,
+                // which goes on to change what Auto DJ chooses.
+                TouchSurface(onDown: { _ in thumbTouch.downAt = CACurrentMediaTime() }, onUp: {
+                    if CACurrentMediaTime() - thumbTouch.downAt < OverviewLiveView.holdToJump { rate(liked) }
+                }).padding(.vertical, -6).padding(.horizontal, -2)
             }
         } else {
             Key(color: Theme.accent, feel: .none, accessibilityName: liked ? "That was good" : "That wasn't good", onPress: { rate(liked) }) {
@@ -742,6 +747,10 @@ struct StatusCapsule: View {
     }
 
     private var hasKeys: Bool { dj.undoAction != nil || dj.rateAction != nil }
+
+    /// Not `@State` values: those can't be read back until the next update.
+    private final class ThumbTouch { var downAt = 0.0 }
+    @State private var thumbTouch = ThumbTouch()
 
     private func rate(_ liked: Bool) {
         Haptics.shared.confirm()

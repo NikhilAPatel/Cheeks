@@ -57,6 +57,8 @@ private struct PageHint: ViewModifier {
             UserDefaults.standard.set(true, forKey: key)
             dj.say(message, .info)
         }
+        // SLICE's tip stayed up over the next page.
+        .onDisappear { if dj.statusMessage == message { dj.statusMessage = nil } }
     }
 }
 

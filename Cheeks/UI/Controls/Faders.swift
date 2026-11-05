@@ -196,7 +196,13 @@ struct TempoFader: View {
     let deck: Deck
     @State private var dragStart: Double?
     @State private var inCentre = false
+    @State private var touch = Touch()
     private let capLength: CGFloat = 26
+    /// How far past the cap a touch still takes it, for a thumb that hides what it's aiming at.
+    private static let grabMargin: CGFloat = 8
+
+    /// Not a `@State` value: its next move has to be able to read this straight back.
+    private final class Touch { var missed = false }
 
     var body: some View {
         GeometryReader { geo in
@@ -214,10 +220,25 @@ struct TempoFader: View {
                     .animation(deck.syncOn ? Theme.panel : nil, value: deck.tempoRatioPercent)
             }
             .overlay {
-                TouchSurface(onDown: { _ in
+                TouchSurface(onDown: { point in
+                    // Only from the cap. A drag anywhere up the column counted, and one meant for the platter beside it took a
+                    // first-time user from 125 to 141.77 in the middle of a mix. Nobody hears a miss, and everybody hears that.
+                    let cap = CGFloat(min(1, max(0, fraction))) * travel + capLength / 2
+                    touch.missed = abs(point.y - cap) > capLength / 2 + Self.grabMargin
+                    guard !touch.missed else {
+                        dragStart = nil
+                        return
+                    }
                     dragStart = deck.tempoRatioPercent
                     Haptics.shared.grab()
                 }, onMove: { _, translation in
+                    if touch.missed {
+                        if abs(translation.height) > 12 {
+                            touch.missed = false
+                            deck.onMessage?("Drag the tempo fader by its cap. A stray touch can't change the speed.", .info)
+                        }
+                        return
+                    }
                     guard let dragStart else { return }
                     let fine = Double(max(0.15, 1 - abs(translation.width) / 120))
                     var next = dragStart + Double(translation.height / travel) * deck.tempoRange * 2 * fine

@@ -45,6 +45,8 @@ final class AutoDJ {
         var leftOnWaiting: UUID?
         /// It's said once in this mix that STEMS is where to watch from.
         var saidToWatch = false
+        /// It's said a loop's holding the mix, for as long as that one does.
+        var saidItsHeld = false
         /// How many tracks it's got, said again with what's up next, which comes straight after and would take its place.
         var opening: String?
 
@@ -260,10 +262,14 @@ final class AutoDJ {
 
     // MARK: Mixing through a list
 
+    /// "Here" stops being true when the list on screen changes, so the browser takes it back then.
+    static let everythingPlayed = "Everything else here has been played. To go round again, stop the deck and press MIX."
+
     /// Mixes through these tracks in order. If a deck's playing, it carries on from that, and from that track's place
     /// in the list if it's on it, and then comes back for what's above it. Otherwise it starts from the top.
     /// `airIsElsewhere`: what's playing isn't on this list at all, so nobody's been through it yet.
     func startSet(named name: String, tracks: [UUID], airIsElsewhere: Bool = false) {
+        var playedAlready = 0
         let playing = decks.filter(\.isPlaying)
         guard playing.count <= 1 else {
             // Not "the one you want next": the list decides that, and the stopped deck's track makes way for it.
@@ -280,11 +286,12 @@ final class AutoDJ {
             // someone tried out while building it, with something else playing, is all still to come: it said "You've played the
             // rest of Friday" to a first-time user who'd never played Friday.
             queue = airIsElsewhere ? others : others.filter { !hasBeenHeard($0) }
+            playedAlready = others.count - queue.count
             guard !queue.isEmpty else {
                 if others.isEmpty {
                     say("There's nothing left in \(name) to mix into.", .refused)
                 } else {
-                    say("Everything else here has been played. To go round again, stop the deck and press MIX.", .refused)
+                    say(Self.everythingPlayed, .refused)
                 }
                 return
             }
@@ -299,7 +306,9 @@ final class AutoDJ {
         askedForStems = []
         if let air = playing.first {
             getReadyToLeave(air)
-            let opening = "\(letItBeHeard(air))Mixing through \(name), \(Format.count(queue.count, "track")) to go."
+            // "2 tracks to go" out of the seven on screen, for a first-time user who hadn't seen what the ticks meant.
+            let howMany = playedAlready > 0 ? "\(queue.count) not played yet" : "\(Format.count(queue.count, "track")) to go"
+            let opening = "\(letItBeHeard(air))Mixing through \(name), \(howMany)."
             mixSet = MixSet(name: name, queue: queue, onAir: air.index, opening: opening)
             say(opening, .info)
         } else {
@@ -345,6 +354,8 @@ final class AutoDJ {
             if air.isLoaded, air.loadError == nil {
                 // Its fader can be down, or the crossfader away from it, and a mix doesn't start in silence.
                 _ = prepareMixer(air)
+                // Its saved loop can be switched on. It held a mix at MIX… for 2:30 in round 18, with no plan and no word.
+                getReadyToLeave(air)
                 air.play()
                 mixSet?.needsStart = false
             } else if loadNext(onto: air) == nil {
@@ -412,10 +423,17 @@ final class AutoDJ {
             startWithoutAMove(waiting, "No clean way in.")
             return
         }
-        // Someone's holding this track in a loop, so it isn't leaving yet.
-        if air.renderer.loopActive { return }
+        // Someone's holding this track in a loop, so it isn't leaving yet. A held roll or slice is over when it's let go.
+        if air.renderer.loopActive {
+            if air.borrowedLoop == nil, !set.saidItsHeld, !isAskingForRating() {
+                mixSet?.saidItsHeld = true
+                say("The mix will carry on when deck \(air.index + 1)'s loop ends.", .info)
+            }
+            return
+        }
+        if set.saidItsHeld { mixSet?.saidItsHeld = false }
         if hasNothingLeftToHear(air) {
-            air.pause()
+            air.endHere()
             startWithoutAMove(waiting, "No clean way in.")
             return
         }
@@ -512,7 +530,7 @@ final class AutoDJ {
         }
         if !from.renderer.loopActive, to.isLoaded, hasNothingLeftToHear(from) {
             cancel()
-            from.pause()
+            from.endHere()
             startWithoutAMove(to, why)
             return true
         }
@@ -575,7 +593,7 @@ final class AutoDJ {
     private func letItBeHeard(_ deck: Deck) -> String {
         guard let undo = openCrossfader(deck) else { return "" }
         earlyCrossfader = undo
-        return "Crossfader to the middle. "
+        return "Moved the crossfader to the middle. "
     }
 
     private func undoEarlyCrossfader() {
@@ -825,6 +843,7 @@ final class AutoDJ {
                         say("Auto DJ stopped: deck \(number) is in a loop.", .info)
                     } else {
                         planAgainFromHere()
+                        mixSet?.saidItsHeld = true
                         say("The mix will carry on when deck \(number)'s loop ends.", .info)
                     }
                 }
@@ -866,8 +885,9 @@ final class AutoDJ {
         prepared?.undoMixer = prepareMixer(incoming)
         let faderMoves = incoming.fader != faderWas
         guard crossfaderMoves || faderMoves, !isAskingForRating() else { return }
+        // It's already happened by now. "Crossfader to the middle" read as an instruction.
         let fader = "deck \(incoming.index + 1)'s fader up"
-        let what = crossfaderMoves ? "Crossfader to the middle\(faderMoves ? " and \(fader)" : "")" : "D" + fader.dropFirst()
+        let what = crossfaderMoves ? "Moved the crossfader to the middle\(faderMoves ? " and \(fader)" : "")" : "Moved \(fader)"
         say("\(what), \(mixSet == nil ? "to hear both" : "ready for what's next").", .info)
     }
 
@@ -884,8 +904,9 @@ final class AutoDJ {
             // "Take it back" read as cancelling the whole thing. And the faders mostly stay still in a move, so it says where to look.
             // Two first-time users took 34 and 17 minutes to see what a move does. Watching both decks on STEMS is what did it.
             let onStems = outgoing?.padMode == .stems && incoming?.padMode == .stems
-            // A brake drop has nothing to see there: the old deck stops and the new one's all in.
-            let watch = onStems || move == .brakeDrop ? "" : " Put both decks on STEMS to watch it."
+            // A brake drop and an echo throw have nothing to see there: the old deck stops or cuts, and the new one's all in. A
+            // first-time user put both decks on STEMS for an echo throw, as told, and watched four lit pads.
+            let watch = onStems || move == .brakeDrop || move == .echoDrop ? "" : " Put both decks on STEMS to watch it."
             if mixSet == nil {
                 say("\(move.title) starting.\(watch) A control you touch is yours.", .info)
             } else {

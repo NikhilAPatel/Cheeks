@@ -59,6 +59,7 @@ struct SamplerSlotSheet: View {
             .background(Color(white: 0.07))
             .navigationTitle("Pad \(slot + 1)")
             .navigationBarTitleDisplayMode(.inline)
+            .keepsItsBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }

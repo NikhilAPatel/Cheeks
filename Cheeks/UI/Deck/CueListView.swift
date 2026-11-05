@@ -75,6 +75,7 @@ struct CueListView: View {
             .background(Color(white: 0.07))
             .navigationTitle(deck.track?.title ?? "Cues and loops")
             .navigationBarTitleDisplayMode(.inline)
+            .keepsItsBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
@@ -172,7 +173,9 @@ struct CueListView: View {
                             set: { on in deck.updateTrack { t in
                                 // Only one loop can be waiting at load.
                                 for i in t.savedLoops.indices { t.savedLoops[i].activeOnLoad = on && t.savedLoops[i].id == loop.id }
-                            } }))
+                            }
+                            if !on { deck.disarm(loop) }
+                        }))
                             .labelsHidden()
                     }
                     .swipeActions(allowsFullSwipe: false) {

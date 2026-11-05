@@ -442,11 +442,22 @@ final class DJEngine {
     private func updateMaster() {
         let current = decks[masterIndex]
         if current.isPlaying && current.isLoaded { return }
+        // What a stopped deck was following has run out, or gone for a new load, and nobody's heard it at that speed. Left there,
+        // it led the next track to it: a 126 went to 85, following a stopped 128 that was still at 170.
+        if !current.isLoaded || current.isAtEnd {
+            for deck in decks where deck !== current && deck.syncOn && !deck.isPlaying { deck.backToOwnSpeed() }
+        }
         // The top bar read "MASTER 2 –" for an empty deck, with a track on deck 1.
         if !current.isLoaded, !current.isPlaying, let loaded = decks.first(where: { $0.isLoaded }) { masterIndex = loaded.index }
         if let playing = decks.first(where: { $0.isPlaying && $0.isLoaded && !$0.syncOn }) ?? decks.first(where: { $0.isPlaying && $0.isLoaded }) {
             masterIndex = playing.index
-            playing.syncOn = false
+            if playing.syncOn {
+                playing.syncOn = false
+                // Playing, so it can't just change speed. But SYNC's light going out was all that said so, at 31% from its own.
+                if abs(playing.tempo) > Self.farToStretch {
+                    say(String(format: "Deck %d has nothing to follow now, and stays at %.0f BPM, %.0f%% %@ than its own.", playing.index + 1, playing.effectiveBPM, abs(playing.tempo), playing.tempo < 0 ? "slower" : "faster"), .info)
+                }
+            }
         }
     }
 
@@ -465,22 +476,64 @@ final class DJEngine {
                 say("Deck \(deck.index + 1)'s leading, with nothing playing to follow. SYNC on deck \(leader.index + 1) brings that one to this tempo.", .refused)
                 return
             }
+            // A track that's over has no tempo worth following. A first-time user's 126 went to 85 from one sitting at 170, on its
+            // way to a track 2 BPM from it, and that was the worst thing about the app for them.
+            if leader.isAtEnd {
+                say("Deck \(leader.index + 1)'s track has finished, so there's no tempo to follow. Load the next one first.", .refused)
+                return
+            }
             // Syncing the master means following the other deck, so that one has to lead.
             if masterIndex == deck.index { masterIndex = leader.index }
             let settlesOn = deck.matchedBPM(for: leader.effectiveBPM), theirs = leader.effectiveBPM
+            let tempoWas = deck.tempo, rangeWas = deck.tempoRange
             deck.sync(to: leader)
+            // Both of these are a big change someone may not have meant, and the way back was hard to find.
+            let undo = { [weak deck] in
+                deck?.syncOn = false
+                deck?.setTempo(tempoWas)
+                deck?.tempoRange = rangeWas
+            }
             // A first-time user's 126 went to 85 with nothing to say why, and stayed there when the other deck ended.
             if deck.isLoaded, deck.bpm > 0, settlesOn != theirs {
-                say("Deck \(deck.index + 1) follows at \(settlesOn < theirs ? "half" : "double") tempo: \(String(format: "%.0f", settlesOn)) against \(String(format: "%.0f", theirs)).", .info)
+                deck.offerUndo?("Deck \(deck.index + 1) follows at \(settlesOn < theirs ? "half" : "double") tempo: \(String(format: "%.0f", settlesOn)) against \(String(format: "%.0f", theirs)).", .info, undo)
             } else if deck.isLoaded, abs(deck.tempo) > Self.farToStretch {
                 // A long way to stretch a track can be heard, and 170 going to 128 had nothing to say so, where half tempo did.
-                say(String(format: "Deck %d's %.0f%% %@ than its own %.0f BPM, to follow.", deck.index + 1, abs(deck.tempo), deck.tempo < 0 ? "slower" : "faster", deck.bpm), .info)
+                deck.offerUndo?(String(format: "Deck %d's %.0f%% %@ than its own %.0f BPM, to follow.", deck.index + 1, abs(deck.tempo), deck.tempo < 0 ? "slower" : "faster", deck.bpm), .info, undo)
             }
         }
     }
 
     /// Percent. Past this, stretching starts to be heard.
     private static let farToStretch = 12.0
+
+    /// A phone's browser covers the decks, and track after track ran out behind it with nothing said. The browser asks, while it's
+    /// open. Only for what the music depends on: not with the other deck playing as well, and a mix sees to itself.
+    func warnIfRunningOut() {
+        let playing = decks.filter(\.isPlaying)
+        guard playing.count == 1, let deck = playing.first, let id = deck.track?.id, id != warnedRunningOut,
+              statusMessage == nil, autoDJ.phase == .idle, autoDJ.mixSet == nil, !deck.renderer.loopActive else { return }
+        let left = deck.timeLeft
+        guard left <= Self.runningOut, left >= 1 else { return }
+        warnedRunningOut = id
+        say("Deck \(deck.index + 1) runs out in \(Int(left)) s.", .info)
+    }
+
+    /// Seconds. The deck's own clock goes red from here too.
+    private static let runningOut = 30.0
+    @ObservationIgnored private var warnedRunningOut: UUID?
+
+    /// The track someone could hear has stopped, and what's still playing can't reach the output. A first-time user's track ran
+    /// out with the crossfader over on it, and the other played on for 2 minutes with the meters dark.
+    private func noticeNothingComingOut() {
+        let heard = decks.first { $0.isPlaying && channelGains[$0.index] > 0.05 }?.index
+        defer { heardDeck = heard }
+        guard heard == nil, let was = heardDeck, !decks[was].isPlaying, autoDJ.phase == .idle, autoDJ.mixSet == nil,
+              let left = decks.first(where: \.isPlaying) else { return }
+        let why = crossfaderGain(for: left) < 0.05 ? "the crossfader away from it" : "its fader down"
+        say("Deck \(was + 1) has stopped, and deck \(left.index + 1) is playing with \(why). Nothing's coming out.", .problem)
+    }
+
+    @ObservationIgnored private var heardDeck: Int?
 
     func performUndo() {
         undoAction?()
@@ -495,6 +548,7 @@ final class DJEngine {
         let working = limiterReduction > 0.5
         if working != limiterWorking { limiterWorking = working }
         updateMaster()
+        noticeNothingComingOut()
         for deck in decks where deck.syncOn && deck.index != masterIndex {
             let master = decks[masterIndex]
             guard master.isLoaded, master.bpm > 0, deck.bpm > 0 else { continue }

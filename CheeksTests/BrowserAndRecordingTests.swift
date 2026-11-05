@@ -28,7 +28,7 @@ final class BrowserAndRecordingTests: XCTestCase {
     func testALongMessageStaysUpLongEnoughToRead() {
         XCTAssertEqual(StatusCapsule.secondsUp("Mix off.", hasKeys: false), 5)
         XCTAssertEqual(StatusCapsule.secondsUp("Deleted hot cue A", hasKeys: true), 8)
-        let long = "Crossfader to the middle. Auto DJ is waiting for the stems. If this track finishes first, deck 2 starts."
+        let long = "Moved the crossfader to the middle. Auto DJ is waiting for the stems. If this track finishes first, deck 2 starts."
         XCTAssertGreaterThan(StatusCapsule.secondsUp(long, hasKeys: false), 7)
     }
 

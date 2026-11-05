@@ -165,6 +165,7 @@ struct BrowserView: View {
                 if let url = urls.first { importDJLibrary(url) }
             }
         }
+        .background { if layout.isCompact { RunningOutWatch() } }
         .alert("New playlist", isPresented: $showNewPlaylist) {
             TextField("Name", text: $newPlaylistName)
             Button("Create") {
@@ -264,6 +265,7 @@ struct BrowserView: View {
                 // A different list starts from its top. Now the list keeps its place, a search from far down opened part-way through its results.
                 .onChange(of: whatsListed) { _, _ in
                     if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
+                    dj.autoDJ.takeBack?(AutoDJ.everythingPlayed)
                 }
             }
         }
@@ -547,7 +549,8 @@ struct BrowserView: View {
                 playlistActions(playlist)
             }
         } label: {
-            Image(systemName: "sidebar.left").font(.system(size: 10, weight: .semibold))
+            // It read as a sidebar toggle, and it opens a menu of playlists.
+            Image(systemName: "music.note.list").font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 30, height: 24)
                 .background(KeyFace(color: Theme.accent, lit: source != .all))
@@ -579,6 +582,7 @@ struct BrowserView: View {
     /// Tap a column to sort by it, tap again to flip it, and a third time to go back to the list's own order.
     private func header(_ key: SortKey, alignment: Alignment) -> some View {
         Button {
+            guard !WhatsThis.shared.isOn else { return }
             Haptics.shared.tick()
             withAnimation(Theme.panel) {
                 let firstWay = key == .title || key == .artist || key == .key
@@ -608,6 +612,7 @@ struct BrowserView: View {
             }
         }
         .buttonStyle(.plain)
+        .whatsThis("Column heading")
     }
 
     /// True of what's on: it said nothing was in key or close in tempo, on a screen with one of each.
@@ -923,6 +928,21 @@ struct TrackPreview: View {
         .accessibilityAddTraits(.isButton)
         .task(id: track.bpm) {
             image = await WaveformThumbnails.image(track.id, width: 90 * 3, height: 24 * 3)
+        }
+    }
+}
+
+/// A phone's browser covers the decks, so while it's open this asks whether what's playing is about to run out.
+private struct RunningOutWatch: View {
+    @Environment(DJEngine.self) private var dj
+    @Environment(\.isOffstage) private var isOffstage
+
+    var body: some View {
+        Color.clear.task(id: isOffstage) {
+            while !isOffstage, !Task.isCancelled {
+                dj.warnIfRunningOut()
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
     }
 }

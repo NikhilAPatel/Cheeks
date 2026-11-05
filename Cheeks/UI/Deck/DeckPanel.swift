@@ -397,7 +397,9 @@ struct DeckHeader: View {
         guard let left = deck.stemsTimeLeft else { return nil }
         if left >= 90 { return "\(Int((left / 60).rounded())) min" }
         if left >= 45 { return "1 min" }
-        return "\(max(5, Int((left / 5).rounded()) * 5)) s"
+        // It sat at "5 s" for several seconds at the end of a split.
+        if left < 7.5 { return "a moment" }
+        return "\(Int((left / 5).rounded()) * 5) s"
     }
 
     /// The stems page shows this itself, so it's only needed from everywhere else.
@@ -426,6 +428,9 @@ struct DeckHeader: View {
                 Button("Grid 10 ms later", systemImage: "arrow.right") { deck.shiftGrid(milliseconds: 10) }
                 Button("Set downbeat here", systemImage: "scope") { deck.setDownbeatHere() }
             }
+            if deck.tempo != 0 {
+                Button("Back to Its Own Speed", systemImage: "arrow.uturn.backward") { deck.backToOwnSpeed() }
+            }
             Button("Save cue as memory cue", systemImage: "bookmark") { deck.saveMemoryCue() }
             Button("Cues and loops…", systemImage: "list.bullet") { showCueList = true }
         } label: {
@@ -434,7 +439,12 @@ struct DeckHeader: View {
                     .font(Theme.digits(13))
                     .foregroundStyle(Theme.textPrimary)
                 HStack(spacing: 2) {
-                    Text("BPM").silk(7.5, color: Theme.textTertiary)
+                    // On a phone the tempo fader's on another page, and a deck stayed a third from its own speed with nothing to show it.
+                    if compact, deck.isLoaded, abs(deck.tempo) >= 0.05 {
+                        Text(String(format: "%+.1f%%", deck.tempo)).silk(7.5, color: Theme.accent).lineLimit(1).minimumScaleFactor(0.7)
+                    } else {
+                        Text("BPM").silk(7.5, color: Theme.textTertiary)
+                    }
                     Image(systemName: "chevron.down").font(.system(size: 6, weight: .bold)).foregroundStyle(Theme.textTertiary)
                 }
             }

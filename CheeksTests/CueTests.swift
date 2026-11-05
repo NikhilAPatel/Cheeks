@@ -72,6 +72,32 @@ final class CueTests: XCTestCase {
         XCTAssertLessThan(deck.position, 2.01, "And it holds there")
     }
 
+    /// The deck went on to be caught by a loop the list said was off.
+    func testSwitchingOffALoopThatsWaitingTakesItOff() {
+        let deck = makeDeck(at: 0)
+        let loop = SavedLoop(start: 1, end: 2, activeOnLoad: true)
+        deck.updateTrack { $0.savedLoops = [loop] }
+        deck.armSavedLoops()
+        XCTAssertTrue(deck.isLoopAhead)
+        deck.disarm(SavedLoop(start: 3, end: 4))
+        XCTAssertTrue(deck.isLoopAhead, "Only that one")
+        deck.disarm(loop)
+        XCTAssertFalse(deck.renderer.loopActive)
+        XCTAssertFalse(deck.loopActive)
+    }
+
+    func testSwitchingOffALoopTheDecksInLeavesItThere() {
+        let deck = makeDeck(at: 0)
+        let loop = SavedLoop(start: 1, end: 2, activeOnLoad: true)
+        deck.updateTrack { $0.savedLoops = [loop] }
+        deck.armSavedLoops()
+        deck.play()
+        _ = deck.renderer.renderOffline(frames: Int(sr * 1.5))
+        XCTAssertFalse(deck.isLoopAhead)
+        deck.disarm(loop)
+        XCTAssertTrue(deck.renderer.loopActive, "That's a loop someone's in, and EXIT is how to leave it")
+    }
+
     func testALoopBehindTheCueDoesntPullTheDeckBack() {
         let deck = makeDeck(at: 50)
         deck.cuePoint = 50

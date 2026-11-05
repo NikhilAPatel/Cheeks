@@ -133,14 +133,14 @@ struct WhatsThisKey: View {
             // Not over something it's already saying: it can wait for the next track.
             guard loaded, !hintShown, dj.statusMessage == nil else { return }
             hintShown = true
-            dj.say("New to this? Press ? and tap anything to see what it does. The gear has the whole guide.", .info)
+            dj.say("It's on the deck: DECKS takes you there. New to this? Press ? and tap anything to see what it does. The gear has the whole guide.", .info)
         }
         .onChange(of: dj.decks.allSatisfy(\.isPlaying)) { _, both in
             // The crossfader works, so nothing suggests there's more to it. A first-time user mixed that way for 15 minutes,
             // until the guide mentioned the LOWs. Not during a move, which has it in hand.
             guard both, !lowsHintShown, dj.statusMessage == nil, dj.autoDJ.phase == .idle, dj.autoDJ.mixSet == nil else { return }
             lowsHintShown = true
-            dj.say("Two basslines clash. Turn the new track's LOW down, and swap the two LOWs as you crossfade. The gear's guide has the rest.", .info)
+            dj.say("Two basslines clash. Turn the new track's LOW down, and swap the two LOWs as you crossfade.", .info)
         }
     }
 }
@@ -217,5 +217,6 @@ struct ControlsGuide: View {
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")
         .navigationTitle("What everything does")
         .navigationBarTitleDisplayMode(.inline)
+        .keepsItsBar()
     }
 }

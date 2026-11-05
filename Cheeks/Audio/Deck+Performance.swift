@@ -193,6 +193,12 @@ extension Deck {
         }
     }
 
+    /// Switched off in the list while it's still up ahead. The deck went on to be caught by a loop the list said was off.
+    func disarm(_ loop: SavedLoop) {
+        guard isLoopAhead, abs(renderer.loopStart - loop.start * sampleRate) < 1, abs(renderer.loopEnd - loop.end * sampleRate) < 1 else { return }
+        exitLoop()
+    }
+
     /// A loop marked "on at load" is waiting when the track comes up, and holds the deck once it gets there.
     func armSavedLoops() {
         guard let loop = track?.savedLoops.first(where: \.activeOnLoad) else { return }

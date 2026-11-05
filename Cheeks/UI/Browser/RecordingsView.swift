@@ -39,6 +39,7 @@ struct RecordingsView: View {
             }
             .navigationTitle("Recordings")
             .navigationBarTitleDisplayMode(.inline)
+            .keepsItsBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }

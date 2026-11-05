@@ -582,8 +582,15 @@ final class Deck {
         endEchoOut()
     }
 
+    /// There's nothing left in it to hear, so it's finished, and reads that way. It stopped short of its end, and sat at
+    /// -00:00.4 in red for good.
+    func endHere() {
+        pause()
+        renderer.playhead = Double(max(renderer.frameCount - 1, 0))
+    }
+
     /// The deck has run out, or been sent to the very last frame.
-    private var isAtEnd: Bool { renderer.frameCount > 0 && renderer.playhead >= Double(renderer.frameCount - 1) }
+    var isAtEnd: Bool { renderer.frameCount > 0 && renderer.playhead >= Double(renderer.frameCount - 1) }
 
     /// Where a deck that's run out goes back to: the cue, unless that's at the end as well.
     private var restartPoint: Double { cuePoint < duration - 0.5 ? cuePoint : 0 }
@@ -647,6 +654,12 @@ final class Deck {
     func resetTempo() {
         setTempo(0)
         tempoRange = chosenTempoRange
+    }
+
+    /// SYNC can leave a track a long way from its own speed, and the only way back was the fader, on another page on a phone.
+    func backToOwnSpeed() {
+        syncOn = false
+        resetTempo()
     }
 
     /// The range key. A range too narrow for how fast the deck's going is passed over, as pressing it pinned the cap, and the

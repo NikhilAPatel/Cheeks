@@ -72,6 +72,26 @@ final class PhoneLayoutTests: CheeksUITestCase {
         XCTAssertEqual(app.state, .runningForeground, "Turning it mustn't bring anything down")
     }
 
+    /// Upright on the folded Duo, `Done` and the title went on scrolling, leaving only a swipe down to get out.
+    func testSettingsKeepsItsDoneWhenItScrolls() throws {
+        for way in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = way
+            sleep(2)
+            press(button("Settings"))
+            let done = app.buttons["Done"].firstMatch
+            waitFor(done)
+            let list = app.collectionViews.firstMatch
+            waitFor(list)
+            list.swipeUp()
+            list.swipeUp()
+            sleep(2)
+            screenshot("settings-scrolled-\(way == .portrait ? "upright" : "side")")
+            XCTAssertTrue(done.exists && done.isHittable, "\(way == .portrait ? "Upright" : "On its side"), Done should still be there")
+            done.tap()
+            sleep(1)
+        }
+    }
+
     /// Round 15: a sheet's own drag took the touch after about 10 pt, so 120 pt on MASTER moved it nothing at all, and these
     /// are the only TRIM and MASTER a phone has. Down is the sheet's way of closing, so that's the hard direction.
     func testTheMixerSheetsKnobsTurn() throws {
@@ -97,6 +117,33 @@ final class PhoneLayoutTests: CheeksUITestCase {
                 XCTAssertTrue(app.staticTexts["Mixer"].exists, "and the sheet should stay put")
             }
             screenshot("mixer-sheet-\(orientation.rawValue)")
+            app.buttons["Done"].firstMatch.tap()
+            sleep(1)
+        }
+    }
+
+    /// It's as tall as what's in it now, so what's at the bottom of it has to fit. And `SPLIT` was left on for 22 minutes, with
+    /// nothing outside the sheet to say so.
+    func testTheMixerSheetFitsAndSplitShowsOutsideIt() throws {
+        guard app.windows.firstMatch.frame.width < 900 else { throw XCTSkip("This screen uses the full layout") }
+        defer { XCUIDevice.shared.orientation = .landscapeLeft }
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = orientation
+            sleep(2)
+            press(button("More mixer controls"))
+            let last = app.staticTexts["The key with the arrows chooses what each deck's fourth knob does."]
+            waitFor(last)
+            press(button("SPLIT"))
+            sleep(1)
+            screenshot("mixer-sheet-split-\(orientation.rawValue)")
+            let window = app.windows.firstMatch.frame
+            XCTAssertLessThanOrEqual(last.frame.maxY, window.maxY - 8, "Its last line should be on the screen")
+            app.buttons["Done"].firstMatch.tap()
+            sleep(1)
+            screenshot("mixer-key-split-\(orientation.rawValue)")
+            press(button("More mixer controls"))
+            waitFor(last)
+            press(button("SPLIT"))
             app.buttons["Done"].firstMatch.tap()
             sleep(1)
         }

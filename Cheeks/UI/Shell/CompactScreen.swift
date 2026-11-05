@@ -243,8 +243,14 @@ struct CompactMixer: View {
         VStack(spacing: 3) {
             AutoKey().frame(height: 22)
             // Not "MORE": the pad tabs have one of those, which does something else.
-        Key("MIXER", color: Theme.accent, size: 7, accessibilityName: "More mixer controls", actsDuringHelp: true, onPress: { showMore = true })
-                .frame(height: 22)
+            Key(color: Theme.accent, lit: dj.splitCue, accessibilityName: "More mixer controls", actsDuringHelp: true, onPress: { showMore = true }) {
+                VStack(spacing: 0) {
+                    KeyLegend(title: "MIXER", size: 7)
+                    // It puts the mix in one ear, and a first-time user left it on for 22 minutes with nothing here to say so.
+                    if dj.splitCue { Text("SPLIT").font(Theme.silk(5)) }
+                }
+            }
+            .frame(height: 22)
             LimiterLight()
             CentreMeters().frame(maxHeight: .infinity)
         }
@@ -362,9 +368,14 @@ struct MixerMoreSheet: View {
             }
             .frame(height: 34)
             // It lit with nothing to say what it does, or that one output can't do it.
-            Text(dj.splitCue ? "SPLIT's on: the mix in the left ear and your cue in the right, for a splitter cable." : "One output, like AirPods, only plays the mix. SPLIT's for a splitter cable.")
-                .font(Theme.text(11))
-                .foregroundStyle(Theme.textTertiary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(dj.splitCue ? "SPLIT's on: the mix in the left ear and your cue in the right, for a splitter cable." : "One output, like AirPods, only plays the mix. SPLIT's for a splitter cable.")
+                // Pressed to see what it did, and only its own name changed: what it changes is under the sheet.
+                Text("The key with the arrows chooses what each deck's fourth knob does.")
+            }
+            .font(Theme.text(11))
+            .foregroundStyle(Theme.textTertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 0)
         }
         .padding(16)
@@ -373,7 +384,8 @@ struct MixerMoreSheet: View {
         .onAppear { WhatsThis.shared.sheetOpened() }
         .onDisappear { WhatsThis.shared.sheetClosed() }
         .environment(\.isInASheet, true)
-        .presentationDetents([.medium])
+        // As tall as what's in it. At a half it was two rows of controls and a screen of nothing, over decks someone's mixing on.
+        .presentationDetents([.height(280)])
         .background(Theme.chassis)
         .preferredColorScheme(.dark)
     }

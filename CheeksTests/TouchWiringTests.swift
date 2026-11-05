@@ -395,6 +395,74 @@ final class TouchWiringTests: XCTestCase {
         XCTAssertEqual(controls(in: window.bounds).filter { !before.contains(ObjectIdentifier($0.view)) }.count, 0, "Once")
     }
 
+    /// A drag meant for the platter beside it took a first-time user from 125 to 141.77 in the middle of a mix.
+    func testTheTempoFaderOnlyMovesFromItsCap() async throws {
+        let (dj, _) = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        let deck = dj.decks[0]
+        var surfaces: [TouchSurfaceView] = []
+        func walk(_ view: UIView) {
+            if let view = view as? TouchSurfaceView, view.bounds.height > 60, view.bounds.width < 60 { surfaces.append(view) }
+            view.subviews.forEach(walk)
+        }
+        walk(window)
+        // The only tall, narrow one that a drag from its middle moves the tempo with.
+        var found: TouchSurfaceView?
+        for surface in surfaces where found == nil {
+            let middle = CGPoint(x: surface.bounds.midX, y: surface.bounds.midY)
+            surface.onDown?(middle)
+            surface.onMove?(middle, CGSize(width: 0, height: 9))
+            surface.onUp?()
+            if deck.tempo != 0 { found = surface }
+        }
+        let fader = try XCTUnwrap(found, "It's on this deck's screen")
+        deck.syncOn = true
+        deck.setTempo(0)
+        dj.statusMessage = nil
+        try await settle()
+
+        // The cap's at the middle now, so the top of the column is well off it.
+        fader.onDown?(CGPoint(x: fader.bounds.midX, y: 2))
+        fader.onMove?(.zero, CGSize(width: 0, height: 5))
+        XCTAssertNil(dj.statusMessage, "A touch that's hardly moved isn't worth a word")
+        fader.onMove?(.zero, CGSize(width: 0, height: 40))
+        fader.onUp?()
+        XCTAssertEqual(deck.tempo, 0, "A stray touch can't change the speed")
+        XCTAssertTrue(deck.syncOn, "Or take the deck off SYNC")
+        XCTAssertEqual(dj.statusMessage, "Drag the tempo fader by its cap. A stray touch can't change the speed.")
+        dj.statusMessage = nil
+        fader.onDown?(CGPoint(x: fader.bounds.midX, y: 2))
+        fader.onMove?(.zero, CGSize(width: 0, height: 40))
+        fader.onMove?(.zero, CGSize(width: 0, height: 60))
+        XCTAssertEqual(dj.statusMessage, "Drag the tempo fader by its cap. A stray touch can't change the speed.", "One touch says it once")
+        fader.onUp?()
+
+        // Just off the cap's edge is still the cap, for a thumb.
+        fader.onDown?(CGPoint(x: fader.bounds.midX, y: fader.bounds.midY + 13 + 7))
+        fader.onMove?(.zero, CGSize(width: 0, height: 9))
+        fader.onUp?()
+        XCTAssertNotEqual(deck.tempo, 0)
+        XCTAssertFalse(deck.syncOn, "And that's moving it by hand")
+        window.isHidden = true
+    }
+
+    /// With a question up, a hold meant for the overview under it gave a rating nobody meant.
+    func testHoldingAThumbIsntARating() async throws {
+        let (dj, _) = try await makeScreen()
+        let window = try XCTUnwrap(self.window)
+        let before = Set(controls(in: window.bounds).map { ObjectIdentifier($0.view) })
+        var rated: Bool?
+        dj.say("Loop build done. More loop builds?", .done)
+        dj.rateAction = { rated = $0 }
+        try await settle(800)
+        let thumbs = controls(in: window.bounds).filter { !before.contains(ObjectIdentifier($0.view)) }
+        XCTAssertEqual(thumbs.count, 2)
+        thumbs[0].view.onDown?(.zero)
+        try await settle(350)
+        thumbs[0].view.onUp?()
+        XCTAssertNil(rated, "A hold isn't a tap")
+    }
+
     func testTheKeysTouchesDontStayForever() async throws {
         let (dj, _) = try await makeScreen()
         let window = try XCTUnwrap(self.window)

@@ -74,6 +74,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .keepsItsBar()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
@@ -163,6 +164,18 @@ struct PickerRow: View {
             Label(title, systemImage: systemImage)
             Spacer()
             if isOpening { ProgressView() }
+        }
+    }
+}
+
+extension View {
+    /// On iOS 27, upright, a navigation bar goes away on scrolling down, and with it `Done`, or the way back, leaving only a swipe
+    /// to get out. These sheets have nothing to gain from the room. Only a first-time user upright on the folded Duo found it.
+    @ViewBuilder func keepsItsBar() -> some View {
+        if #available(iOS 27.0, *) {
+            toolbarMinimizationBehavior(.never, for: .navigationBar)
+        } else {
+            self
         }
     }
 }
